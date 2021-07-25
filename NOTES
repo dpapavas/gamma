@@ -1,0 +1,87 @@
+,-----
+| NOTES
+`-----
+
+* Consider:
+
+  - Lua uses longjmp when compiled as C, which can apparently throw off C++
+    object destructors and lead to leaks.
+    - Maybe compile Lua statically as C++ (which will use exceptions)?
+
+  - Exception source: locate first stack frame in input file?
+  - Add -Werror, -Werror=...
+    - Useful e.g. with serious mesh warnings (e.g. self-intersections,
+      which can occur with numeric operations).
+
+  - Add -Wmesh-operations=...
+    - Above flags, test on all operations results.  As a construction
+      progresses, the results of even minor operations tend to be
+      complex, so that tens or hundreds of costly tests on very
+      similar meshes are necessary.
+    - Furthermore most operations should be "safe" so that
+      e.g. -Wmesh-operations=deform,fair could be used to check only
+      certain "dangerous" operations.
+    - Also -Wmesh-operations=pipe,write-stl could be used to test the
+      output, so that more expensive tests can be done only when
+      necessary.
+
+  - Implement -Wmesh as separate check operations?
+    - Take advantage of threading.
+
+  - use BOUNDARY for bounding volumes?
+    - e.g. (boundary (bounding-halfspace ...)) -> (bounding-plane ...)
+    - similarly for other volumes
+
+  - Minkowski:
+    - Glide polylines?
+      - Probably yes.  Need only new Polyline operation, like polygon but yielding Nef_3.
+    - Minkowski difference?
+      - Doable for 2D.  Tricky or impossible in 3D.
+      - Sum doesn't work on Nef complement or Nef with hole ("manual complement").
+
+  - Deform:
+    - Support different modes and weights?
+
+,----
+| TODO
+`----
+
+* Finish documentation/review of:
+  - Makefiles
+
+* Add Readme.
+
+* Fix loose ends
+  - Edge selectors:
+    - CGAL::Polygon_mesh_processing::detect_sharp_edges ?
+    - by dihedral angle
+    - by direction
+
+  - Face selectors:
+    - by segmentation
+
+  - fix to/from_scheme for bignums.
+
+* Selection
+  - Add regularization (regularize_face_selection_borders).
+
+* Make Write_operation work with Polyhedron.
+* Make load/save use binary formats where possible.
+  - At least for polyhedra, this should provide a speedup.
+
+* Implement boolean culling.
+  - See: https://doc.cgal.org/latest/Box_intersection_d/index.html
+
+* Interesting CGAL functions:
+  - tangential_relaxation
+  - angle_and_area_smoothing
+
+* Add Measure_operation
+  - CGAL::Polygon_mesh_processing:
+  - area
+  - centroid
+  - longest_border
+  - volume
+
+* Add solid primitives:
+  - Dodecahedron
