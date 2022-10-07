@@ -137,3 +137,8 @@ You can substitute a higher or lower number in `-j4` above, depending on the
 number of cores and RAM available on your machine.  The final command, will
 install Gamma in the default location (typically `/usr/local`).  Consult CMake's
 documentation if you'd like to change this, or other aspects of the build.
+
+## License
+
+Gamma is distributed under the terms and conditions of the [GNU General Public
+License Version 3](./LICENSE.GPL).
