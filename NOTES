@@ -4,17 +4,13 @@
 
 * Consider:
 
-  - Lua uses longjmp when compiled as C, which can apparently throw off C++
-    object destructors and lead to leaks.
-    - Maybe compile Lua statically as C++ (which will use exceptions)?
-
   - Exception source: locate first stack frame in input file?
-  - Add -Werror, -Werror=...
+  - Add -Werror=...
     - Useful e.g. with serious mesh warnings (e.g. self-intersections,
       which can occur with numeric operations).
 
   - Add -Wmesh-operations=...
-    - Above flags, test on all operations results.  As a construction
+    - Mesh warning flags, test on all operations results.  As a construction
       progresses, the results of even minor operations tend to be
       complex, so that tens or hundreds of costly tests on very
       similar meshes are necessary.
@@ -45,11 +41,6 @@
 ,----
 | TODO
 `----
-
-* Finish documentation/review of:
-  - Makefiles
-
-* Add Readme.
 
 * Fix loose ends
   - Edge selectors:
