@@ -23,6 +23,8 @@
 
 #include <getopt.h>
 
+#define VERSION_NUMBER "0.5.0"
+
 #ifdef HAVE_SCHEME
 #include "scheme_frontend.h"
 #endif
@@ -148,7 +150,8 @@ static bool has_suffix(const char *s, const char *x)
 int parse_options(int argc, char *argv[])
 {
     enum {
-        DIAGNOSTICS_COLOR = 1000,
+        VERSION = 1000,
+        DIAGNOSTICS_COLOR,
         DIAGNOSTICS_ELIDE_TAGS,
         DUMP_GRAPH,
         DUMP_OPERATIONS,
@@ -162,6 +165,7 @@ int parse_options(int argc, char *argv[])
 
     static struct option options[] = {
         {"help", no_argument, 0, 'h'},
+        {"version", no_argument, 0, VERSION},
 
         // Debugging
 
@@ -395,11 +399,31 @@ int parse_options(int argc, char *argv[])
             break;
         }
 
+        case VERSION:
+            std::cout << ("Gamma " VERSION_NUMBER "\n"
+                          "Copyright (C) 2022 Dimitris Papavasiliou.\n\n"
+
+                          "This program is free software; you can redistribute it and/or modify\n"
+                          "it under the terms of the GNU General Public License as published by\n"
+                          "the Free Software Foundation; either version 3 of the License, or\n"
+                          "(at your option) any later version.\n\n"
+
+                          "This program is distributed in the hope that it will be useful,\n"
+                          "but WITHOUT ANY WARRANTY; without even the implied warranty of\n"
+                          "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n"
+                          "GNU General Public License for more details.\n\n"
+
+                          "You should have received a copy of the GNU General Public License\n"
+                          "along with this program. If not, see http://www.gnu.org/licenses/.")
+                      << std::endl;
+            break;
+
         case 'h':
             std::cout
                 << "Usage: " << argv[0] << " [OPTION...] FILE... [-- ARG...]\n\n"
                 << ("Options:\n"
-                    "  -h, --help            Display this help message.\n\n"
+                    "  -h, --help            Display this help message.\n"
+                    "  --version             Display version information.\n\n"
 
                     "Debugging options:\n"
                     "  --dump-operations[=FILE] Dump evaluated operations.\n"
@@ -495,7 +519,6 @@ int parse_options(int argc, char *argv[])
                     "  -Woutputs             Warn if an output is left unused.\n")
                 << std::endl;
 
-            std::exit(EXIT_SUCCESS);
             break;
 
         case -DIAGNOSTICS_COLOR:
