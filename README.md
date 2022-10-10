@@ -4,7 +4,7 @@ Gamma can perhaps best be described as a compiler collection for computational
 geometry.  Although in terms of construction it is not really a compiler, its
 function nevertheless is to transform code, written in one of the supported
 languages, into geometry, which can be output in one of the supported formats.
-Currently, it supports two language frontends, Scheme (though
+Currently, it supports two language frontends, Scheme (through
 [Chibi-Scheme](https://github.com/ashinn/chibi-scheme)) and
 [Lua](https://www.lua.org/) and a rich set of operations on both polygons and
 polyhedra, including:
@@ -15,6 +15,7 @@ polyhedra, including:
 * generalized polygon extrusion,
 * other geometric operations, such as Minkowski sums, convex hulls, polygon
   offsetting,
+* subdivision surfaces,
 * mesh-oriented operations, such as remeshing, refinement, surface fairing and
 * deformation operations.
 
