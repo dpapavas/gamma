@@ -261,6 +261,17 @@ void Pipe_to_geomview_operation::evaluate()
         return;
     }
 
+    // We only want non-blocking mode when opening the pipe, to
+    // prevent the process from hanging until the other side opens it.
+    // After that, that is, during transmission, non-blocking mode
+    // will only cause trouble.
+
+    if (int f; ((f = fcntl(fd, F_GETFL)) < 0
+                || fcntl(fd, F_SETFL, f & ~O_NONBLOCK) < 0)) {
+        message(Operation::WARNING, "could not set pipe flags");
+        return;
+    }
+
     __gnu_cxx::stdio_filebuf<char> buf(fd, std::ios::out);
     std::ostream s(&buf);
 
@@ -301,6 +312,8 @@ void Pipe_to_geomview_operation::evaluate()
       << "})\n"
       << "(camera Camera {})\n"
       << std::endl;
+
+    close(fd);
 }
 #else
 void Pipe_to_geomview_operation::evaluate()
