@@ -192,19 +192,6 @@ static T from_scheme(sexp x)
     }
 }
 
-//////////////
-// Settings //
-//////////////
-
-template<FT &T>
-static FT set_tolerance(const FT &x)
-{
-    FT x_0 = T;
-    T = x;
-
-    return x_0;
-}
-
 ////////////////
 // Operations //
 ////////////////
@@ -356,6 +343,22 @@ static inline sexp make_primitive(sexp ctx, sexp self, sexp_sint_t n, sexp args)
 {
     return make_primitive_helper<F, R>(
         ctx, self, n, args, std::make_index_sequence<N>{});
+}
+
+/////////////////
+// Miscellanea //
+/////////////////
+
+template<FT &T>
+static sexp set_tolerance(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+{
+    FT x_0 = T;
+
+    if (FT x; pop_optional(args, x)) {
+        T = x;
+    }
+
+    return to_scheme<FT>(ctx, x_0);
 }
 
 static sexp output(sexp ctx, sexp self, sexp_sint_t n, sexp args)
@@ -1447,14 +1450,11 @@ sexp init_base(
     const char *version, const sexp_abi_identifier_t abi) {
 
     DEFINE_FOREIGN(
-        "set-projection-tolerance!",
-        make_primitive<set_tolerance<Tolerances::projection>, FT, 1>);
+        "set-projection-tolerance!", set_tolerance<Tolerances::projection>);
     DEFINE_FOREIGN(
-        "set-curve-tolerance!",
-        make_primitive<set_tolerance<Tolerances::curve>, FT, 1>);
+        "set-curve-tolerance!", set_tolerance<Tolerances::curve>);
     DEFINE_FOREIGN(
-        "set-sine-tolerance!",
-        make_primitive<set_tolerance<Tolerances::sine>, FT, 1>);
+        "set-sine-tolerance!", set_tolerance<Tolerances::sine>);
 
     sexp_define_foreign_proc_rest(
         ctx, env, "%define-option", 2, reinterpret_cast<void *>(define_option));
