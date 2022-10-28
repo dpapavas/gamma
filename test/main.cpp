@@ -334,6 +334,19 @@ BOOST_AUTO_TEST_CASE(threads)
     BOOST_TEST(test_options({"test", "--no-threads=1"}) == -EXIT_FAILURE);
 }
 
+BOOST_AUTO_TEST_CASE(output)
+{
+    BOOST_TEST(test_options({"test", "-o", "foo", "--output", "bar:qux"}) == 5);
+
+    BOOST_TEST(Options::outputs.front() == "bar:qux");
+
+    BOOST_TEST(test_options({"test", "--no-output", "bar:qux"}) == 3);
+
+    BOOST_TEST(Options::outputs.front() == "foo");
+
+    Options::outputs.clear();
+}
+
 BOOST_AUTO_TEST_CASE(flags)
 {
 #define TEST_FLAG(OPTION, VAR) {                                     \

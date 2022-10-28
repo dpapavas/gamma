@@ -1378,9 +1378,6 @@ public:
         output_stl = Flags::output_stl;
         Flags::output_stl = 1;
 
-        output = Flags::output;
-        Flags::output = 1;
-
         Options::outputs.push_front("foo.off");
         Options::outputs.push_front("bar.wrl:foo");
         Options::outputs.push_front("qux:foo");
@@ -1390,7 +1387,6 @@ public:
 
     ~enable_output() {
         Flags::output_stl = output_stl;
-        Flags::output = output;
 
         Options::outputs.pop_front();
         Options::outputs.pop_front();

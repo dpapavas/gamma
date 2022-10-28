@@ -63,21 +63,24 @@ void print_message(Operation::Message_level level, const char *s, const int n)
 
 void add_output_operations(std::string name, std::vector<Boxed_polyhedron> &v)
 {
-    const std::string suffixes[] = {"", ".stl", ".off", ".wrl"};
+    const std::string suffixes[] = {".stl", ".off", ".wrl"};
     const int flags[] = {
-        Flags::output, Flags::output_stl, Flags::output_off, Flags::output_wrl};
+        Flags::output_stl, Flags::output_off, Flags::output_wrl};
 
     std::forward_list<std::pair <const std::string, int>> outputs;
     const int n = sizeof(suffixes) / sizeof(suffixes[0]);
     assert(n == sizeof(flags) / sizeof(flags[0]));
+    const std::size_t m = name.size();
 
     // Output can be enabled per-format, e.g. with the --output-stl
     // option.  In which case an output with name `foo` will be
     // written into file `foo.stl`.
 
-    for (int i = 0; i < n; i++) {
-        if (flags[i]) {
-            outputs.push_front({name + suffixes[i], i});
+    if (m > 0) {
+        for (int i = 0; i < n; i++) {
+            if (flags[i]) {
+                outputs.push_front({name + suffixes[i], i});
+            }
         }
     }
 
@@ -101,30 +104,41 @@ void add_output_operations(std::string name, std::vector<Boxed_polyhedron> &v)
 
                 if (j >= m && !x.compare(j - m, m, suffixes[i])) {
                     outputs.push_front({x.substr(0, j), i});
+                    goto next_output;
                 }
             }
-        } else {
-            const std::size_t m = name.size();
 
-            if (x.compare(0, m, name)) {
+            outputs.push_front({x.substr(0, j), -1});
+        } else {
+            if (!m || x.compare(0, m, name)) {
                 continue;
             }
 
             for (int i = 0; i < n; i++) {
                 if (!x.compare(m, std::string::npos, suffixes[i])) {
                     outputs.push_front({x, i});
+                    goto next_output;
                 }
             }
+
+            outputs.push_front({x, -1});
         }
+
+      next_output:;
     }
 
     if (outputs.empty()) {
         if (Flags::warn_outputs) {
-            std::ostringstream s;
-            s << "unused output '" << name << '\'';
+            if (name.empty()) {
+                const char *s = "unused null output";
+                print_message(Operation::WARNING, s, std::strlen(s));
+            } else {
+                std::ostringstream s;
+                s << "unused output '" << name << '\'';
 
-            std::string t = s.str();
-            print_message(Operation::WARNING, t.c_str(), t.size());
+                std::string t = s.str();
+                print_message(Operation::WARNING, t.c_str(), t.size());
+            }
         }
 
         return;
@@ -147,19 +161,19 @@ void add_output_operations(std::string name, std::vector<Boxed_polyhedron> &v)
 
     for (const auto &[s, i]: outputs) {
         switch (i) {
-            case 0:
+            case -1:
             PIPE(s.c_str(), std::vector(w));
             break;
 
-            case 1:
+            case 0:
             WRITE_STL(s.c_str(), std::vector(w));
             break;
 
-            case 2:
+            case 1:
             WRITE_OFF(s.c_str(), std::vector(w));
             break;
 
-            case 3:
+            case 2:
             WRITE_WRL(s.c_str(), std::vector(w));
             break;
         }

@@ -158,10 +158,11 @@ int parse_options(int argc, char *argv[])
         DUMP_LOG,
         DUMP_SHORT_TAGS,
         DIAGNOSTICS_SHORTEN_TAGS,
+        NO_OUTPUT,
         POLYHEDRON_BOOLEANS,
+        REWRITE_PASS_LIMIT,
         STORE_COMPRESSION,
-        STORE_THRESHOLD,
-        REWRITE_PASS_LIMIT};
+        STORE_THRESHOLD};
 
     static struct option options[] = {
         {"help", no_argument, 0, 'h'},
@@ -220,7 +221,7 @@ int parse_options(int argc, char *argv[])
         // Output
 
         {"output", required_argument, 0, 'o'},
-        {"no-output", no_argument, &Flags::output, 0},
+        {"no-output", required_argument, 0, NO_OUTPUT},
         {"output-stl", no_argument, &Flags::output_stl, 1},
         {"stl", no_argument, &Flags::output_stl, 1},
         {"no-output-stl", no_argument, &Flags::output_stl, 0},
@@ -246,6 +247,11 @@ int parse_options(int argc, char *argv[])
 
 #define PUSH_SIMPLE_OPTION(X) {                 \
         Options::X.push_front(optarg);          \
+        break;                                  \
+    }
+
+#define REMOVE_SIMPLE_OPTION(X) {               \
+        Options::X.remove(optarg);              \
         break;                                  \
     }
 
@@ -465,7 +471,8 @@ int parse_options(int argc, char *argv[])
                     "                        suffix, in a format determined by the suffix.\n"
                     "  -o FILE:OUTPUT, --output=FILE:OUTPUT\n"
                     "                        Write output with name OUTPUT to file FILE, in a \n"
-                    "                        format determined by the suffix.\n\n"
+                    "                        format determined by the suffix.\n"
+                    "  --no-output OUTPUT    Cancel previously requested output OUTPUT.\n\n"
 
                     "Backend options:\n"
                     "  -x LANG               Specify the language of the following input files.\n"
@@ -654,12 +661,10 @@ int parse_options(int argc, char *argv[])
 #endif
 
         case 'o':
-            if (!optarg) {
-                Flags::output = 1;
-                break;
-            }
-
             PUSH_SIMPLE_OPTION(outputs);
+
+        case NO_OUTPUT:
+            REMOVE_SIMPLE_OPTION(outputs);
 
         case '?':
             return -EXIT_FAILURE;
