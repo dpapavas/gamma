@@ -878,6 +878,10 @@ static sexp NAME ##_any(sexp ctx, sexp self, sexp_sint_t n, sexp args)  \
 {                                                                       \
     int m = sexp_length_unboxed(args);                                  \
                                                                         \
+    if (m == 0) {                                                       \
+        return make_args_exception(ctx, self);                          \
+    }                                                                   \
+                                                                        \
     if (m == 1) {                                                       \
         return sexp_car(args);                                          \
     }                                                                   \
