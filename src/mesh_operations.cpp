@@ -90,14 +90,14 @@ void Perturb_operation<T>::evaluate()
 
         CGAL::Polygon_mesh_processing::random_perturbation(
             v, *this->polyhedron, CGAL::to_double(magnitude),
-            CGAL::Polygon_mesh_processing::parameters::do_project(false));
+            CGAL::parameters::do_project(false));
 
         this->annotations.insert({"selected", std::to_string(v.size())});
     } else {
         CGAL::Polygon_mesh_processing::random_perturbation(
             CGAL::vertices(*this->polyhedron),
             *this->polyhedron, CGAL::to_double(magnitude),
-            CGAL::Polygon_mesh_processing::parameters::do_project(false));
+            CGAL::parameters::do_project(false));
     }
 }
 
@@ -129,7 +129,7 @@ void Refine_operation<T>::evaluate()
         CGAL::Polygon_mesh_processing::refine(
             *this->polyhedron, v,
             null_face_iterator(), null_vertex_iterator(),
-            CGAL::Polygon_mesh_processing::parameters::density_control_factor(
+            CGAL::parameters::density_control_factor(
                 CGAL::to_double(density)));
 
         this->annotations.insert({"selected", std::to_string(v.size())});
@@ -137,7 +137,7 @@ void Refine_operation<T>::evaluate()
         CGAL::Polygon_mesh_processing::refine(
             *this->polyhedron, CGAL::faces(*this->polyhedron),
             null_face_iterator(), null_vertex_iterator(),
-            CGAL::Polygon_mesh_processing::parameters::density_control_factor(
+            CGAL::parameters::density_control_factor(
                 CGAL::to_double(density)));
     }
 }
@@ -176,13 +176,13 @@ void Remesh_operation<T>::evaluate()
         if (edge_selector) {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
                 v, CGAL::to_double(this->target), *this->polyhedron,
-                CGAL::Polygon_mesh_processing::parameters::edge_is_constrained_map(
+                CGAL::parameters::edge_is_constrained_map(
                     is_constrained).number_of_iterations(
                     iterations));
         } else {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
                 v, CGAL::to_double(this->target), *this->polyhedron,
-                CGAL::Polygon_mesh_processing::parameters::number_of_iterations(
+                CGAL::parameters::number_of_iterations(
                     iterations));
         }
 
@@ -195,14 +195,14 @@ void Remesh_operation<T>::evaluate()
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
                 CGAL::faces(*this->polyhedron),
                 CGAL::to_double(this->target), *this->polyhedron,
-                CGAL::Polygon_mesh_processing::parameters::edge_is_constrained_map(
+                CGAL::parameters::edge_is_constrained_map(
                     is_constrained).number_of_iterations(
                         iterations));
         } else {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
                 CGAL::faces(*this->polyhedron),
                 CGAL::to_double(this->target), *this->polyhedron,
-                CGAL::Polygon_mesh_processing::parameters::number_of_iterations(
+                CGAL::parameters::number_of_iterations(
                         iterations));
         }
     }
@@ -234,15 +234,21 @@ template void Corefine_operation<Surface_mesh>::evaluate();
 // Corefine polyhedron with plane
 
 #include <CGAL/Polygon_mesh_processing/bbox.h>
+#include <CGAL/Polygon_mesh_processing/stitch_borders.h>
+#include <CGAL/convex_hull_3.h>
 
 template<typename T>
 void Corefine_with_plane_operation<T>::evaluate()
 {
     assert(!this->polyhedron);
 
+    // We intersect the plane with the polyhedron's bounding box,
+    // yielding a finite part of the plane that contains the
+    // polyhedron.  We then corefine this geometry with the polyhedron
+    // to get the desired result.
+
     this->polyhedron = std::make_shared<T>(*this->operand->get_value());
     CGAL::Bbox_3 b = CGAL::Polygon_mesh_processing::bbox(*this->polyhedron);
-    b.dilate(1);
 
     const auto r = CGAL::intersection(plane, b);
 
@@ -250,23 +256,20 @@ void Corefine_with_plane_operation<T>::evaluate()
         return;
     }
 
+    // Create a triangulated surface out of the intersection, which
+    // can either be a single triangle, a polygon, or a single point
+    // (which is of no interest.
+
     T B;
 
-    if (const std::vector<Point_3> *p = boost::get<std::vector<Point_3>>(&*r)) {
+    if (const std::vector<Point_3> *p =
+        std::get_if<std::vector<Point_3>>(&*r)) {
         const std::vector<Point_3> &v = *p;
         assert(v.size() >= 4);
 
-        auto map = CGAL::get(CGAL::vertex_point, B);
-        auto h = CGAL::opposite(CGAL::make_triangle(v[0], v[1], v[2], B), B);
-
-        for (std::size_t i = 3; i < v.size(); i++) {
-            h = CGAL::Euler::split_edge(h, B);
-            boost::get(map, CGAL::target(h, B)) = v[i];
-        }
-
-        CGAL::Polygon_mesh_processing::triangulate_faces(CGAL::faces(B), B);
+        CGAL::convex_hull_3(v.begin(), v.end(), B);
     } else if (const Kernel::Triangle_3 *t =
-               boost::get<Kernel::Triangle_3>(&*r)) {
+               std::get_if<Kernel::Triangle_3>(&*r)) {
         CGAL::make_triangle(t->vertex(0), t->vertex(1), t->vertex(2), B);
     } else {
         return;
@@ -276,6 +279,10 @@ void Corefine_with_plane_operation<T>::evaluate()
         CGAL::faces(*this->polyhedron), *this->polyhedron);
 
     CGAL::Polygon_mesh_processing::corefine(*this->polyhedron, B);
+
+    // The output can have duplicatd vertices; fix that.
+
+    CGAL::Polygon_mesh_processing::stitch_borders(*this->polyhedron);
 }
 
 template void Corefine_with_plane_operation<Polyhedron>::evaluate();

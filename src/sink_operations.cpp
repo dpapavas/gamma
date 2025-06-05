@@ -31,15 +31,13 @@ static inline void write_off_color(std::ostream &s, const CGAL::IO::Color &c)
 
 static void write_off(std::ostream &s, const Surface_mesh &mesh)
 {
-    const auto [vertex_colors, has_vertex_colors] =
-        mesh.property_map<Surface_mesh::Vertex_index,
-                          CGAL::IO::Color>("v:color");
+    const auto vertex_colors = mesh.property_map<Surface_mesh::Vertex_index,
+                                                 CGAL::IO::Color>("v:color");
 
-    const auto [face_colors, has_face_colors] =
-        mesh.property_map<Surface_mesh::Face_index,
-                          CGAL::IO::Color>("f:color");
+    const auto face_colors = mesh.property_map<Surface_mesh::Face_index,
+                                               CGAL::IO::Color>("f:color");
 
-    if (has_vertex_colors) {
+    if (vertex_colors) {
         s << "COFF\n";
     } else {
         s << "OFF\n";
@@ -64,8 +62,8 @@ static void write_off(std::ostream &s, const Surface_mesh &mesh)
           << " " << CGAL::to_double(P.y())
           << " " << CGAL::to_double(P.z());
 
-        if (has_vertex_colors) {
-            write_off_color(s, vertex_colors[v]);
+        if (vertex_colors) {
+            write_off_color(s, (*vertex_colors)[v]);
         }
 
         s << "\n";
@@ -79,8 +77,8 @@ static void write_off(std::ostream &s, const Surface_mesh &mesh)
             s << " " << map[v];
         }
 
-        if (has_face_colors) {
-            write_off_color(s, face_colors[f]);
+        if (face_colors) {
+            write_off_color(s, (*face_colors)[f]);
         }
 
         s << "\n";
@@ -214,7 +212,7 @@ void Write_OFF_operation::evaluate()
 
     for(auto p: operands) {
         if (p->get_value()->property_map<Surface_mesh::Vertex_index,
-                                         CGAL::IO::Color>("v:color").second) {
+                                         CGAL::IO::Color>("v:color")) {
             M.add_property_map<Surface_mesh::Vertex_index,
                                CGAL::IO::Color>("v:color");
             break;
@@ -223,7 +221,7 @@ void Write_OFF_operation::evaluate()
 
     for(auto p: operands) {
         if (p->get_value()->property_map<Surface_mesh::Face_index,
-                                         CGAL::IO::Color>("f:color").second) {
+                                         CGAL::IO::Color>("f:color")) {
             M.add_property_map<Surface_mesh::Face_index,
                                CGAL::IO::Color>("f:color");
             break;
@@ -284,7 +282,7 @@ void Pipe_to_geomview_operation::evaluate()
 
     for(auto p: operands) {
         if (p->get_value()->property_map<Surface_mesh::Vertex_index,
-                                         CGAL::IO::Color>("v:color").second) {
+                                         CGAL::IO::Color>("v:color")) {
             M.add_property_map<Surface_mesh::Vertex_index,
                                CGAL::IO::Color>("v:color");
             break;
@@ -293,7 +291,7 @@ void Pipe_to_geomview_operation::evaluate()
 
     for(auto p: operands) {
         if (p->get_value()->property_map<Surface_mesh::Face_index,
-                                         CGAL::IO::Color>("f:color").second) {
+                                         CGAL::IO::Color>("f:color")) {
             M.add_property_map<Surface_mesh::Face_index,
                                CGAL::IO::Color>("f:color");
             break;

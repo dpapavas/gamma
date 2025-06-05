@@ -21,10 +21,14 @@
 #include <vector>
 
 template<typename T>
-class null_iterator:
-    public std::iterator<std::output_iterator_tag, void, void, void, void>
-{
+class null_iterator {
 public:
+    using iterator_category = std::output_iterator_tag;
+    using value_type = void;
+    using difference_type = void;
+    using pointer = void;
+    using reference = void;
+
     null_iterator &operator=(const T &) {
         return *this;
     }
@@ -51,12 +55,17 @@ class iterator_chain {
     Chain parts;
 
 public:
-    class iterator: public std::iterator<std::forward_iterator_tag,
-                                         T, std::ptrdiff_t, T*, T&> {
+    class iterator {
         I it;
         typename Chain::iterator chunk, last;
 
     public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = T*;
+        using reference = T&;
+
         iterator() = default;
         explicit iterator(typename Chain::iterator c,
                           typename Chain::iterator l,

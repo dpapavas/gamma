@@ -120,11 +120,11 @@ bool Bounding_box::get_bounds(FT (*v)[2]) const
             for (int k = 4; k < 6; k++) {
                 const auto x = CGAL::intersection(planes[i], planes[j]);
 
-                const Line_3* l = boost::get<Line_3 >(&*x);
+                const Line_3 *l = std::get_if<Line_3 >(&*x);
                 assert(l);
 
                 const auto y = CGAL::intersection(*l, planes[k]);
-                const Point_3 *a = boost::get<Point_3 >(&*y);
+                const Point_3 *a = std::get_if<Point_3 >(&*y);
                 assert(a);
 
                 const Point_3 &A = *a;
@@ -367,6 +367,7 @@ std::shared_ptr<Bounding_volume> Bounding_volume_difference::transform(
 }
 
 #include "polyhedron_types.h"
+#include <CGAL/boost/graph/generators.h>
 
 bool Bounding_volume_difference::get_bounds(FT (*v)[2]) const
 {

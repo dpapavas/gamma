@@ -18,6 +18,13 @@
 #ifndef POLYHEDRON_TESTS_H
 #define POLYHEDRON_TESTS_H
 
+#include <CGAL/draw_polyhedron.h>
+#include <CGAL/draw_nef_3.h>
+#include <CGAL/draw_surface_mesh.h>
+
+#include <CGAL/Surface_mesh/IO/OFF.h>
+#include <CGAL/boost/graph/IO/OFF.h>
+
 FT polyhedron_volume(const Nef_polyhedron &N);
 FT polyhedron_volume(const Surface_mesh &M);
 FT polyhedron_volume(const Polyhedron &P);
@@ -35,8 +42,30 @@ const Surface_mesh &test_polyhedron(
     const int vertices, const int halfedges, const int facets);
 
 template<typename T>
+inline void maybe_output_polyhedron(const T &P)
+{
+    if (std::getenv("DRAW")) {
+        CGAL::draw(P);
+    } else if (std::getenv("WRITE")) {
+        const std::string s =
+            static_cast<std::string>(
+                boost::unit_test::framework::current_test_case().p_name)
+            + ".off";
+
+        if constexpr (std::is_same_v<T, Nef_polyhedron>) {
+            Polyhedron Q;
+            P.convert_to_polyhedron(Q);
+            CGAL::IO::write_OFF(s, Q);
+        } else {
+            CGAL::IO::write_OFF(s, P);
+        }
+    }
+}
+
+template<typename T>
 const T &test_polyhedron_volume(const T &P, const FT &volume)
 {
+    maybe_output_polyhedron(P);
     BOOST_TEST(polyhedron_volume(P) == volume);
 
     return P;
@@ -45,7 +74,16 @@ const T &test_polyhedron_volume(const T &P, const FT &volume)
 template<typename T>
 const T &test_polyhedron_volume(const T &P, const double volume)
 {
+    maybe_output_polyhedron(P);
     BOOST_TEST(CGAL::to_double(polyhedron_volume(P)) == volume);
+
+    return P;
+}
+
+template<typename T>
+const T &test_polyhedron(const T &P)
+{
+    maybe_output_polyhedron(P);
 
     return P;
 }
@@ -56,7 +94,12 @@ const T &test_polyhedron(
     const int vertices, const int halfedges, const int facets, const U &volume)
 {
     test_polyhedron(P, vertices, halfedges, facets);
-    test_polyhedron_volume(P, volume);
+
+    if constexpr (std::is_same_v<U, FT>) {
+        BOOST_TEST(polyhedron_volume(P) == volume);
+    } else {
+        BOOST_TEST(CGAL::to_double(polyhedron_volume(P)) == volume);
+    }
 
     return P;
 }

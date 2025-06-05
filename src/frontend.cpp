@@ -91,7 +91,7 @@ void add_output_operations(std::string name, std::vector<Boxed_polyhedron> &v)
     // determined by the extension.  The second form, works in the
     // same way, but it explicitly selects the output with name `bar`.
 
-    for (const auto x: Options::outputs) {
+    for (const auto &x: Options::outputs) {
         if (std::size_t j = x.find_first_of(':');
             j != std::string::npos) {
 

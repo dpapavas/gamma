@@ -18,6 +18,8 @@
 #ifndef POLYGON_TESTS_H
 #define POLYGON_TESTS_H
 
+#include <CGAL/draw_polygon_set_2.h>
+
 FT polygon_area(const Polygon_set &S);
 
 const Polygon_set &test_polygon_area(
@@ -28,6 +30,10 @@ const Polygon_set &test_polygon(const Polygon_set &S,
                                 const int polygons, const int holes,
                                 const int vertices, const T area)
 {
+    if (std::getenv("DRAW")) {
+        CGAL::draw(S);
+    }
+
     const int n = S.number_of_polygons_with_holes();
     BOOST_TEST(n == polygons);
 

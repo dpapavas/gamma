@@ -38,7 +38,7 @@ option(USE_CHIBI "Try to build the Scheme backend" TRUE)
 option(USE_LUA "Try to build the Lua backend" TRUE)
 
 project(main)
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.12...3.29)
 
 if (POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
@@ -46,7 +46,7 @@ endif()
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_definitions(-DCGAL_DISABLE_ROUNDING_MATH_CHECK=ON -DCGAL_HAS_THREADS)
+add_definitions(-DCGAL_HAS_THREADS)
 add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter)
 
 add_subdirectory(src)

@@ -21,8 +21,6 @@
 #include <boost/test/data/test_case.hpp>
 #include <boost/test/data/monomorphic.hpp>
 
-#include <CGAL/draw_polygon_set_2.h>
-
 #include "kernel.h"
 #include "transformations.h"
 #include "macros.h"
@@ -31,13 +29,6 @@
 #include "conic_polygon_tests.h"
 #include "circle_polygon_tests.h"
 #include "polygon_tests.h"
-
-[[maybe_unused]] static void draw(const Conic_polygon_set &S)
-{
-    Polygon_set T;
-    convert_conic_polygon_set(S, T, 0.01);
-    CGAL::draw(T);
-}
 
 bool test_polygon_without_holes(const Conic_polygon &P,
                                 const std::string_view &edges)
@@ -150,11 +141,11 @@ BOOST_AUTO_TEST_CASE(transform_circles)
 
     evaluate_unit();
 
-    for (const auto x: v) {
+    for (const auto &x: v) {
         test_polygon(*x->get_value(), "EE");
     }
 
-    for (const auto x: w) {
+    for (const auto &x: w) {
         test_polygon(*x->get_value(), "CC");
     }
 }

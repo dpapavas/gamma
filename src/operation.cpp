@@ -16,6 +16,7 @@
 // this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include <cstdint>
+#include <cstring>
 #include <chrono>
 #include <iostream>
 #include <fstream>

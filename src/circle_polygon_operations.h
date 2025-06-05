@@ -24,7 +24,7 @@
 #include "polygon_operations.h"
 
 void convert_circle_polygon_set(const Circle_polygon_set &S, Polygon_set &T,
-                                const double tolerance);
+                                const double tau, const FT &sigma);
 
 template<>
 class Polygon_convert_operation<Circle_polygon_set, Polygon_set>:

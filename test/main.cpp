@@ -33,21 +33,30 @@
 #include "fixtures.h"
 
 struct Global_fixture {
-  void setup() {
-      CGAL::set_error_behaviour(CGAL::THROW_EXCEPTION);
-      CGAL::set_warning_behaviour(CGAL::THROW_EXCEPTION);
+    void setup() {
+        CGAL::set_error_behaviour(CGAL::THROW_EXCEPTION);
+        CGAL::set_warning_behaviour(CGAL::THROW_EXCEPTION);
 
-      Flags::eliminate_dead_operations = 0;
-      Flags::store_operations = 0;
-      Flags::load_operations = 0;
+        Flags::eliminate_dead_operations = 0;
+        Flags::store_operations = 0;
+        Flags::load_operations = 0;
 
-      parse_options(
-          boost::unit_test::framework::master_test_suite().argc,
-          boost::unit_test::framework::master_test_suite().argv);
-  }
+#ifdef HAVE_SCHEME
+        Options::include_directories.push_front(SOURCE_DIR "/scheme");
+        Options::include_directories.push_front(CHIBI_LIB_DIR);
+#endif
 
-  void teardown() {
-  }
+#ifdef HAVE_LUA
+        Options::include_directories.push_front(SOURCE_DIR "/lua");
+#endif
+
+        parse_options(
+            boost::unit_test::framework::master_test_suite().argc,
+            boost::unit_test::framework::master_test_suite().argv);
+    }
+
+    void teardown() {
+    }
 };
 
 BOOST_TEST_GLOBAL_FIXTURE(Global_fixture);

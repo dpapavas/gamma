@@ -24,8 +24,6 @@
 #include <cmath>
 #include <sstream>
 
-#include <CGAL/draw_polygon_set_2.h>
-
 #include "kernel.h"
 #include "transformations.h"
 #include "macros.h"

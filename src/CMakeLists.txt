@@ -3,7 +3,6 @@ include(GNUInstallDirs)
 # Find CGAL and its components and include helper file.
 
 find_package(CGAL COMPONENTS REQUIRED)
-include(${CGAL_USE_FILE})
 
 find_package(Boost REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -31,6 +30,8 @@ add_library(
   evaluation.cpp projection.cpp rewrites.cpp selection.cpp sandbox.cpp
   transformations.cpp options.cpp frontend.cpp)
 
+add_executable(gamma main.cpp)
+
 target_include_directories(
   objects PUBLIC ${ZLIB_INCLUDE_DIR})
 target_link_options(objects PUBLIC -pthread)
@@ -39,8 +40,7 @@ if (WIN32)
 target_link_options(objects PUBLIC -static)
 endif ()
 
-target_link_libraries(objects PUBLIC
-  ${CGAL_LIBRARIES} ${CGAL_3RD_PARTY_LIBRARIES} CGAL::Eigen3_support
+target_link_libraries(objects PUBLIC CGAL::CGAL CGAL::Eigen3_support
   ${ZLIB_LIBRARIES})
 
 # Scheme backend
@@ -52,10 +52,8 @@ if (USE_CHIBI)
     target_sources(objects PRIVATE scheme_frontend.cpp)
     target_include_directories(objects PUBLIC ${CHIBI_INCLUDE_DIR})
     target_link_libraries(objects PUBLIC ${CHIBI_LIBRARIES} util)
-    target_compile_definitions(
-      objects PUBLIC
-      HAVE_SCHEME
-      "SCHEME_LIBRARY_DIR=\"${CMAKE_INSTALL_FULL_DATADIR}/gamma/scheme\"")
+    target_compile_definitions(objects PUBLIC HAVE_SCHEME)
+    target_compile_definitions(gamma PUBLIC HAVE_SCHEME)
   else ()
     message(
       STATUS
@@ -73,10 +71,8 @@ if (USE_LUA)
     target_sources(objects PRIVATE lua_frontend.cpp)
     target_include_directories(objects PUBLIC ${LUA_INCLUDE_DIR})
     target_link_libraries(objects PUBLIC ${LUA_LIBRARIES})
-    target_compile_definitions(
-      objects PUBLIC
-      HAVE_LUA
-      "LUA_LIBRARY_DIR=\"${CMAKE_INSTALL_FULL_DATADIR}/gamma/lua\"")
+    target_compile_definitions(objects PUBLIC HAVE_LUA)
+    target_compile_definitions(gamma PUBLIC HAVE_LUA)
   else ()
     message(
       STATUS
@@ -86,7 +82,7 @@ endif ()
 
 # Create the main executable.
 
-add_executable(gamma main.cpp)
+target_compile_definitions(gamma PUBLIC "INSTALL_DATADIR=\"${CMAKE_INSTALL_FULL_DATADIR}\"")
 target_link_libraries(gamma objects)
 
 add_to_cached_list(CGAL_EXECUTABLE_TARGETS gamma)

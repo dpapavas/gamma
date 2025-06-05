@@ -838,9 +838,7 @@ template void Sqrt_3_subdivision_operation<Surface_mesh>::evaluate();
 // Convex hull //
 /////////////////
 
-class Polyhedron_points_iterator: public std::iterator<std::input_iterator_tag,
-                                                       Point_3, std::ptrdiff_t,
-                                                       Point_3 *, Point_3 &> {
+class Polyhedron_points_iterator {
     typedef std::pair<Surface_mesh::Vertex_range::const_iterator,
                       const Surface_mesh *> Surface_mesh_vertex_const_iterator;
 
@@ -851,6 +849,12 @@ protected:
                  Surface_mesh_vertex_const_iterator> inner;
 
 public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = Point_3;
+    using difference_type = std::ptrdiff_t;
+    using pointer = Point_3*;
+    using reference = Point_3&;
+
     Polyhedron_points_iterator(const std::vector<Point_3>::const_iterator &it):
         inner(it) {}
     Polyhedron_points_iterator(const Polyhedron::Vertex_const_iterator &it):

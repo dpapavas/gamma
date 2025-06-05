@@ -66,7 +66,7 @@ class Remesh_operation:
     const std::shared_ptr<Face_selector> face_selector;
     const std::shared_ptr<Edge_selector> edge_selector;
     const FT target;
-    const int iterations;
+    const unsigned int iterations;
 
 public:
     Remesh_operation(

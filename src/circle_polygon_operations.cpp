@@ -40,7 +40,7 @@ typedef Traits::X_monotone_curve_2 X_monotone_curve;
 static void subdivide_curve(Curve_2 c, Circle_polygon &P)
 {
     static auto make_monotone = Traits().make_x_monotone_2_object();
-    std::vector<CGAL::Object> v;
+    std::vector<std::variant<Traits::Point_2, X_monotone_curve>> v;
 
     make_monotone(c, std::back_inserter(v));
 

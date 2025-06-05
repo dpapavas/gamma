@@ -55,6 +55,8 @@ BOOST_AUTO_TEST_CASE(fair)
 
     const auto &P = *p->get_value();
 
+    test_polyhedron(P);
+
     for (const auto &v: P.vertex_handles()) {
         const auto &A = v->point();
 

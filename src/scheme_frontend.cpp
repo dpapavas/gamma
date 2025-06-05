@@ -1679,7 +1679,7 @@ int run_scheme(const char *input, char **first, char **last)
         };
 
         int n = 0;
-        for(; sexp_static_libraries[n].name; n++);
+        for (; sexp_static_libraries[n].name; n++);
 
         static std::unique_ptr<struct sexp_library_entry_t[]>
             static_libraries_array(

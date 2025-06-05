@@ -129,7 +129,10 @@ namespace Options {
 
     extern std::forward_list<std::pair<std::string, std::string>> definitions;
     extern std::forward_list<std::string> include_directories;
+
+#ifdef HAVE_SCHEME
     extern std::forward_list<std::string> scheme_features;
+#endif
 }
 
 int parse_options(int argc, char* argv[]);

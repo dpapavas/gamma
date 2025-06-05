@@ -21,13 +21,6 @@
 #include <forward_list>
 #include <CGAL/draw_polygon_set_2.h>
 
-inline void draw_circle_polygon_set(const Circle_polygon_set &S, double tau)
-{
-    Polygon_set T;
-    convert_circle_polygon_set(S, T, tau);
-    CGAL::draw(T);
-}
-
 inline std::shared_ptr<
     Polygon_operation<Circle_polygon_set>> TRANSFORM_CS(
     std::shared_ptr<Polygon_operation<Circle_polygon_set>> p,
@@ -96,6 +89,18 @@ bool test_polygon_with_holes(const T &P, const std::string_view polygon)
 template<typename T, typename... Args>
 const T &test_polygon(const T &S, Args &... args)
 {
+    if (std::getenv("DRAW")) {
+        Polygon_set R;
+
+        if constexpr (std::is_same_v<T, Circle_polygon_set>) {
+            convert_circle_polygon_set(S, R, 0.01, FT::ET(1, 1000000));
+        } else {
+            convert_conic_polygon_set(S, R, 0.01);
+        }
+
+        CGAL::draw(R);
+    }
+
     std::forward_list<typename T::Polygon_with_holes_2> p;
     std::list<std::string_view> s({args...});
     S.polygons_with_holes(std::front_inserter(p));

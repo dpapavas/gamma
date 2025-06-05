@@ -4,7 +4,7 @@ if (NOT Boost_UNIT_TEST_FRAMEWORK_FOUND)
   return()
 endif ()
 
-find_package(CGAL OPTIONAL_COMPONENTS Qt5)
+find_package(CGAL OPTIONAL_COMPONENTS Qt6)
 
 add_executable(
   test
@@ -16,12 +16,15 @@ add_executable(
 
   frontend.cpp rewrites.cpp selection.cpp)
 
-if (CGAL_Qt5_FOUND)
-  target_compile_definitions(test PRIVATE -DCGAL_USE_BASIC_VIEWER -DQT_NO_KEYWORDS)
-else ()
-  message(STATUS "Qt5 CGAL component not found.")
+if (NOT CGAL_Qt6_FOUND)
+  message(STATUS "Qt6 CGAL component not found.")
 endif ()
 
+if (USE_CHIBI)
+  target_compile_definitions(test PRIVATE "CHIBI_LIB_DIR=\"${CHIBI_LIB_DIR}\"")
+endif ()
+
+target_compile_definitions(test PRIVATE "SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\"")
 target_include_directories(test PRIVATE ../src)
 target_link_libraries(test ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} objects
-  CGAL::CGAL_Qt5 stdc++fs)
+  CGAL::CGAL_Basic_viewer stdc++fs)

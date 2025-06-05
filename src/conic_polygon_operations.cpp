@@ -28,13 +28,16 @@ using Traits = Conic_traits;
 typedef Traits::Curve_2 Curve_2;
 typedef Traits::X_monotone_curve_2 X_monotone_curve;
 
+static const auto traits = Traits();
+static const auto construct_curve = traits.construct_curve_2_object();
+
 // For much of the below, see comments in respective operations for
 // circle polygons.
 
 static void subdivide_curve(Curve_2 c, Conic_polygon &P)
 {
-    static auto make_monotone = Traits().make_x_monotone_2_object();
-    std::vector<CGAL::Object> v;
+    static const auto make_monotone = traits.make_x_monotone_2_object();
+    std::vector<std::variant<Traits::Point_2, X_monotone_curve>> v;
 
     make_monotone(c, std::back_inserter(v));
 
@@ -49,7 +52,7 @@ static void subdivide_curve(Curve_2 c, Conic_polygon &P)
 static bool have_same_conic(const X_monotone_curve &a,
                             const X_monotone_curve &b)
 {
-    decltype(a.r() / b.r()) q;
+    Alg_kernel::FT q;
 
 #define IF_CLAUSE(x)                                                    \
     (((CGAL::sign(a.x()) == CGAL::ZERO) && (CGAL::sign(b.x()) == CGAL::ZERO)) \
@@ -86,8 +89,8 @@ static void reassemble_curves(const Conic_polygon &P, std::list<Curve_2> &l)
             if (c_0 == b) {
                 // A full conic
 
-                l.push_back(Curve_2(c_0->r(), c_0->s(), c_0->t(),
-                                    c_0->u(), c_0->v(), c_0->w()));
+                l.push_back(construct_curve(c_0->r(), c_0->s(), c_0->t(),
+                                       c_0->u(), c_0->v(), c_0->w()));
 
                 return;
             } else if (have_same_conic(*c_0, *b)
@@ -100,9 +103,9 @@ static void reassemble_curves(const Conic_polygon &P, std::list<Curve_2> &l)
             }
         }
 
-        l.push_back(Curve_2(c_0->r(), c_0->s(), c_0->t(),
-                            c_0->u(), c_0->v(), c_0->w(),
-                            c_0->orientation(), c_0->source(), T));
+        l.push_back(construct_curve(c_0->r(), c_0->s(), c_0->t(),
+                               c_0->u(), c_0->v(), c_0->w(),
+                               c_0->orientation(), c_0->source(), T));
 
         if (c == e) {
             break;
@@ -123,7 +126,8 @@ static void reassemble_curves(const Conic_polygon &P, std::list<Curve_2> &l)
 
 static inline Rat_kernel::FT to_rat(const FT &x)
 {
-    return Rat_kernel::FT(x.exact().get_mpq_t());
+    const mpq_class q = x.exact();
+    return Rat_kernel::FT(q.get_num().get_mpz_t(), q.get_den().get_mpz_t());
 }
 
 static inline Rat_kernel::Point_2 to_rat(const Point_2 &A)
@@ -136,8 +140,8 @@ static inline Rat_kernel::Point_2 to_rat(const Point_2 &A)
 
 static inline Point_2 from_alg(const Alg_kernel::Point_2 &A)
 {
-    return Point_2(FT(FT::ET(A.x().BigRatValue().get_mp())),
-                   FT(FT::ET(A.y().BigRatValue().get_mp())));
+    return Point_2(FT(FT::ET(A.x().BigRatValue().backend().data())),
+                   FT(FT::ET(A.y().BigRatValue().backend().data())));
 }
 
 static inline Alg_kernel::FT to_alg(const Circle_segment_traits::CoordNT &x)
@@ -240,19 +244,20 @@ static Conic_polygon transform_curves(CGAL::Orientation orientation,
             // orientation, so that we need to keep track of the
             // desired orientation and flip manually as required.
 
-            const Curve_2 d(E[0][0], E[1][1], E[0][1] * 2,
-                            E[0][2] * 2, E[1][2] * 2, E[2][2]);
-
-            subdivide_curve(d, G);
+            subdivide_curve(
+                construct_curve(
+                    E[0][0], E[1][1], E[0][1] * 2,
+                    E[0][2] * 2, E[1][2] * 2, E[2][2]), G);
 
             flip = G.orientation() != orientation;
         } else {
             subdivide_curve(
-                Curve_2(E[0][0], E[1][1], E[0][1] * 2,
-                        E[0][2] * 2, E[1][2] * 2, E[2][2],
-                        c.orientation(),
-                        transform_point(T, c.source()),
-                        transform_point(T, c.target())), G);
+                construct_curve(
+                    E[0][0], E[1][1], E[0][1] * 2,
+                    E[0][2] * 2, E[1][2] * 2, E[2][2],
+                    c.orientation(),
+                    transform_point(T, c.source()),
+                    transform_point(T, c.target())), G);
         }
     }
 
@@ -290,7 +295,7 @@ static Conic_polygon convert_polygon(const Polygon &P)
 
     for (auto e = P.edges_begin(); e != P.edges_end(); e++) {
         subdivide_curve(
-            Curve_2(
+            construct_curve(
                 Rat_kernel::Segment_2(
                     to_rat(e->source()), to_rat(e->target()))),
             G);
@@ -308,7 +313,7 @@ static Conic_polygon convert_circle_polygon(const Circle_polygon &P)
             const Line_2 l = c->supporting_line();
 
             subdivide_curve(
-                Curve_2(
+                construct_curve(
                     0, 0, 0, to_rat(l.a()), to_rat(l.b()), to_rat(l.c()),
                     CGAL::COLLINEAR,
                     to_alg(c->source()), to_alg(c->target())),
@@ -317,7 +322,7 @@ static Conic_polygon convert_circle_polygon(const Circle_polygon &P)
             const Circle_2 C = c->supporting_circle();
 
             subdivide_curve(
-                Curve_2(
+                construct_curve(
                     Rat_kernel::Circle_2(
                         to_rat(C.center()),
                         to_rat(C.squared_radius()),

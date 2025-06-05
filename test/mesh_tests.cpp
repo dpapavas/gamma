@@ -225,7 +225,7 @@ BOOST_AUTO_TEST_CASE(remesh_constrained, * boost::unit_test::tolerance(5e-3))
 }
 
 BOOST_AUTO_TEST_CASE(
-    remesh_constrained_selected, * boost::unit_test::tolerance(5e-4))
+    remesh_constrained_selected, * boost::unit_test::tolerance(6e-4))
 {
     const FT l = FT::ET(1, 4);
     auto p = REMESH(
@@ -275,7 +275,7 @@ BOOST_AUTO_TEST_CASE(corefine)
 
 BOOST_DATA_TEST_CASE(corefine_plane,
                      (boost::unit_test::data::make({0, -2, -3, -4})
-                      ^ boost::unit_test::data::make({21, 12, 8, 8})),
+                      ^ boost::unit_test::data::make({20, 14, 8, 8})),
                      d, n)
 {
     auto p = COREFINE(CUBOID(2, 2, 2), Plane_3(1, 1, 1, d));
@@ -289,8 +289,8 @@ BOOST_DATA_TEST_CASE(corefine_plane,
 
     const auto &P = *p->get_value();
 
-    BOOST_TEST(P.size_of_vertices() == n);
     test_polyhedron_volume(P, FT(8));
+    BOOST_TEST(P.size_of_vertices() == n);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

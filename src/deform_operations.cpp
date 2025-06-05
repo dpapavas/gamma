@@ -44,7 +44,7 @@ void Fair_operation<T>::evaluate()
 
     if(CGAL::Polygon_mesh_processing::fair(
            *this->polyhedron, v,
-           CGAL::Polygon_mesh_processing::parameters::fairing_continuity(
+           CGAL::parameters::fairing_continuity(
                continuity))) {
         this->annotations.insert({"selected", std::to_string(v.size())});
     } else {
@@ -307,7 +307,7 @@ void Smooth_shape_operation<T>::evaluate()
 
             CGAL::Polygon_mesh_processing::smooth_shape(
                 faces, M, CGAL::to_double(time),
-                CGAL::Polygon_mesh_processing::parameters::vertex_is_constrained_map(
+                CGAL::parameters::vertex_is_constrained_map(
                 is_constrained).number_of_iterations(
                     iterations));
 
@@ -316,7 +316,7 @@ void Smooth_shape_operation<T>::evaluate()
         } else {
             CGAL::Polygon_mesh_processing::smooth_shape(
                 faces, M, CGAL::to_double(time),
-                CGAL::Polygon_mesh_processing::parameters::number_of_iterations(
+                CGAL::parameters::number_of_iterations(
                     iterations));
         }
 
@@ -327,7 +327,7 @@ void Smooth_shape_operation<T>::evaluate()
 
             CGAL::Polygon_mesh_processing::smooth_shape(
                 M, CGAL::to_double(time),
-                CGAL::Polygon_mesh_processing::parameters::vertex_is_constrained_map(
+                CGAL::parameters::vertex_is_constrained_map(
                 is_constrained).number_of_iterations(
                     iterations));
 
@@ -336,7 +336,7 @@ void Smooth_shape_operation<T>::evaluate()
         } else {
             CGAL::Polygon_mesh_processing::smooth_shape(
                 M, CGAL::to_double(time),
-                CGAL::Polygon_mesh_processing::parameters::number_of_iterations(
+                CGAL::parameters::number_of_iterations(
                     iterations));
         }
     }

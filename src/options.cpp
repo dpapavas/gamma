@@ -121,15 +121,7 @@ namespace Options {
     // Backend
 
     std::forward_list<std::pair<std::string, std::string>> definitions;
-    std::forward_list<std::string> include_directories = {
-#ifdef HAVE_SCHEME
-        SCHEME_LIBRARY_DIR,
-#endif
-
-#ifdef HAVE_LUA
-        LUA_LIBRARY_DIR,
-#endif
-    };
+    std::forward_list<std::string> include_directories;
 
 #ifdef HAVE_SCHEME
     std::forward_list<std::string> scheme_features;
@@ -406,22 +398,23 @@ int parse_options(int argc, char *argv[])
         }
 
         case VERSION:
-            std::cout << ("Gamma " VERSION_NUMBER "\n"
-                          "Copyright (C) 2022 Dimitris Papavasiliou.\n\n"
+            std::cout
+                << ("Gamma " VERSION_NUMBER "\n"
+                    "Copyright (C) 2022 Dimitris Papavasiliou.\n\n"
 
-                          "This program is free software; you can redistribute it and/or modify\n"
-                          "it under the terms of the GNU General Public License as published by\n"
-                          "the Free Software Foundation; either version 3 of the License, or\n"
-                          "(at your option) any later version.\n\n"
+                    "This program is free software; you can redistribute it and/or modify\n"
+                    "it under the terms of the GNU General Public License as published by\n"
+                    "the Free Software Foundation; either version 3 of the License, or\n"
+                    "(at your option) any later version.\n\n"
 
-                          "This program is distributed in the hope that it will be useful,\n"
-                          "but WITHOUT ANY WARRANTY; without even the implied warranty of\n"
-                          "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n"
-                          "GNU General Public License for more details.\n\n"
+                    "This program is distributed in the hope that it will be useful,\n"
+                    "but WITHOUT ANY WARRANTY; without even the implied warranty of\n"
+                    "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n"
+                    "GNU General Public License for more details.\n\n"
 
-                          "You should have received a copy of the GNU General Public License\n"
-                          "along with this program. If not, see http://www.gnu.org/licenses/.")
-                      << std::endl;
+                    "You should have received a copy of the GNU General Public License\n"
+                    "along with this program. If not, see http://www.gnu.org/licenses/.")
+                << std::endl;
             break;
 
         case 'h':

@@ -19,7 +19,9 @@
 #define OPERATION_H
 
 #include <algorithm>
+#include <functional>
 #include <string>
+#include <memory>
 #include <unordered_set>
 #include <unordered_map>
 

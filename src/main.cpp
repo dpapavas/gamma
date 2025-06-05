@@ -28,6 +28,16 @@ int main(int argc, char *argv[])
     CGAL::set_error_behaviour(CGAL::THROW_EXCEPTION);
     CGAL::set_warning_behaviour(CGAL::THROW_EXCEPTION);
 
+    // Configure the default include directories.
+
+#ifdef HAVE_SCHEME
+    Options::include_directories.push_front(INSTALL_DATADIR "/gamma/scheme");
+#endif
+
+#ifdef HAVE_LUA
+    Options::include_directories.push_front(INSTALL_DATADIR "/lua/scheme");
+#endif
+
     // Parse the command line.
 
     return parse_options(argc, argv) < 0 ? EXIT_FAILURE : EXIT_SUCCESS;

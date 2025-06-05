@@ -36,10 +36,6 @@
 #include "fixtures.h"
 #include "polyhedron_tests.h"
 
-#include <CGAL/draw_polyhedron.h>
-#include <CGAL/draw_nef_3.h>
-#include <CGAL/draw_surface_mesh.h>
-
 namespace CGAL {
     FT exact(FT d)
     {
@@ -76,6 +72,8 @@ const Polyhedron &test_polyhedron(
     const Polyhedron &P,
     const int vertices, const int halfedges, const int facets)
 {
+    maybe_output_polyhedron(P);
+
     BOOST_TEST(P.size_of_vertices() == vertices);
     BOOST_TEST(P.size_of_halfedges() == halfedges);
     BOOST_TEST(P.size_of_facets() == facets);
@@ -87,6 +85,8 @@ const Nef_polyhedron &test_polyhedron(
     const Nef_polyhedron &N,
     const int vertices, const int halfedges, const int facets)
 {
+    maybe_output_polyhedron(N);
+
     BOOST_TEST(N.number_of_vertices() == vertices);
     BOOST_TEST(N.number_of_halfedges() == halfedges);
     BOOST_TEST(N.number_of_facets() == facets);
@@ -98,6 +98,8 @@ const Surface_mesh &test_polyhedron(
     const Surface_mesh &M,
     const int vertices, const int halfedges, const int facets)
 {
+    maybe_output_polyhedron(M);
+
     BOOST_TEST(M.number_of_vertices() == vertices);
     BOOST_TEST(M.number_of_halfedges() == halfedges);
     BOOST_TEST(M.number_of_faces() == facets);
@@ -339,7 +341,7 @@ BOOST_AUTO_TEST_CASE(nef_reflection)
 
     evaluate_unit();
 
-    test_polyhedron(*b->get_value(), 4, 12, 4, FT::ET(1, 3));
+    test_polyhedron(*b->get_value(), 4, 12, 4, FT(FT::ET(1, 3)));
 }
 
 BOOST_AUTO_TEST_CASE(mesh_reflection)
@@ -505,7 +507,8 @@ BOOST_DATA_TEST_CASE(extrude_many,
     std::vector<Aff_transformation_3> v;
 
     for (int i = 0; i < n; i += 1) {
-        v.push_back(TRANSLATION_3(FT::ET(i % 2 > 0 ? -1 : 1), FT::ET(0), FT::ET(i)));
+        v.push_back(
+            TRANSLATION_3(FT::ET(i % 2 > 0 ? -1 : 1), FT::ET(0), FT::ET(i)));
     }
 
     auto b = EXTRUSION(a, std::move(v));
@@ -601,7 +604,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(hulls, T, polyhedron_types)
 
     evaluate_unit();
 
-    test_polyhedron(*p->get_value(), 6, 24, 8, FT::ET(7, 6));
+    test_polyhedron(*p->get_value(), 6, 24, 8, FT(FT::ET(7, 6)));
 }
 
 ///////////////////
@@ -618,7 +621,7 @@ BOOST_AUTO_TEST_CASE(minkowski_sum)
 
     evaluate_unit();
 
-    test_polyhedron(*p->get_value(), 24, 96, 26, FT::ET(4984, 3));
+    test_polyhedron(*p->get_value(), 24, 96, 26, FT(FT::ET(4984, 3)));
 }
 
 /////////////////
@@ -701,7 +704,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(join, T, polyhedron_types)
 
     evaluate_unit();
 
-    test_polyhedron_volume(*p->get_value(), FT::ET(1, 3));
+    test_polyhedron_volume(*p->get_value(), FT(FT::ET(1, 3)));
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(difference, T, polyhedron_types)
@@ -718,7 +721,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(difference, T, polyhedron_types)
 
     evaluate_unit();
 
-    test_polyhedron_volume(*p->get_value(), FT::ET(7, 48));
+    test_polyhedron_volume(*p->get_value(), FT(FT::ET(7, 48)));
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(intersection, T, polyhedron_types)
@@ -739,7 +742,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(intersection, T, polyhedron_types)
 
     evaluate_unit();
 
-    test_polyhedron(*p->get_value(), 4, 12, 4, FT::ET(1, 48));
+    test_polyhedron(*p->get_value(), 4, 12, 4, FT(FT::ET(1, 48)));
 }
 
 BOOST_AUTO_TEST_CASE(symmetric_difference)
@@ -832,7 +835,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(clip, T, polyhedron_types)
 
     evaluate_unit();
 
-    test_unit_tetrahedron(*p->get_value());
+    test_polyhedron_volume(*p->get_value(), FT(FT::ET(1, 6)));
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(clip_non_manifold, T, polyhedron_types)
