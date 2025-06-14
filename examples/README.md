@@ -90,8 +90,8 @@ As used here, `output` selects its argument for output as with `?` above and
 also returns it, so that you can wrap anything of interest with it temporarily.
 
 Finally, another option that may be useful when running programs with Gamma, is
-`--dump-operations`.  This dumps the operations that are carried out internally
+`--dump-list`.  This dumps the operations that are carried out internally
 during the course of the computation to a file, but you can used it as
-`--dump-operations=-` to print them to the standard output.  This can serve to
+`--dump-list=-` to print them to the standard output.  This can serve to
 provide some feedback on the progress of the execution and also some insight
 into its inner workings.

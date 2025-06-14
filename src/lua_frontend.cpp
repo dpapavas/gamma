@@ -254,7 +254,8 @@ static int transformation_2_mul(lua_State *L)
 
                 if constexpr (
                     std::is_same_v<decltype(p), std::shared_ptr<Operation>>) {
-                    tolua<Boxed_polygon>(L, std::move(make_boxed_polygon(p)));
+                    tolua<Boxed_polygon>(
+                        L, std::move(make_boxed_transformed_polygon(p)));
                 } else {
                     tolua<Boxed_polygon>(L, p);
                 }
@@ -554,7 +555,7 @@ static int print(lua_State *L)
 // Polygons //
 //////////////
 
-static int ngon(lua_State *L)
+static int simple(lua_State *L)
 {
     std::vector<Point_2> v;
     const int h = lua_gettop(L);
@@ -621,7 +622,7 @@ static int polyhedron_ ##NAME(lua_State *L)     \
         tolua<Boxed_polyhedron>(                                        \
             L,                                                          \
             std::visit(                                                 \
-                PERFORM_POLYHEDRON_CLIP_OPERATION(Pi),                  \
+                make_polyhedron_clip_visitor(Pi),                       \
                 fromlua<Boxed_polyhedron>(L, 2 - i)));                  \
                                                                         \
         return 1;                                                       \
@@ -634,7 +635,7 @@ static int polyhedron_ ##NAME(lua_State *L)     \
     tolua<Boxed_polyhedron>(                                            \
         L,                                                              \
         std::visit(                                                     \
-            PERFORM_POLYHEDRON_SET_OPERATION(OP),                       \
+            make_polyhedron_boolean_visitor(OP),                        \
             fromlua<Boxed_polyhedron>(L, 1),                            \
             fromlua<Boxed_polyhedron>(L, 2)));                          \
                                                                         \
@@ -814,7 +815,7 @@ static int output(lua_State *L)
         v.push_back(fromlua<Boxed_polyhedron>(L, i));
     }
 
-    add_output_operations(s ? s : "", v);
+    insert_output_operations(s ? s : "", v);
 
     return 1;
 }
@@ -836,7 +837,7 @@ static int extrusion(lua_State *L)
     const int h = lua_gettop(L);
     std::vector<Aff_transformation_3> v;
 
-    if (h < 2) {
+    if (h < 1) {
         return luaL_error(L, "can't make extrusion from given arguments");
     }
 
@@ -860,8 +861,7 @@ static int hull(lua_State *L)
 
     if (luaL_testudata(L, 1, "polyhedron")
         || luaL_testudata(L, 1, "point_3d")) {
-        std::shared_ptr<Polyhedron_hull_operation> p =
-            std::make_shared<Polyhedron_hull_operation>();
+        std::shared_ptr<Polyhedron_hull_operation> p = POLYHEDRON_HULL_OPEN();
 
         for (int i = 1; i <= n; i++) {
             if (luaL_testudata(L, i, "point_3d")) {
@@ -877,10 +877,9 @@ static int hull(lua_State *L)
             }
         }
 
-        tolua<Boxed_polyhedron>(L, HULL(p));
+        tolua<Boxed_polyhedron>(L, POLYHEDRON_HULL_CLOSE(p));
     } else {
-        std::shared_ptr<Polygon_hull_operation> p =
-            std::make_shared<Polygon_hull_operation>();
+        std::shared_ptr<Polygon_hull_operation> p = POLYGON_HULL_OPEN();
 
         for (int i = 1; i <= n; i++) {
             if (luaL_testudata(L, i, "point_2d")) {
@@ -896,7 +895,7 @@ static int hull(lua_State *L)
             }
         }
 
-        tolua<Boxed_polygon>(L, HULL(p));
+        tolua<Boxed_polygon>(L, POLYGON_HULL_CLOSE(p));
     }
 
     return 1;
@@ -1278,6 +1277,8 @@ static int open_volumes(lua_State *L)
          primitive<BOUNDING_CYLINDER_INTERIOR<>,
          std::shared_ptr<Bounding_volume>, 2>},
 
+        {"complement", complement},
+
         {nullptr, nullptr}};
 
     luaL_newlib(L, ops);
@@ -1296,6 +1297,7 @@ static int open_selection(lua_State *L)
 
         {"expand_selection", relative_selection<1>},
         {"contract_selection", relative_selection<-1>},
+        {"complement", complement},
 
         {nullptr, nullptr}};
 
@@ -1307,7 +1309,7 @@ static int open_selection(lua_State *L)
 static int open_polygons(lua_State *L)
 {
     const luaL_Reg ops[] = {
-        {"simple", ngon},
+        {"simple", simple},
         {"regular", primitive<REGULAR_POLYGON<>, Boxed_polygon, int, FT>},
         {"isosceles_triangle",
          primitive<ISOSCELES_TRIANGLE<>, Boxed_polygon, 2>},
@@ -1402,13 +1404,13 @@ static void pushstack(lua_State *L)
             lua_pushfstring(L, "#%d in a %sC function%s\n",
                             i, ANSI_COLOR(0, 33), ANSI_COLOR(0, 37));
         } else if (!std::strcmp(ar.what, "main")) {
-            lua_pushfstring(L, "#%d in the %smain chunk%s, %s%s:%d%s\n",
+            lua_pushfstring(L, "#%d in the %smain chunk%s, at %s%s:%d%s\n",
                             i,
                             ANSI_COLOR(0, 33), ANSI_COLOR(0, 37),
                             ANSI_COLOR(1, 37), ar.short_src,
                             ar.currentline, ANSI_COLOR(0,));
         } else if (!std::strcmp(ar.what, "Lua")) {
-            lua_pushfstring(L, "#%d in function '%s%s%s', %s%s:%d%s\n",
+            lua_pushfstring(L, "#%d in function '%s%s%s', at %s%s:%d%s\n",
                             i,
                             ANSI_COLOR(0, 33), ar.name, ANSI_COLOR(0, 37),
                             ANSI_COLOR(1, 37), ar.short_src,
@@ -1453,7 +1455,7 @@ static int error_handler(lua_State *L)
 
             // The colorized filename
 
-            luaL_addstring(&b, ANSI_COLOR(1, 31));
+            luaL_addstring(&b, ANSI_COLOR(1, 37));
             luaL_addstring(&b, ar.short_src);
             luaL_addstring(&b, ANSI_COLOR(0, 37));
 
@@ -1479,8 +1481,9 @@ static int error_handler(lua_State *L)
                     lua_pushstring(L, " function: '");
                 }
 
-                lua_pushstring(L, ar.name);
-                lua_pushstring(L, "'\n");
+                lua_pushfstring(
+                    L, "%s%s%s'\n",
+                    ANSI_COLOR(0, 33), ar.name, ANSI_COLOR(0, 37));
                 lua_pushvalue(L, 2);
             }
 
@@ -1490,6 +1493,8 @@ static int error_handler(lua_State *L)
             lua_pushstring(L, " error");
             lua_pushstring(L, ANSI_COLOR(0, 37));
             lua_pushstring(L, s + n + t.size() + 1);
+
+            break;
         }
     }
 
@@ -1539,27 +1544,48 @@ static int error_handler(lua_State *L)
     return 1;
 }
 
+static lua_State *L;
+static bool initialized;
+
+void close_lua(void)
+{
+    if (!initialized) {
+        return;
+    }
+
+    lua_close(L);
+    L = 0;
+    initialized = false;
+}
+
 int run_lua(const char *input, char **first, char **last)
 {
-    lua_State *L;
-
-    L = luaL_newstate();
-    assert(L);
+    if (!initialized) {
+        L = luaL_newstate();
+        assert(L);
+    }
 
     luaL_requiref(L, "package", luaopen_package, 0);
     assert(lua_gettop(L) == 1);
     assert(lua_istable(L, -1));
 
-    // Set the package path, if necessary.
+    // Set the package path, if necessary.  Save a reference to the
+    // initial Lua path on first run and append all set paths to it.
 
-    if (!Options::include_directories.empty()) {
+    if (!Options::library_directories.empty()) {
+        static int ref;
+
+        if (!initialized) {
+            lua_getfield(L, 1, "path");
+            ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        }
 
         {
             luaL_Buffer b;
 
             luaL_buffinit(L, &b);
 
-            for (std::string x: Options::include_directories) {
+            for (std::string x: Options::library_directories) {
                 while (x.back() == '/') {
                     x.pop_back();
                 }
@@ -1567,11 +1593,8 @@ int run_lua(const char *input, char **first, char **last)
                 luaL_addstring(&b, (x + "/?.lua;").c_str());
             }
 
-
-            lua_getfield(L, 1, "path");
-            assert(lua_isstring(L, -1));
+            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
             luaL_addvalue(&b);
-
 
             luaL_pushresult(&b);
         }
@@ -1579,78 +1602,85 @@ int run_lua(const char *input, char **first, char **last)
         lua_setfield(L, 1, "path");
     }
 
-    // Install module loaders.
+    if (!initialized) {
+        // Install module loaders.
 
-    lua_getfield(L, 1, "preload");
-    assert(lua_istable(L, -1));
-    SET_KEY("gamma.base", open_base);
-    SET_KEY("gamma.transformation", open_transformation);
-    SET_KEY("gamma.volumes", open_volumes);
-    SET_KEY("gamma.selection.core", open_selection);
-    SET_KEY("gamma.polygons", open_polygons);
-    SET_KEY("gamma.polyhedra", open_polyhedra);
-    SET_KEY("gamma.operations.core", open_operations);
+        lua_getfield(L, 1, "preload");
+        assert(lua_istable(L, -1));
+        SET_KEY("gamma.base", open_base);
+        SET_KEY("gamma.transformation", open_transformation);
+        SET_KEY("gamma.volumes", open_volumes);
+        SET_KEY("gamma.selection.core", open_selection);
+        SET_KEY("gamma.polygons", open_polygons);
+        SET_KEY("gamma.polyhedra", open_polyhedra);
+        SET_KEY("gamma.operations.core", open_operations);
 
-    // Define types and initialize base modules.
+        // Define types and initialize base modules.
 
-    PUSH_METATABLE("point_2d", Point_2);
-    PUSH_METATABLE("point_3d", Point_3);
-    PUSH_METATABLE("plane", Plane_3);
+        PUSH_METATABLE("point_2d", Point_2);
+        PUSH_METATABLE("point_3d", Point_3);
+        PUSH_METATABLE("plane", Plane_3);
 
-    PUSH_METATABLE("transformation_2d", Aff_transformation_2);
-    SET_KEY("__mul", transformation_2_mul);
+        PUSH_METATABLE("transformation_2d", Aff_transformation_2);
+        SET_KEY("__mul", transformation_2_mul);
 
-    PUSH_METATABLE("transformation_3d", Aff_transformation_3);
-    SET_KEY("__mul", transformation_3_mul);
+        PUSH_METATABLE("transformation_3d", Aff_transformation_3);
+        SET_KEY("__mul", transformation_3_mul);
 
-    PUSH_METATABLE("bounding_volume", std::shared_ptr<Bounding_volume>);
-    SET_KEY("__add", bounding_volume_add);
-    SET_KEY("__sub", bounding_volume_sub);
-    SET_KEY("__mul", bounding_volume_mul);
-    SET_KEY("__bnot", bounding_volume_bnot);
+        PUSH_METATABLE("bounding_volume", std::shared_ptr<Bounding_volume>);
+        SET_KEY("__add", bounding_volume_add);
+        SET_KEY("__sub", bounding_volume_sub);
+        SET_KEY("__mul", bounding_volume_mul);
+        SET_KEY("__bnot", bounding_volume_bnot);
 
-    PUSH_METATABLE("vertex_selector", std::shared_ptr<Vertex_selector>);
-    SET_KEY("__add", selector_add<Vertex_selector>);
-    SET_KEY("__sub", selector_sub<Vertex_selector>);
-    SET_KEY("__mul", selector_mul<Vertex_selector>);
-    SET_KEY("__bnot", selector_bnot<Vertex_selector>);
+        PUSH_METATABLE("vertex_selector", std::shared_ptr<Vertex_selector>);
+        SET_KEY("__add", selector_add<Vertex_selector>);
+        SET_KEY("__sub", selector_sub<Vertex_selector>);
+        SET_KEY("__mul", selector_mul<Vertex_selector>);
+        SET_KEY("__bnot", selector_bnot<Vertex_selector>);
 
-    PUSH_METATABLE("face_selector", std::shared_ptr<Face_selector>);
-    SET_KEY("__add", selector_add<Face_selector>);
-    SET_KEY("__sub", selector_sub<Face_selector>);
-    SET_KEY("__mul", selector_mul<Face_selector>);
-    SET_KEY("__bnot", selector_bnot<Face_selector>);
+        PUSH_METATABLE("face_selector", std::shared_ptr<Face_selector>);
+        SET_KEY("__add", selector_add<Face_selector>);
+        SET_KEY("__sub", selector_sub<Face_selector>);
+        SET_KEY("__mul", selector_mul<Face_selector>);
+        SET_KEY("__bnot", selector_bnot<Face_selector>);
 
-    PUSH_METATABLE("edge_selector", std::shared_ptr<Edge_selector>);
-    SET_KEY("__add", selector_add<Edge_selector>);
-    SET_KEY("__sub", selector_sub<Edge_selector>);
-    SET_KEY("__mul", selector_mul<Edge_selector>);
-    SET_KEY("__bnot", selector_bnot<Edge_selector>);
+        PUSH_METATABLE("edge_selector", std::shared_ptr<Edge_selector>);
+        SET_KEY("__add", selector_add<Edge_selector>);
+        SET_KEY("__sub", selector_sub<Edge_selector>);
+        SET_KEY("__mul", selector_mul<Edge_selector>);
+        SET_KEY("__bnot", selector_bnot<Edge_selector>);
 
-    PUSH_METATABLE("polygon", Boxed_polygon);
-    SET_KEY("__add", polygon_add);
-    SET_KEY("__sub", polygon_sub);
-    SET_KEY("__mul", polygon_mul);
+        PUSH_METATABLE("polygon", Boxed_polygon);
+        SET_KEY("__add", polygon_add);
+        SET_KEY("__sub", polygon_sub);
+        SET_KEY("__mul", polygon_mul);
 
-    PUSH_METATABLE("polyhedron", Boxed_polyhedron);
-    SET_KEY("__add", polyhedron_add);
-    SET_KEY("__sub", polyhedron_sub);
-    SET_KEY("__mul", polyhedron_mul);
+        PUSH_METATABLE("polyhedron", Boxed_polyhedron);
+        SET_KEY("__add", polyhedron_add);
+        SET_KEY("__sub", polyhedron_sub);
+        SET_KEY("__mul", polyhedron_mul);
 
-    luaL_requiref(L, "_G", luaopen_base, 1);
-    luaL_requiref(L, "base", open_base, 1);
+        luaL_requiref(L, "_G", luaopen_base, 1);
+        luaL_requiref(L, "base", open_base, 1);
 
-    for (const auto &x: std::initializer_list<luaL_Reg>{
-        {LUA_COLIBNAME, luaopen_coroutine},
-        {LUA_TABLIBNAME, luaopen_table},
-        {LUA_IOLIBNAME, luaopen_io},
-        {LUA_OSLIBNAME, luaopen_os},
-        {LUA_STRLIBNAME, luaopen_string},
-        {LUA_MATHLIBNAME, luaopen_math},
-        {LUA_UTF8LIBNAME, luaopen_utf8},
-        {LUA_DBLIBNAME, luaopen_debug}}) {
-        luaL_requiref(L, x.name, x.func, 0);
+        for (const auto &x: std::initializer_list<luaL_Reg>{
+                {LUA_COLIBNAME, luaopen_coroutine},
+                {LUA_TABLIBNAME, luaopen_table},
+                {LUA_IOLIBNAME, luaopen_io},
+                {LUA_OSLIBNAME, luaopen_os},
+                {LUA_STRLIBNAME, luaopen_string},
+                {LUA_MATHLIBNAME, luaopen_math},
+                {LUA_UTF8LIBNAME, luaopen_utf8},
+                {LUA_DBLIBNAME, luaopen_debug}}) {
+            luaL_requiref(L, x.name, x.func, 0);
+        }
+
+        initialized = true;
     }
+
+    // Done setting up the package module; push the error handler and
+    // prepare to run the script.
 
     lua_settop(L, 0);
     lua_pushcfunction(L, error_handler);
@@ -1658,7 +1688,7 @@ int run_lua(const char *input, char **first, char **last)
     // Annotate operations with source location information.
 
     assert(Operation::hook == nullptr);
-    Operation::hook = [&L](Operation &op) {
+    Operation::hook = [](Operation &op) {
         lua_Debug ar;
         for (int i = 0; lua_getstack(L, i, &ar) ; i++) {
             lua_getinfo(L, "Sl", &ar);
@@ -1720,11 +1750,29 @@ int run_lua(const char *input, char **first, char **last)
         goto handle_error;
     }
 
+    // Create the "arg" global variable, mimicking the behavior of the
+    // standard stand-alone Lua interpreter.
+
+    {
+        lua_createtable(L, (int)(last - first), 0);
+
+        lua_pushstring(L, input);
+        lua_rawseti(L, -2, 0);
+
+        int n = 1;
+
+        for (char **i = first ; i < last ; i++) {
+            lua_pushstring(L, *i);
+            lua_rawseti(L, -2, n++);
+        }
+
+        lua_setglobal(L, "arg");
+    }
+
     // Push arguments and execute the script.
 
     {
-        lua_pushstring(L, input);
-        int n = 1;
+        int n = 0;
 
         for (char **i = first ; i < last ; i++, n++) {
             lua_pushstring(L, *i);
@@ -1733,7 +1781,7 @@ int run_lua(const char *input, char **first, char **last)
         result = lua_pcall(L, n, 0, 1);
     }
 
-handle_error:
+  handle_error:
     switch (result) {
     case LUA_ERRERR:
         std::cerr << "An error occured while executing the error handler.\n"
@@ -1757,10 +1805,12 @@ handle_error:
 
     case LUA_ERRSYNTAX:
     case LUA_ERRFILE: {
-        // A loading failure; call the error handler to colorize the output.
+        // A loading failure; call the error handler with the single
+        // error message string that should have been pushed on the
+        // stack.
 
         const int n = lua_gettop(L);
-        assert (n > 1);
+        assert (n >= 2);
 
         if (n > 2) {
             lua_replace(L, 2);
@@ -1773,12 +1823,25 @@ handle_error:
         break;
 
     case LUA_ERRRUN:
+        // A runtime error; print the single error message string that
+        // should have been pushed on the stack by the error handler.
+
+        assert (lua_gettop(L) == 2);
         std::cerr << lua_tostring(L, -1) << std::endl;
+        lua_pop(L, 1);
     }
 
-    lua_close(L);
+    // lua_close(L);
 
     Operation::hook = nullptr;
+
+    // Only the error handler, or its single result, should be left on
+    // the stack at this point; pop it.
+
+    assert(lua_gettop(L) == 1);
+    assert(lua_isfunction(L, -1) || lua_isstring(L, -1));
+
+    lua_settop(L, 0);
 
     return result;
 }

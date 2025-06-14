@@ -23,7 +23,100 @@
 
 #include "operation.h"
 
-// Define some generic operation types.
+// ---
+
+// ## Basic Operation Classes
+
+// Below are base classes for operations that take 0, 1, 2, or more
+// *operations* as arguments.  They may take other values besides; a
+// tranlation operation like `transform(sphere(1),@/translation(1,0,0))`
+// is still a *unary* operation.  The translation argument, even
+// though not a simple number, is still a known constant.  It does not
+// need to be evaluated first, in order to evaluate the result of the
+// translation operation.  The sphere argument, on the other hand,
+// *does*.
+
+// The constructor of each base class take care of linking the
+// operation to the graph (forming *predecessor* links to their
+// arguments and, in turn, *successor* links to themselves in those).
+// They also hold shared pointers to their arguments, since they
+// depend on them for their result.  Ultimately, these pointers along
+// with pointers kept to sunk operations (ref: Sunk Operations),
+// should be the only references preventing destruction.
+
+// Each class also implements the `reset` member function.  Ref:
+// The Base Operation Class.
+
+template<typename T>
+class Source_operation: public T {
+    void reset() override {}
+};
+
+template<typename T, typename U = T>
+class Unary_operation: public U {
+public:
+    std::shared_ptr<T> operand;
+
+    Unary_operation(const std::shared_ptr<T> &x): operand(x) {
+        operand->link_to(this);
+    }
+
+    void reset() override {
+        operand.reset();
+    }
+};
+
+template<typename T, typename U = T>
+class Binary_operation: public U {
+public:
+    std::shared_ptr<T> first;
+    std::shared_ptr<T> second;
+
+    Binary_operation(
+        const std::shared_ptr<T> &a, const std::shared_ptr<T> &b):
+        first(a), second(b) {
+        first->link_to(this);
+        second->link_to(this);
+    }
+
+    void reset() override {
+        first.reset();
+        second.reset();
+    }
+};
+
+template<typename T, typename U = T>
+class Nary_operation: public U {
+public:
+    std::vector<std::shared_ptr<T>> operands;
+
+    using U::U;
+
+    Nary_operation(std::vector<std::shared_ptr<T>> &&v):
+        operands(std::move(v)) {
+        for (const auto &x: operands) {
+            x->link_to(this);
+        };
+    }
+
+    void reset() override {
+        for (auto &x: operands) {
+            x.reset();
+        }
+    }
+
+    void push_back(const std::shared_ptr<T> &p) {
+        operands.push_back(p);
+        p->link_to(this);
+    }
+};
+
+// ### Other Base Classes
+
+// An operation having this base is obtains a flag, `threadsafe,`
+// marking it as safe for multi-threaded evaluation.  Not all CGAL
+// operations are thread-safe, so we need to arrange to evaluate some
+// of them in the main thread.  Ref: ready list.
 
 class Threadsafe_operation: public Operation {
 public:
@@ -33,82 +126,6 @@ public:
     Threadsafe_operation(const bool p): threadsafe(p) {}
 };
 
-template<typename T>
-class Source_operation: public T {
-public:
-    void link() override {}
-};
-
-class Sink_operation: public Operation {};
-
-template<typename T, typename U = T>
-class Unary_operation: public U {
-protected:
-    std::shared_ptr<T> operand;
-
-public:
-    Unary_operation(const std::shared_ptr<T> &x): operand(x) {}
-
-    void link() override {
-        this->predecessors.insert(operand.get());
-        operand->successors.insert(this);
-    }
-};
-
-template<typename T, typename U = T>
-class Binary_operation: public U {
-protected:
-    std::shared_ptr<T> first;
-    std::shared_ptr<T> second;
-
-public:
-    Binary_operation(
-        const std::shared_ptr<T> &a, const std::shared_ptr<T> &b):
-        first(a), second(b) {}
-
-    void link() override {
-        this->predecessors.insert(first.get());
-        this->predecessors.insert(second.get());
-
-        first->successors.insert(this);
-        second->successors.insert(this);
-    }
-};
-
-template<typename T, typename U = T>
-class Nary_operation: public U {
-protected:
-    std::vector<std::shared_ptr<T>> operands;
-
-public:
-    using U::U;
-
-    Nary_operation(std::vector<std::shared_ptr<T>> &&v):
-        operands(std::move(v)) {}
-
-    void link() override {
-        for (const auto &x: operands) {
-            this->predecessors.insert(x.get());
-            x->successors.insert(this);
-        };
-    }
-
-    void push_back(
-        const std::shared_ptr<T> &p) {
-        operands.push_back(p);
-    }
-};
-
-template<typename T>
-class Sequentially_foldable_operation: public Unary_operation<T> {
-    template<template<typename> typename, template<typename> typename, typename>
-    friend bool try_fold_sequentially(Operation *x);
-
-public:
-    using Unary_operation<T>::Unary_operation;
-
-    bool try_fold();
-    virtual bool fold_operand(const T *p) = 0;
-};
+// ---
 
 #endif

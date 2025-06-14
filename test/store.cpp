@@ -26,218 +26,226 @@
 #include "kernel.h"
 #include "macros.h"
 
+#include "fixtures.h"
 #include "polygon_tests.h"
 #include "circle_polygon_tests.h"
 #include "polyhedron_tests.h"
 
 #include <CGAL/draw_polygon_set_2.h>
 
-// These are (fail, compress, type) tuples.
+// The basic test procedure is the same for polygons and polyhedra: We
+// evaluate a set of operations and ensure the result is stored, then
+// re-evaluate them and check that they're properly loaded.  To test
+// that load errors (e.g. when a stored operation file has been
+// corrupted, or perhaps a newer version has a different stored file
+// format and is trying to load files stored by a previous version),
+// are handled correctly, we then manually corrupt the stored file and
+// evaluate once more, checking for a failed operation (as opposed to
+// a segmentation fault for example).
 
-using polyhedron_types = boost::mpl::list<
-    std::tuple<std::false_type, std::false_type, Polyhedron>,
-    std::tuple<std::true_type, std::false_type, Polyhedron>,
-    std::tuple<std::false_type, std::true_type, Polyhedron>,
-    std::tuple<std::true_type, std::true_type, Polyhedron>,
+// In order to facilitate uniform testing of polygons and polyhedra,
+// we define a set of templates that return operations of the proper
+// type and their expected digests.
 
-    std::tuple<std::false_type, std::false_type, Nef_polyhedron>,
-    std::tuple<std::true_type, std::false_type, Nef_polyhedron>,
-    std::tuple<std::false_type, std::true_type, Nef_polyhedron>,
-    std::tuple<std::true_type, std::true_type, Nef_polyhedron>,
+typedef boost::mpl::list<
+    Polyhedron, Nef_polyhedron, Surface_mesh,
+    Polygon_set, Circle_polygon_set> result_types;
 
-    std::tuple<std::false_type, std::false_type, Surface_mesh>,
-    std::tuple<std::true_type, std::false_type, Surface_mesh>,
-    std::tuple<std::false_type, std::true_type, Surface_mesh>,
-    std::tuple<std::true_type, std::true_type, Surface_mesh>>;
+template<typename T>
+static std::vector<std::string> digests;
 
-using polygon_types = boost::mpl::list<
-    std::tuple<std::false_type, std::false_type, Polygon_set>,
-    std::tuple<std::true_type, std::false_type, Polygon_set>,
-    std::tuple<std::false_type, std::true_type, Polygon_set>,
-    std::tuple<std::true_type, std::true_type, Polygon_set>,
+template<typename T>
+static auto generate_operations();
 
-    std::tuple<std::false_type, std::false_type, Circle_polygon_set>,
-    std::tuple<std::true_type, std::false_type, Circle_polygon_set>,
-    std::tuple<std::false_type, std::true_type, Circle_polygon_set>,
-    std::tuple<std::true_type, std::true_type, Circle_polygon_set>>;
+// ## Polyhedra
 
-BOOST_AUTO_TEST_SUITE(store)
+// These are the expected tag digests of the operations used in the
+// test.  They are the SHA-1 sums of:
+// 1. `"sphere(1/4,1/1000,1/1000000)"`,
+// 2. `"nef(sphere(1/4,1/1000,1/1000000))"` and
+// 3. `"mesh(sphere(1/4,1/1000,1/1000000))"`.
 
-///////////////
-// Polyhedra //
-///////////////
+// The digest of the operation that is tested is listed first,
+// followed by its predecessors, if any.  We list the latter, so that
+// we can clean them up at the end.
 
-BOOST_AUTO_TEST_CASE_TEMPLATE(polyhedron, T, polyhedron_types)
+template<>
+std::vector<std::string> digests<Polyhedron> = {
+    "607a6064dba223a25e7317574accb6af30131a4d"
+};
+template<>
+std::vector<std::string> digests<Nef_polyhedron> = {
+    "976ef1309f9dda6ac794400987b64de033531ba8",
+    "607a6064dba223a25e7317574accb6af30131a4d"
+};
+template<>
+std::vector<std::string> digests<Surface_mesh> = {
+    "a659f184f08acbb5d364bc807097b2e810a752a3",
+    "607a6064dba223a25e7317574accb6af30131a4d"
+};
+
+#define DEFINE_POLYHEDRON_GENERATOR(T)          \
+template<>                                      \
+auto generate_operations<T>()                   \
+{                                               \
+    return CONVERT_TO<T>(SPHERE(FT::ET(1, 4))); \
+};
+
+DEFINE_POLYHEDRON_GENERATOR(Polyhedron)
+DEFINE_POLYHEDRON_GENERATOR(Nef_polyhedron)
+DEFINE_POLYHEDRON_GENERATOR(Surface_mesh)
+
+#undef DEFINE_POLYHEDRON_GENERATOR
+
+// ## Polygons
+
+// The situation is analogous for polygons, only the geometry is a
+// little more complex, just to make sure the tested polygon sets have
+// more than one polygons, one with a hole and one without.
+
+template<>
+std::vector<std::string> digests<Polygon_set> = {
+    "be976eb6c8ed95c6e4580282605ca65fa868a829",
+    "503f92c63ebdeab76152d6cc3060097503efbfa8",
+    "8506925af526760398e77c344735a06ddb7daf55",
+    "80572bd323a577301074b2b35cdee68fa5912f94",
+    "ea8b47970b02b305da1770a0e81ed82158629761"
+};
+template<>
+std::vector<std::string> digests<Circle_polygon_set> = {
+    "582989c788e58d287145f5a4ea4b7b1eeede7a5e",
+    "76a145908981e5f6575bcd12ae2d43274011bdde",
+    "f0d420667912c4f5dc200dd9b4bb5195e76983d9",
+    "0361717006c37fd868535b23409e739e892519ab",
+    "99333db395b7146bdd25f55e122d051e0244d189"
+};
+
+template<>
+auto generate_operations<Polygon_set>()
 {
-    using P = std::tuple_element_t<0, T>;
-    using Q = std::tuple_element_t<1, T>;
-    using U = std::tuple_element_t<2, T>;
+    return JOIN(
+        DIFFERENCE(RECTANGLE(4, 4), RECTANGLE(2, 2)),
+        RECTANGLE(1, 1));
+};
 
-    Tolerances::curve = FT::ET(1, 100);
-    int i = Options::store_compression;
-    int j = Options::store_threshold;
-    Options::store_compression = Q::value ? 6 : -1;
-    Options::store_threshold = 0;
+template<>
+auto generate_operations<Circle_polygon_set>()
+{
+    return JOIN(
+        DIFFERENCE(CIRCLE(4), CIRCLE(2)),
+        CIRCULAR_SECTOR(1, 270));
+};
 
-    // Enable storing and perform the first evaluation.
+// We should ideally compare the loaded results with those that were
+// stored for identical geometry, but we take the shortcut of
+// comparing a measure of both geometries (either area or volume),
+// mainly because it's easier and not particularly risky.
 
-    bool p = Flags::store_operations;
-    Flags::store_operations = true;
-
-    begin_unit("store");
-    auto s = SPHERE(1);
-    auto a = CONVERT_TO<U>(s);
-    evaluate_unit();
-
-    Flags::store_operations = p;
-
-    // Test stored files.
-
-    {
-        std::fstream f(a->annotations["stored"]);
-        BOOST_TEST_REQUIRE(f.good());
-    }
-
-    // When testing load failure, manually corrupt the stored
-    // file.
-
-    if (P::value) {
-        std::filesystem::path p(a->annotations["stored"]);
-        std::filesystem::resize_file(p, std::filesystem::file_size(p) / 2);
-    }
-
-    // Enable loading and perform the second evaluation.
-
-    p = Flags::load_operations;
-    Flags::load_operations = true;
-
-    begin_unit("load");
-    auto b = CONVERT_TO<U>(SPHERE(1));
-    evaluate_unit();
-
-    Flags::load_operations = p;
-    Options::store_compression = i;
-    Options::store_threshold = j;
-
-    // Test loaded polyhedra.
-
-    if (P::value) {
-        BOOST_TEST((a->annotations.find("stored") != a->annotations.end()));
-        BOOST_TEST((b->annotations.find("loaded") == b->annotations.end()));
+template<typename T>
+static FT measure_result(const std::shared_ptr<T> &p)
+{
+    if constexpr (std::is_same_v<T, Polyhedron>
+                  || std::is_same_v<T, Nef_polyhedron>
+                  || std::is_same_v<T, Surface_mesh>) {
+        return polyhedron_volume(*p);
     } else {
-        BOOST_TEST(a->annotations["stored"] == b->annotations["loaded"]);
-        BOOST_TEST(polyhedron_volume(*a->get_value())
-                   == polyhedron_volume(*b->get_value()));
+        static_assert(std::is_same_v<T, Polygon_set>
+                      || std::is_same_v<T, Circle_polygon_set>);
+        return polygon_area(*p);
     }
-
-    std::remove(s->annotations["stored"].c_str());
-    std::remove(a->annotations["stored"].c_str());
 }
 
-//////////////
-// Polygons //
-//////////////
+BOOST_FIXTURE_TEST_SUITE(store, Evaluation_fixture)
 
 BOOST_TEST_DECORATOR(* boost::unit_test::tolerance(0.01))
-BOOST_AUTO_TEST_CASE_TEMPLATE(polygon, T, polygon_types)
+BOOST_AUTO_TEST_CASE_TEMPLATE(polyhedron, T, result_types)
 {
-    using P = std::tuple_element_t<0, T>;
-    using Q = std::tuple_element_t<1, T>;
-    using U = std::tuple_element_t<2, T>;
+    // We set the store threshold to zero, to ensure that are
+    // operations get store regardless of their evaluation time.
 
-    Tolerances::curve = FT::ET(1, 100);
-    FT x(FT::ET(1, 3));
+    push(Options::store_threshold, 0);
 
-#define SEGMENT_OPS JOIN(                                               \
-        DIFFERENCE(                                                     \
-            DIFFERENCE(                                                 \
-                RECTANGLE(2, 2),                                        \
-                TRANSFORM(RECTANGLE(x, x), TRANSLATION_2(2 * x, 2 * x))), \
-            TRANSFORM(RECTANGLE(x, x), TRANSLATION_2(-2 * x, -2 * x))), \
-        TRANSFORM(RECTANGLE(2 * x, 2 * x), TRANSLATION_2(2, 2)))
+    // We should perform two sets of tests: one with compression
+    // enabled and one without.
 
-#define CIRCLE_OPS JOIN(                                                \
-        DIFFERENCE(                                                     \
-            DIFFERENCE(                                                 \
-                CIRCLE(1),                                              \
-                TRANSFORM_CS(CIRCLE(x), TRANSLATION_2(0.5, 0))),        \
-            TRANSFORM_CS(CIRCLE(x), TRANSLATION_2(-0.5, 0))),           \
-        TRANSFORM_CS(CIRCULAR_SECTOR(2 * x, 180), TRANSLATION_2(0, 2)))
+    for (auto [k, x]: {std::pair(-1, ".o"), std::pair(6, ".zo")}) {
+        push(Options::store_compression, k);
 
-    std::shared_ptr<Polygon_operation<U>> a, b;
-    std::shared_ptr<Polygon_operation<Polygon_set>> c;
+        FT A;
 
-    int i = Options::store_compression;
-    int j = Options::store_threshold;
-    Options::store_compression = Q::value ? 6 : -1;
-    Options::store_threshold = 0;
+        // This is the expected filename the stored operation
+        // (post-conversion, if any) should end up in.
 
-    // Enable storing and perform the first evaluation.
+        const std::string n = digests<T>[0] + x;
 
-    bool p = Flags::store_operations;
-    Flags::store_operations = true;
+        {
+            // Enable storing and perform the first evaluation.
 
-    begin_unit("store");
-    if constexpr (std::is_same_v<U, Polygon_set>) {
-        a = SEGMENT_OPS;
-    } else if constexpr (std::is_same_v<U, Circle_polygon_set>) {
-        a = CIRCLE_OPS;
-    } else {
-        assert_not_reached();
-    }
-    evaluate_unit();
+            push(Flags::store_operations, 1);
 
-    Flags::store_operations = p;
+            const auto &result = evaluate(generate_operations<T>());
 
-    // Test stored files.
+            evaluate_operations();
 
-    std::fstream f(a->annotations["stored"]);
-    BOOST_TEST_REQUIRE(f.good());
+            // Test that the operation was stored.
 
-    // When testing load failure, manually corrupt the stored
-    // file.
+            BOOST_TEST(result.annotations.at("stored") == n);
+            A = measure_result(result.value);
 
-    if (P::value) {
-        std::filesystem::path p(a->annotations["stored"]);
-        std::filesystem::resize_file(p, std::filesystem::file_size(p) / 2);
-    }
+            {
+                std::fstream f(n);
+                BOOST_TEST_REQUIRE(f.good());
+            }
 
-    // Enable loading and perform the second evaluation.
-
-    p = Flags::load_operations;
-    Flags::load_operations = true;
-
-    begin_unit("load");
-    if constexpr (std::is_same_v<U, Polygon_set>) {
-        b = SEGMENT_OPS;
-    } else if constexpr (std::is_same_v<U, Circle_polygon_set>) {
-        b = CIRCLE_OPS;
-        c = CONVERT_TO<Polygon_set>(b);
-    } else {
-        assert_not_reached();
-    }
-    evaluate_unit();
-
-    Flags::load_operations = p;
-    Options::store_compression = i;
-    Options::store_threshold = j;
-
-    // Test loaded polygons.
-
-    if (P::value) {
-        BOOST_TEST((a->annotations.find("stored") != a->annotations.end()));
-        BOOST_TEST((b->annotations.find("loaded") == b->annotations.end()));
-    } else {
-        BOOST_TEST(a->annotations["stored"] == b->annotations["loaded"]);
-
-        if constexpr (std::is_same_v<U, Polygon_set>) {
-            BOOST_TEST(polygon_area(*a->get_value()) == polygon_area(*b->get_value()));
-        } else {
-            test_polygon_area(*c->get_value(), std::acos(-1));
+            pop(Flags::store_operations);
         }
+
+        // Enable loading and perform the second evaluation.  Here
+        // we expect the operations to be loaded from the
+        // previously stored files.
+
+        {
+            push(Flags::load_operations, 1);
+
+            {
+                {
+                    const auto &result = evaluate(generate_operations<T>());
+
+                    evaluate_operations();
+
+                    // Test the loaded polyhedra.
+
+                    BOOST_TEST(result.annotations.at("loaded") == n);
+                    BOOST_TEST(measure_result(result.value) == A);
+                }
+
+                // In order to test load failure, we now manually corrupt
+                // the stored file and reevaluate the operations.  We now
+                // expect them to fail.
+
+                std::filesystem::path q(n);
+                std::filesystem::resize_file(q, std::filesystem::file_size(q) / 2);
+
+                {
+                    const auto &result = evaluate(generate_operations<T>());
+
+                    evaluate_operations();
+
+                    BOOST_TEST(result.value == nullptr);
+                }
+            }
+
+            for (const auto &y: digests<T>) {
+                std::remove((y + x).c_str());
+            }
+
+            pop(Flags::load_operations);
+        }
+
+        pop(Options::store_compression);
     }
 
-    std::remove(a->annotations["stored"].c_str());
+    pop(Options::store_threshold);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

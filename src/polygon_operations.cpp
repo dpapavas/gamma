@@ -24,7 +24,7 @@
 #include "tolerances.h"
 #include "projection.h"
 
-void Ngon_operation::evaluate()
+void Simple_polygon_operation::evaluate()
 {
     assert(!polygon);
 
@@ -137,31 +137,6 @@ void Polygon_flush_operation::evaluate()
     transform_polygon_set(*operand->get_value(), *polygon, f);
 }
 
-bool Polygon_flush_operation::fold_operand(
-    const Polygon_operation<Polygon_set> *p)
-{
-    const Polygon_flush_operation *f =
-        dynamic_cast<const Polygon_flush_operation *>(p);
-
-    if (!f) {
-        return false;
-    }
-
-    const FT (*b)[2] = this->coefficients, (*a)[2] = f->coefficients;
-
-    // This computation can be done in place, since only one of
-    // a[i][0], a[i][1] is non-zero at any given time.
-
-    for (int i = 0; i < 2; i++) {
-        this->coefficients[i][0] = (a[i][0] * (1 - b[i][1])
-                                    + b[i][0] * (1 + a[i][0]));
-        this->coefficients[i][1] = (a[i][1] * (1 + b[i][0])
-                                    + b[i][1] * (1 - a[i][1]));
-    }
-
-    return true;
-}
-
 //////////
 // Hull //
 //////////
@@ -262,19 +237,4 @@ void Polygon_offset_operation::evaluate()
             polygon->insert(*p);
         }
     }
-}
-
-bool Polygon_offset_operation::fold_operand(
-    const Polygon_operation<Polygon_set> *p)
-{
-    const Polygon_offset_operation *o =
-        dynamic_cast<const Polygon_offset_operation *>(p);
-
-    if (!o) {
-        return false;
-    }
-
-    this->offset += o->offset;
-
-    return true;
 }

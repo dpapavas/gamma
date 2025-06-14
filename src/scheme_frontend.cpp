@@ -1,4 +1,4 @@
-// Copyright 2022 Dimitris Papavasiliou
+// Copyright 2025 Dimitris Papavasiliou
 
 // This file is part of Gamma.
 
@@ -15,394 +15,627 @@
 // You should have received a copy of the GNU General Public License along with
 // this program. If not, see <https://www.gnu.org/licenses/>.
 
-#include <chibi/sexp.h>
-#include <chibi/install.h>
+#include <libguile.h>
+#include <sanitizer/lsan_interface.h>
 
 #include "options.h"
 #include "kernel.h"
 #include "transformations.h"
 #include "macros.h"
+
+#include "polygon_operations.h"
+#include "polyhedron_operations.h"
 #include "boxed_operations.h"
 #include "frontend.h"
 
-template<typename T>
-static sexp foreign_type;
+// ---
 
-void add_exception_source(sexp ctx, sexp e)
-{
-    sexp_gc_var1(s);
-    sexp_gc_preserve1(ctx, s);
+// # The Scheme Front End
 
-    s = sexp_get_stack_trace(ctx);
+// The front end for the Scheme language uses GNU Guile, an
+// implementation of the Scheme language that is meant to be emebedded
+// in other applications.  Even so, emebedding Guile presents a number
+// of challenges.  We'll devote a subsection to each one.
 
-    for (int i = 0; sexp_pairp(s); s = sexp_cdr(s), i++) {
-        sexp t = sexp_cdar(s);
+// ## Passing Values between C++ and Scheme
 
-        if (sexp_pairp(t)) {
-            sexp_exception_source(e) = sexp_cdar(sexp_get_stack_trace(ctx));
-            break;
-        }
-    }
-
-    sexp_gc_release1(ctx);
-}
-
-static sexp make_exception(sexp ctx, sexp self, const char *msg)
-{
-    sexp_gc_var1(s);
-    sexp_gc_preserve1(ctx, s);
-
-    s = sexp_user_exception(ctx, self, msg, SEXP_NULL);
-    add_exception_source(ctx, s);
-
-    sexp_gc_release1(ctx);
-
-    return s;
-}
-
-static sexp make_args_exception(sexp ctx, sexp self)
-{
-    sexp_gc_var1(s);
-    sexp_gc_preserve1(ctx, s);
-
-    s = sexp_user_exception(ctx, self, "insufficient arguments", SEXP_NULL);
-    add_exception_source(ctx, s);
-
-    sexp_gc_release1(ctx);
-
-    return s;
-}
-
-static sexp make_simple_type_exception(
-    sexp ctx, sexp self, sexp_uint_t type, sexp x)
-{
-    sexp_gc_var1(s);
-    sexp_gc_preserve1(ctx, s);
-
-    s = sexp_type_exception(ctx, self, type, x);
-    add_exception_source(ctx, s);
-
-    sexp_gc_release1(ctx);
-
-    return s;
-}
-
-static sexp make_foreign_type_exception(sexp ctx, sexp self, sexp type, sexp x)
-{
-    std::ostringstream s;
-
-    s << "invalid type, expected ";
-
-    const sexp n = sexp_type_name(type);
-    s.write(sexp_string_data(n), sexp_string_size(n));
-    std::string t = s.str();
-
-    sexp_gc_var1(r);
-    sexp_gc_preserve1(ctx, r);
-
-    r = sexp_xtype_exception(ctx, self, t.c_str(), x);
-    add_exception_source(ctx, r);
-
-    sexp_gc_release1(ctx);
-
-    return r;
-}
-
-static sexp make_type_exception(
-    sexp ctx, sexp self, const char *message, sexp x)
-{
-    sexp_gc_var1(s);
-    sexp_gc_preserve1(ctx, s);
-
-    s = sexp_xtype_exception(ctx, self, message, x);
-    add_exception_source(ctx, s);
-
-    sexp_gc_release1(ctx);
-
-    return s;
-}
-
-#define ASSERT_FOREIGN_TYPE(T, X)                                       \
-if (!sexp_isa(X, foreign_type<T>)) {                                    \
-    return make_foreign_type_exception(ctx, self, foreign_type<T>, X);  \
-}
-
-#define ASSERT_TYPE(P, T, X)                            \
-if (!P(X)) {                                            \
-    return make_simple_type_exception(ctx, self, T, X); \
-}
+// We use "foreign objects" to expose C++ data to Scheme, and for each
+// type, we need and `SCM` value to represent it.  This is handled
+// with the variable template below.
 
 template<typename T>
-static sexp finalize(sexp ctx, sexp self, sexp_sint_t n, sexp x)
-{
-    delete static_cast<T *>(sexp_cpointer_value(x));
+static SCM foreign_type;
 
-    return SEXP_VOID;
-}
+// Guile uses the Boehm-Demers-Weiser garbage collector, to handle its
+// objects.  This can be convenient, but presents us with a couple of
+// problems.
+
+//   1.  We can't really depend on the collector to collect all
+//   unreachable objects at the end of program execution. ^[See the
+//   question labeled "I want to ensure that all my objects are
+//   finalized and reclaimed before process exit. How can I do that?"
+//   in the collector implementation's FAQ at
+//   "https://www.hboehm.info/gc/faq.html".]  Since we depend upon
+//   destruction of operation objects (ref: `Operation` destructor) to
+//   unlink them from the graph, we need to ensure that they do get
+//   destroyed.
+
+//   We use the following sets to keep track of created polygon and
+//   polyhedron operations.
+
+static std::unordered_set<Boxed_polygon *> boxed_polygons;
+static std::unordered_set<Boxed_polyhedron *> boxed_polyhedra;
+
+//   2. The garbage collector runs in a different thread, so we need
+//   to protect access to these sets.  We use a mutex.
+
+static std::mutex boxed_mutex;
+
+// The following utility accepts a C++ value and turns it into a
+// Scheme value. C++ values that need to be exposed to Scheme fall in
+// one of three categories:
 
 template<typename T, typename... Args>
-static sexp to_scheme(sexp ctx, Args &&... args)
+static SCM to_scheme(Args &&... args)
 {
     if constexpr(std::is_same_v<T, FT>) {
-        const auto x = FT(args...).exact();
-        const long int a = x.get_num().get_si();
-        const long int b = x.get_den().get_si();
+        //   1. Numbers, which we convert to Scheme rationals,
 
-        sexp_gc_var2(s, t);
-        sexp_gc_preserve2(ctx, s, t);
+        auto x = FT(args...).exact();
 
-        s = sexp_make_fixnum(a);
+        return scm_divide(
+            scm_from_mpz(x.get_num().get_mpz_t()),
+            scm_from_mpz(x.get_den().get_mpz_t()));
+    } else {
+        //   2. CGAL values, such as points, planes, transformations,
+        //   etc. which are allocated with `new` and wrapped inside a
+        //   foreign object, and
 
-        if (b != 1) {
-            t = sexp_make_fixnum(b);
-            s = sexp_make_ratio(ctx, s, t);
+        //   3. Operations and other associated objects, like
+        //   selectors and bounding volumes, which are created as
+        //   shared pointers, again wrapped inside a foreign object.
+
+        // LSan doesn't seem to be able to detect that these
+        // allocations remain reachable at program exit (via pointers
+        // managed by the garbage collector) and reports them as
+        // leaks.
+
+#ifdef __SANITIZE_ADDRESS__
+        __lsan_disable();
+#endif
+
+        // We handle these uniformly.  The only difference is that for
+        // the former case, `T` will be `Point_3`, `Plane_3`, etc.,
+        // while for the latter it be `Boxed_polygon`,
+        // `Boxed_polyhedron`, or `std::shared_ptr<...>`.
+
+        auto p = new T(std::forward<Args>(args)...);
+        SCM s = scm_make_foreign_object_1(
+            foreign_type<T>, static_cast<void *>(p));
+
+        // We also update our bookeeping as necessary.
+
+        const std::lock_guard<std::mutex> lock(boxed_mutex);
+
+        if constexpr (std::is_same_v<T, Boxed_polygon>) {
+            boxed_polygons.insert(p);
         }
 
-        sexp_gc_release2(ctx);
+        if constexpr (std::is_same_v<T, Boxed_polyhedron>) {
+            boxed_polyhedra.insert(p);
+        }
+
+#ifdef __SANITIZE_ADDRESS__
+        __lsan_enable();
+#endif
 
         return s;
-    } else {
-        return sexp_make_cpointer(
-            ctx, sexp_type_tag(foreign_type<T>),
-            static_cast<void *>(new T(std::forward<Args>(args)...)),
-            SEXP_FALSE, 1);
     }
 }
 
-static mpz_class to_mpz_class(sexp x)
-{
-    return mpz_class(static_cast<long int>(sexp_sint_value(x)));
-}
+// We also have a utitly for the revese operation.  It takes a Scheme
+// value and converts it back into the corresponding C++ value.  The
+// situation is more or less symmetric.
 
 template<typename T>
-static T from_scheme(sexp x)
+static const T from_scheme(SCM x)
 {
     if constexpr(std::is_same_v<T, FT>) {
-        if (sexp_exact_integerp(x)) {
-            return FT(to_mpz_class(x));
-        } else if (sexp_ratiop(x)) {
-            return FT(
-                FT::ET(to_mpz_class(sexp_ratio_numerator(x)),
-                       to_mpz_class(sexp_ratio_denominator(x))));
-        } else {
-            return FT(sexp_flonum_value(x));
+        // Technically, all numbers apart from complex numbers and
+        // infinities, NaNs and the like, are rational, not just
+        // numbers represented with the rational type in Scheme.  This
+        // includes inexact, i.e. floating point numbers, which are of
+        // bounded precision and can be represented as rationals.
+
+        // Below `scm_is_rational` accounts for all that, so we only
+        // need to deal with this case.
+
+        if (scm_is_rational(x)) {
+            // Inexact values like `0.25` will lead to inexact results
+            // from `scm_numerator` and `scm_denominator` (`1.0` and
+            // `4.0` respectively).  These won't work with
+            // `scm_to_mpz` which expect exact integers, so we need to
+            // convert to exact first.
+
+            const SCM q = scm_inexact_to_exact(x);
+            mpz_t z;
+
+            mpz_init(z);
+            scm_to_mpz(scm_numerator(q), z);
+
+            FT r = FT::ET(mpz_class(z));
+
+            if (!scm_is_exact_integer(q)) {
+                scm_to_mpz(scm_denominator(q), z);
+                r /= FT::ET(mpz_class(z));
+            }
+
+            mpz_clear(z);
+
+            return r;
         }
+
+        // All remaining Scheme numbers are either complex, infinite,
+        // or NaN.  We don't expect those here.  (Inexact
+        // i.e. floating point numbers are of bounded precision and
+        // can be represented as rationals.  They have already been
+        // handled above.)
+
+        assert_not_reached();
     } else {
-        return *static_cast<T *>(sexp_cpointer_value(x));
+        // For more complex types, we return the object or (possibly
+        // boxed) shared pointer from the foreign object.
+
+        return *static_cast<T *>(scm_foreign_object_ref(x, 0));
     }
 }
 
-////////////////
-// Operations //
-////////////////
+// When Guile's garbage collector determines that a value is no longer
+// reachable, it marks it for collection.  For foreign types it also
+// calls the "finalizer", a custom function we registered with the
+// type.  There is one finalizer per type, but in each case
+// finalization essentially boils down to deleting the C++ object or
+// (possibly boxed) shared pointer allocted during construction.
+
+// C++ objects like `Plane_3`, `Aff_transformation_3` etc., are
+// destroyed as soon as the finalizer deletes them; since Scheme can
+// no longer see them, they aren't useful any more.
+
+// Operations, bounding volumes, selectors, etc. on the other hand,
+// will need to be evaluated later, so only the shared pointer
+// reference held by Scheme is destroyed on collection.  This may
+// trigger the object's destruction, if it's not referenced elsewhere,
+// or the object may be destroyed later, during evaluation.  Ref:
+// `Operation` destructor.
+
+// We use the function template below to instantiate finalizers during
+// registration.
 
 template<typename T>
-sexp pop_argument(sexp ctx, sexp self, sexp &s, T &x)
+static void finalize(SCM s)
 {
-    if (sexp_nullp(s)) {
-        return make_args_exception(ctx, self);
+    auto p = scm_foreign_object_ref(s, 0);
+
+    const std::lock_guard<std::mutex> lock(boxed_mutex);
+
+    if constexpr (std::is_same_v<T, Boxed_polygon>) {
+        boxed_polygons.erase(static_cast<T *>(p));
     }
 
-    sexp t = sexp_car(s);
+    if constexpr (std::is_same_v<T, Boxed_polyhedron>) {
+        boxed_polyhedra.erase(static_cast<T *>(p));
+    }
 
-    if constexpr(std::is_same_v<T, sexp>) {
+    delete static_cast<T *>(p);
+}
+
+// ## Handling Scheme Function Arguments
+
+// When implementing Scheme functions we typically need to get the
+// argumments passed to it, validate them and convert them to the
+// corresponding C++ values.  We then pass these to the relevant C++
+// constructors, or otherwise use them on the C++ side to produce the
+// needed result and convert this into a Scheme value before returning
+// it.
+
+// When an agument doesn't pass validation, we need to signal an
+// error.  The way this is handled in Guile, say when using the
+// `scm_wrong_type_arg_msg` function is to do a `longjmp` out of the
+// C++ code implementing the function with the invalid argument, and
+// (eventually) into the installed *Scheme* exception handler.
+
+// This is all fine for C, but alas, we're dealing with C++ and the
+// compiler depends on the stack actually getting unwound the usual
+// way, i.e. by exiting the function (and whatever nested scope the
+// validation code ran in), in order to destroy any objects allocated
+// on the stack.  When we `longjmp`, all such allocations remain in
+// limbo, as leaks.
+
+// In order to avoid this, we create custom C++ exceptions and open a
+// `try` block as early as possible in the code implementing a Scheme
+// function.  When we want to signal an error we throw the
+// corresponding C++ exception, which unwinds most if not all of the
+// stack and then call the `longjmp`ing Guile function from there.
+
+class wrong_type_exception: public std::exception {
+public:
+    int argnum;
+    SCM bad_value;
+    const char *expected;
+
+    wrong_type_exception(int argnum, SCM bad_value, const char *expected)
+        : argnum(argnum), bad_value(bad_value), expected(expected) {}
+
+    const char* what() const noexcept override {
+        return "wrong argument type";
+    }
+};
+
+class wrong_num_args_exception: public std::exception {
+public:
+    wrong_num_args_exception() {}
+
+    const char* what() const noexcept override {
+        return "wrong number of arguments";
+    }
+};
+
+// Now follow some utility functions that take care of reading Scheme
+// values and converting them to C++.  Variations include popping
+// arguments from a list (the "rest" list part of variadic Scheme
+// functions), or from a discrete Scheme value, handling optional
+// arguments, etc.
+
+// Below, we take a Scheme value from `s`, convert it to a C++ value
+// and assign it to `x`.  Here, `s` can either be a list, in which
+// case the car is converted and `s` (which we have by reference) is
+// updated to the cdr, so that we actually "pop" the converted value
+// from the list, or it can just be a single value to convert.
+
+// Depending on whether we're converting a required or optional
+// variable, `E` and `F` either throw an error and we never return,
+// jumping to the handler instead, or they're no-ops and we return a
+// boolean signifying whether a variable was converted.
+
+template<typename T, auto &E, auto &F>
+bool pop_argument_impl(int i, SCM &s, T &x)
+{
+    if (scm_is_eq(s, SCM_UNDEFINED) || scm_is_null(s)) {
+        E();
+        return false;
+    }
+
+    const SCM t = scm_is_pair(s) ? scm_car(s) : s;
+
+    if constexpr(std::is_same_v<T, SCM>) {
         x = t;
     } else if constexpr (std::is_integral_v<T>) {
-        ASSERT_TYPE(sexp_exact_integerp, SEXP_FIXNUM, t);
-        x = sexp_unbox_fixnum(t);
+        // When a Scheme function expects an integral type, it is
+        // generally a small integer like the number of iterations.
+        // We could accept inexact integers here, like `1.0`, or
+        // rationals like `4/2`, but this would only serve to mask
+        // errors when the user has mixed up the order of arguments
+        // for instance.
+
+        // We expect an exact integer and convert it to the integral
+        // type provided (the type of `x`).
+
+        if (!scm_is_exact_integer(t)) {
+            F(i, t, "exact integer");
+            return false;
+        }
+
+        x = scm_to_intmax(t);
     } else if constexpr(std::is_same_v<T, FT>) {
-        ASSERT_TYPE(sexp_realp, SEXP_NUMBER, t);
+        // We only expect real numbers.  This includes integer,
+        // rational, or inexact real numbers, but not complex numbers,
+        // infinities or NaNs.  This is the same as saying we only
+        // expect rational numbers, since they only real numbers that
+        // are not rational are irrational numbers, but these can only
+        // be represented as approximations of bounded precision,
+        // which *are* rational.
+
+        if (!scm_is_rational(t)) {
+            F(i, t, "rational number");
+            return false;
+        }
+
         x = from_scheme<FT>(t);
     } else if constexpr(std::is_same_v<T, std::string>) {
-        ASSERT_TYPE(sexp_stringp, SEXP_STRING, t);
-        x = std::string(sexp_string_data(t), sexp_string_size(t));
+        if (!scm_is_string(t)) {
+            F(i, t, "string");
+            return false;
+        }
+
+        char *u = scm_to_locale_string(t);
+        x = std::string(u);
+        free(u);
     } else {
-        ASSERT_FOREIGN_TYPE(T, t);
+        if (!SCM_IS_A_P(t, foreign_type<T>)) {
+            // Here the call to the handler `F` can potentially
+            // `longjmp` (if we got here through `pop_argument` and a
+            // `wrong_num_args_exception` is thrown, eventually
+            // calling `scm_wrong_type_arg_msg`).  In this case, we
+            // won't have a chance to `free` the pointer returned by
+            // `scm_to_locale_string` ourselves and attempting to let
+            // the compiler do it for us, say by passing an
+            // `std::string`, instead of a raw pointer won't work
+            // either, as the longjmp will not allow its destructor to
+            // be called.
+
+            // The method below should work, as per Guile manual,
+            // although Valgrind still shows a possible loss.  In
+            // either case, the loss concerns a few bytes only and the
+            // program will soon exit anyway.
+
+            scm_dynwind_begin(static_cast<scm_t_dynwind_flags>(0));
+
+            char *u = scm_to_locale_string(
+                scm_symbol_to_string(
+                    scm_class_name(foreign_type<T>)));
+
+            scm_dynwind_free(u);
+
+            F(i, t, u);
+
+            scm_dynwind_end();
+
+            return false;
+        }
+
         x = from_scheme<T>(t);
     }
 
-    s = sexp_cdr(s);
+    // Now we can pop the converted value, if `s` is a list.
 
-    return SEXP_VOID;
-}
-
-#define POP_ARGUMENT(S, X)                              \
-{                                                       \
-    if (sexp _x = pop_argument(ctx, self, S, X);        \
-        sexp_exceptionp(_x)) {                          \
-        return _x;                                      \
-    }                                                   \
-}
-
-#define POP_INVALID_ARGUMENT(S, ...)                                    \
-{                                                                       \
-    sexp s = SEXP_VOID;                                                 \
-                                                                        \
-    POP_ARGUMENT(args, s);                                              \
-    return make_type_exception(ctx, self, "invalid type" __VA_ARGS__, s); \
-}
-
-template<typename T>
-bool pop_optional(sexp &s, T &x)
-{
-    if (sexp_nullp(s)) {
-        return false;
-    } else {
-        sexp t = sexp_car(s);
-
-        if constexpr(std::is_same_v<T, sexp>) {
-            x = t;
-            s = sexp_cdr(s);
-        } else if constexpr (std::is_integral_v<T>) {
-            if (sexp_exact_integerp(t)) {
-                x = sexp_unbox_fixnum(t);
-                s = sexp_cdr(s);
-            } else {
-                return false;
-            }
-        } else if constexpr(std::is_same_v<T, FT>) {
-            if (sexp_realp(t)) {
-                x = from_scheme<FT>(t);
-                s = sexp_cdr(s);
-            } else {
-                return false;
-            }
-        } else if constexpr(std::is_same_v<T, std::string>) {
-            if (sexp_stringp(t)) {
-                x = std::string(sexp_string_data(t), sexp_string_size(t));
-                s = sexp_cdr(s);
-            } else {
-                return false;
-            }
-        } else {
-            if (sexp_isa(t, foreign_type<T>)) {
-                x = from_scheme<T>(t);
-                s = sexp_cdr(s);
-            } else {
-                return false;
-            }
-        }
+    if (scm_is_pair(s)) {
+        s = scm_cdr(s);
     }
 
     return true;
 }
 
+// This is the utility function we call when we want to pop a required
+// argument.
+
 template<typename T>
-bool pop_optional(sexp &s, T &x, const T &def)
+void pop_argument(int i, SCM &s, T &x)
 {
-    const bool p = pop_optional(s, x);
+    constexpr static auto E = [] () {
+        throw wrong_num_args_exception();
+    };
 
-    if (!p) {
-        x = def;
-    }
+    constexpr static auto F =
+        [] (int i, const SCM s, const char *msg) {
+            throw wrong_type_exception(i, s, msg);
+        };
 
-    return p;
+    pop_argument_impl<T, E, F>(i, s, x);
 }
 
-// Generic operation taking any number of FT arguments.
+// This variation converts one or more required arguments of the same
+// type from the list at `s` and emplaces them into the vector `v`.
+// The number of arguments converted depend on the size of `s`, but
+// any invalid types in `s` signify an error.
+
+template<typename T>
+void pop_arguments(int i, SCM &s, std::vector<T> &v)
+{
+    T x;
+
+    while (!scm_is_null(s)) {
+        pop_argument(i++, s, x);
+        v.emplace_back(std::move(x));
+    }
+
+    assert(scm_is_null(s));
+}
+
+// Here we convert one or more required arguments from the discrete
+// values contained in `ss`, again emplacing them into the vector `v`.
+
+template<typename T>
+void pop_arguments(int i, std::initializer_list<SCM> ss, std::vector<T> &v)
+{
+    for (SCM s: ss) {
+        T x;
+        pop_argument(i++, s, x);
+        v.emplace_back(std::move(x));
+    }
+}
+
+// We again convert one or more required arguments from the discete
+// values contained in `ss`, but now assign them to the discrete
+// references contained in the tuple `t`, so the variables may be of
+// different types.
+
+template<typename... Ts>
+void pop_arguments(int i, std::initializer_list<SCM> ss, std::tuple<Ts&...> t)
+{
+    const SCM *it = ss.begin();
+    SCM s;
+
+    std::apply(
+        [&](Ts&... args) {
+            ((pop_argument(i++, (s = *(it++)), args)), ...);
+        }, t);
+}
+
+// This is the same as above, but the values are now read from the
+// list `s`, again assigned to discrete references.
+
+template<typename... Ts>
+void pop_arguments(int i, SCM &s, std::tuple<Ts&...> t)
+{
+    std::apply(
+        [&](Ts&... args) {
+            ((pop_argument(i++, s, args)), ...);
+        }, t);
+}
+
+// When an optional argument is the last argument of a function, we
+// expect either a valid argument or none at all.  We therefore behave
+// as if we're dealing with a required argument if one is provided,
+// but just return `false` if that is not the case.
+
+template<typename T>
+bool pop_optional(int i, SCM &s, T &x)
+{
+    if (scm_is_null(s) || scm_is_eq(s, SCM_UNDEFINED)) {
+        return false;
+    }
+
+    pop_argument<T>(i, s, x);
+    return true;
+}
+
+// Some functions accept optional arguments in the middle of their
+// argument list.  In that case, an argument of invalid type does not
+// imply an error; it might mean the user just didn't provide the
+// optional argument.
+
+// Other functions may accept different kinds of arguments.  Consider
+// for example a function applying a transformation to either polygons
+// or polyhedra.  In that case, we want to test whether the provided
+// argument is a polyhedron and convert it if so, but just return
+// `false` otherwise, so that the function can then look for a
+// polyhedron instead.
+
+template<typename T>
+bool try_pop_argument(int i, SCM &s, T &x)
+{
+    constexpr static auto E = [] () {};
+
+    constexpr static auto F =
+        [] (int i, const SCM s, const char *msg) {};
+
+    return pop_argument_impl<T, E, F>(i, s, x);
+}
+
+// The function template `make_primitive` conveniently instantiates a
+// function accepting any number of Scheme arguments of arbitrary
+// types and validates them, before passing them to C++ function `F`,
+// returning type `R` which is returned as a Scheme value.
+
+// The result can be used with the appropriate call to
+// `scm_c_define_gsubr` to export this function to Scheme.
 
 template<int I, typename A, typename T, typename... Types>
-static sexp make_primitive_args(sexp ctx, sexp self, sexp args, A &t)
+static void make_primitive_args(SCM s, A &t)
 {
-    POP_ARGUMENT(args, std::get<I>(t));
+    pop_argument(I + 1, s, std::get<I>(t));
 
     if constexpr (sizeof...(Types) > 0) {
-        return make_primitive_args<I + 1, A, Types...>(
-            ctx, self, args, t);
+        make_primitive_args<I + 1, A, Types...>(s, t);
     } else {
-        return SEXP_VOID;
+        if (!scm_is_null(s)) {
+            throw wrong_num_args_exception();
+        }
     }
 }
 
 template<auto F, typename R, typename... Types>
-static sexp make_primitive(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+static SCM make_primitive(SCM args)
 {
     std::tuple<Types...> t;
 
-    if (sexp s = make_primitive_args<0, decltype(t), Types...>(
-            ctx, self, args, t);
-        s != SEXP_VOID) {
-        return s;
-    }
-
-    return to_scheme<R>(ctx, std::apply(F, t));
+    make_primitive_args<0, decltype(t), Types...>(args, t);
+    return to_scheme<R>(std::apply(F, t));
 }
+
+// Many such functions only expect numeric (`FT`) arguments, so this
+// variation allows us to just specify, e.g. `3` instead of `FT, FT,
+// FT`.
 
 template <std::size_t>
 using FT_alias = FT;
 
 template<auto F, typename R, std::size_t... Is>
-static inline sexp make_primitive_helper(
-    sexp ctx, sexp self, sexp_sint_t n, sexp args, std::index_sequence<Is...>)
+static inline SCM make_primitive_helper(SCM args, std::index_sequence<Is...>)
 {
-    return make_primitive<F, R, FT_alias<Is>...>(ctx, self, n, args);
+    return make_primitive<F, R, FT_alias<Is>...>(args);
 }
 
-template<auto F, typename R, std::size_t N>
-static inline sexp make_primitive(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+template<auto F, typename R, std::size_t M>
+static inline SCM make_primitive(SCM args)
 {
-    return make_primitive_helper<F, R>(
-        ctx, self, n, args, std::make_index_sequence<N>{});
+    return make_primitive_helper<F, R>(args, std::make_index_sequence<M>{});
 }
 
-/////////////////
-// Miscellanea //
-/////////////////
+// ## Scheme Function Implementations
+
+// We're now ready to define the functions we need to export to
+// Scheme.  Many of the functions, those that don't need to handle
+// optional arguments, or arguments of multiple types through special
+// logic, are handled via the `make_primitive` templates above.  Below
+// we only need to provide implementations for the rest.
+
+// ### Functions in the `base` Library
+
+// This returns and optionally sets one of the tolerance parameters.
 
 template<FT &T>
-static sexp set_tolerance(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+static SCM set_tolerance(SCM s)
 {
     FT x_0 = T;
+    FT x;
 
-    if (FT x; pop_optional(args, x)) {
+    if (pop_optional(1, s, x)) {
         T = x;
     }
 
-    return to_scheme<FT>(ctx, x_0);
+    return to_scheme<FT>(x_0);
 }
 
-static sexp output(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+// Here we provide the implementation of the `define-option` macro.
+// The invocation `(define-option foo ...)` defines variable `foo`,
+// but only if it hasn't been already defined with `-Dfoo=...` on the
+// command line.
+
+static SCM define_option(SCM s, SCM t)
 {
-    std::string s;
-    pop_optional(args, s);
-
-    std::vector<Boxed_polyhedron> v;
-    sexp t = SEXP_VOID;
-
-    while (pop_optional(args, t)) {
-        ASSERT_FOREIGN_TYPE(Boxed_polyhedron, t);
-        v.push_back(from_scheme<Boxed_polyhedron>(t));
+    if (scm_is_false(scm_module_variable(scm_current_module(), s))) {
+        scm_define(s, t);
     }
 
-    add_output_operations(s, v);
+    return SCM_UNSPECIFIED;
+}
+
+// The `output` function, usually used via the `define-output` macro,
+// defines its argument as a named or unnamed output.  Most of the
+// actual work, is done elsewhere; ref: Outputs.
+
+static SCM output(SCM args)
+{
+    std::string s;
+    std::vector<Boxed_polyhedron> v;
+
+    const int i = try_pop_argument(1, args, s);
+    const SCM t = scm_car(args);
+
+    pop_arguments(1 + i, args, v);
+
+    if (!v.empty()) {
+        insert_output_operations(s, v);
+    }
 
     return t;
 }
 
-static sexp define_option(sexp ctx, sexp self, sexp_sint_t n, sexp s, sexp t)
-{
-    if (sexp_env_ref(ctx, sexp_context_env(ctx), s, SEXP_UNDEF) == SEXP_UNDEF) {
-        sexp_env_define(ctx, sexp_context_env(ctx), s, t);
-    }
+// Finally, we provide implementations for some basic geometric
+// values.  We only need the implementation for `plane` because we
+// can't take the address of `Plane_3`, which is a constructor.
 
-    return SEXP_VOID;
-}
-
-///////////////////////
-// Geometric objects //
-///////////////////////
-
-static sexp point(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+static SCM point(SCM s, SCM t, SCM u)
 {
     FT x, y, z;
 
-    POP_ARGUMENT(args, x);
-    POP_ARGUMENT(args, y);
+    pop_arguments(1, {s, t}, std::tie(x, y));
 
-    if (pop_optional(args, z)) {
-        return to_scheme<Point_3>(ctx, x, y, z);
+    if (pop_optional(3, u, z)) {
+        return to_scheme<Point_3>(x, y, z);
     } else {
-        return to_scheme<Point_2>(ctx, x, y);
+        return to_scheme<Point_2>(x, y);
     }
 }
 
@@ -411,182 +644,454 @@ static Plane_3 plane(const FT &a, const FT &b, const FT &c, const FT &d)
     return Plane_3(a, b, c, d);
 }
 
-/////////////////////
-// Transformations //
-/////////////////////
+// ### Functions in the `write` Library
 
-static sexp transformation_apply(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+// This template prints one or more messages of a given level, or at
+// least calls `print_message` to do so (ref: Program Messages).
+
+template<Operation::Message_level LEVEL>
+static SCM print_message(SCM args)
 {
-    // This facilitates transformation application folding.
+    std::vector<std::string> v;
 
-    if (sexp_nullp(sexp_cadr(args))) {
-        return sexp_car(args);
+    pop_arguments(1, args, v);
+
+    for (std::string &s: v) {
+        print_message(LEVEL, s.c_str(), s.size());
     }
 
-    if (Aff_transformation_2 T; pop_optional(args, T)) {
-        if (Boxed_polygon x; pop_optional(args, x)) {
-            return to_scheme<Boxed_polygon>(ctx, std::visit(
-                [&T](auto &&y) {
-                    return make_boxed_polygon(TRANSFORM(y, T));
-                }, x));
-        }
-
-        if (Point_2 x; pop_optional(args, x)) {
-            return to_scheme<Point_2>(ctx, T.transform(x));
-        }
-
-        if (Aff_transformation_2 x; pop_optional(args, x)) {
-            return to_scheme<Aff_transformation_2>(ctx, T * x);
-        }
-
-        POP_INVALID_ARGUMENT(
-            args, ", expected polygon, point-2d, or transformation-2d");
-    }
-
-    if (Aff_transformation_3 T; pop_optional(args, T)) {
-        if (Boxed_polyhedron x; pop_optional(args, x)) {
-            return std::visit(
-                    [&ctx, &T](auto &&x) {
-                        return to_scheme<Boxed_polyhedron>(
-                            ctx, TRANSFORM(x, T));
-                    }, x);
-        }
-
-        if (Point_3 x; pop_optional(args, x)) {
-            return to_scheme<Point_3>(ctx, T.transform(x));
-        }
-
-        if (Plane_3 x; pop_optional(args, x)) {
-            return to_scheme<Plane_3>(ctx, T.transform(x));
-        }
-
-        if (Aff_transformation_3 x; pop_optional(args, x)) {
-            return to_scheme<Aff_transformation_3>(ctx, T * x);
-        }
-
-        if (std::shared_ptr<Bounding_volume> x; pop_optional(args, x)) {
-            return to_scheme<std::shared_ptr<Bounding_volume>>(ctx, x->transform(T));
-        }
-
-        POP_INVALID_ARGUMENT(
-            args,
-            ", expected polyhedron, bounding-volume, point-3d, plane-3d, "
-            "or transformation-3d");
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected transformation");
+    return SCM_UNSPECIFIED;
 }
 
+// ### Functions in the `transformation` Library
+
+// We start with functions creating simple transformations in 2 or 3
+// dimensions.
+
 template<auto F_3, auto F_2>
-static sexp transformation_2_3(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+static SCM translation_2_3(SCM s, SCM t, SCM u)
 {
     FT x, y, z;
 
-    POP_ARGUMENT(args, x);
-    POP_ARGUMENT(args, y);
+    pop_arguments(1, {s, t}, std::tie(x, y));
 
-    if (pop_optional(args, z)) {
-        return to_scheme<Aff_transformation_3>(ctx, F_3(x, y, z));
+    if (pop_optional(3, u, z)) {
+        return to_scheme<Aff_transformation_3>(F_3(x, y, z));
     } else {
-        return to_scheme<Aff_transformation_2>(ctx, F_2(x, y));
+        return to_scheme<Aff_transformation_2>(F_2(x, y));
     }
 }
 
-static sexp rotation(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+template<auto F_3, auto F_2>
+static SCM scaling_2_3(SCM s, SCM t, SCM u)
+{
+    FT x, y, z;
+
+    pop_arguments(1, {s, t}, std::tie(x, y));
+
+    if (pop_optional(3, u, z)) {
+        return to_scheme<Aff_transformation_3>(F_3(x, y, z));
+    } else {
+        return to_scheme<Aff_transformation_2>(F_2(x, y));
+    }
+}
+
+// Rotations come in three flavors:
+
+static SCM rotation(SCM s, SCM rest)
 {
     FT a;
 
-    POP_ARGUMENT(args, a);
+    //   1. 2D rotations, accepting a single angle,
+
+    pop_argument(1, s, a);
     const double theta = CGAL::to_double(a);
 
-    FT b, c, d;
+    if (scm_is_null(rest)) {
+        return to_scheme<Aff_transformation_2>(basic_rotation(theta));
+    }
 
-    if (pop_optional(args, b)) {
-        if (pop_optional(args, c) && pop_optional(args, d)) {
-            double v[3] = {
-                CGAL::to_double(b),
-                CGAL::to_double(c),
-                CGAL::to_double(d)};
+    //   2. 3D rotations around one of the axes of the reference frame
+    //   and
 
-            return to_scheme<Aff_transformation_3>(
-                ctx, axis_angle_rotation(theta, v));
-        }
+    FT b;
+    pop_argument(2, rest, b);
 
+    if (scm_is_null(rest)) {
         int i;
 
         if (b == (i = 0) || b == (i = 1)|| b == (i = 2)) {
-            return to_scheme<Aff_transformation_3>(ctx, basic_rotation(theta, i));
+            return to_scheme<Aff_transformation_3>(basic_rotation(theta, i));
         }
 
-        return make_exception(ctx, self, "expected 0, 1, or 2");
+        scm_misc_error(
+            "rotation",
+            "wrong argument in position ~A (expecting 0, 1, or 2): ~S",
+            scm_list_2(scm_from_int(2), scm_car(rest)));
     }
 
-    return to_scheme<Aff_transformation_2>(ctx, basic_rotation(theta));
+    //   3. 3D rotations around an arbitrary axis.
+
+    FT c, d;
+
+    pop_arguments(3, rest, std::tie(c, d));
+
+    double v[3] = {
+        CGAL::to_double(b),
+        CGAL::to_double(c),
+        CGAL::to_double(d)};
+
+    return to_scheme<Aff_transformation_3>(axis_angle_rotation(theta, v));
 }
 
-static sexp flush(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+// Here we apply 2D or 3D transfromation to compatible geometry.
+
+static SCM transformation_apply(SCM s, SCM t)
+{
+    // As a special case we accept an empty list as a second
+    // parameter.  This facilitates transformation concatenation via
+    // `fold`/`fold-right`, as is done in `transformation-append`.
+
+    if (scm_is_eq(t, SCM_EOL)) {
+        return s;
+    }
+
+    if (Aff_transformation_2 T;
+        try_pop_argument(1, s, T)) {
+
+        // A 2D transformation, can be applied to:
+
+        //   1. a polygon,
+
+        if (Boxed_polygon x;
+            try_pop_argument(2, t, x)) {
+            return std::visit(
+                [&T](auto &&y) {
+                    return to_scheme<Boxed_polygon>(
+                        make_boxed_transformed_polygon(TRANSFORM(y, T)));
+                }, x);
+        }
+
+        //   2. a 2D point, or
+
+        if (Point_2 x;
+            try_pop_argument(2, t, x)) {
+            return to_scheme<Point_2>(T.transform(x));
+        }
+
+        //   3. another 2D transformation (yielding the composite
+        //   transformation).
+
+        if (Aff_transformation_2 x;
+            try_pop_argument(2, t, x)) {
+            return to_scheme<Aff_transformation_2>(T * x);
+        }
+
+        throw wrong_type_exception(
+            2, t, "polygon, point-2d, or transformation-2d");
+    }
+
+    if (Aff_transformation_3 T;
+        try_pop_argument(1, s, T)) {
+        // There are more potential targets for a 3D transformation.
+        // It can be applied to:
+
+        //   1. a polyhedron,
+
+        if (Boxed_polyhedron x;
+            try_pop_argument(2, t, x)) {
+            return std::visit(
+                    [&T](auto &&x) {
+                        return to_scheme<Boxed_polyhedron>(TRANSFORM(x, T));
+                    }, x);
+        }
+
+        //   2. a 3D point,
+
+        if (Point_3 x;
+            try_pop_argument(2, t, x)) {
+            return to_scheme<Point_3>(T.transform(x));
+        }
+
+        //   3. a 3D plane,
+
+        if (Plane_3 x;
+            try_pop_argument(2, t, x)) {
+            return to_scheme<Plane_3>(T.transform(x));
+        }
+
+        //   4. another 3D transformation, or
+
+        if (Aff_transformation_3 x;
+            try_pop_argument(2, t, x)) {
+            return to_scheme<Aff_transformation_3>(T * x);
+        }
+
+        //   5. a bounding volume.
+
+        if (std::shared_ptr<Bounding_volume> x;
+            try_pop_argument(2, t, x)) {
+            return to_scheme<std::shared_ptr<Bounding_volume>>(x->transform(T));
+        }
+
+        throw wrong_type_exception(
+            2, t, ("polyhedron, bounding-volume, point-3d, plane-3d, "
+                   "or transformation-3d"));
+    }
+
+    throw wrong_type_exception(1, s, "transformation");
+}
+
+// Finally, we have flush transformations, which are operations in
+// their own right.  They can be applied to:
+
+static SCM flush(SCM s, SCM t, SCM u, SCM v)
 {
     FT lambda, mu;
 
-    if (std::shared_ptr<Bounding_volume> x; pop_optional(args, x)) {
+    //   1. bounding volumes, whose extents can be evaluated exactly,
+
+    if (std::shared_ptr<Bounding_volume> x;
+        try_pop_argument(1, s, x)) {
         FT nu;
 
-        POP_ARGUMENT(args, lambda);
-        POP_ARGUMENT(args, mu);
-        POP_ARGUMENT(args, nu);
+        pop_arguments(2, {t, u, v}, std::tie(lambda, mu, nu));
 
         if (const auto p = x->flush(lambda, mu, nu)) {
-            return to_scheme<std::shared_ptr<Bounding_volume>>(ctx, p);
+            return to_scheme<std::shared_ptr<Bounding_volume>>(p);
         }
 
-        return make_exception(ctx, self, "cannot flush this bounding volume");
+        scm_misc_error("flush", "cannot flush this bounding volume", SCM_EOL);
     }
 
-    if (Boxed_polygon x; pop_optional(args, x)) {
-        POP_ARGUMENT(args, lambda);
-        POP_ARGUMENT(args, mu);
+    //   2. polygons and
+
+    if (Boxed_polygon x; try_pop_argument(1, s, x)) {
+        pop_arguments(2, {t, u}, std::tie(lambda, mu));
 
         return std::visit(
-                [&ctx, &lambda, &mu](auto &&y) {
-                    return to_scheme<Boxed_polygon>(ctx, FLUSH(y, lambda, mu));
+                [&lambda, &mu](auto &&y) {
+                    return to_scheme<Boxed_polygon>(FLUSH(y, lambda, mu));
                 }, x);
     }
 
-    if (Boxed_polyhedron x; pop_optional(args, x)) {
+    //   3. polyhedra.
+
+    if (Boxed_polyhedron x; try_pop_argument(1, s, x)) {
         FT nu;
 
-        POP_ARGUMENT(args, lambda);
-        POP_ARGUMENT(args, mu);
-        POP_ARGUMENT(args, nu);
+        pop_arguments(2, {t, u, v}, std::tie(lambda, mu, nu));
 
         return std::visit(
-                [&ctx, &lambda, &mu, &nu](auto &&y) {
+                [&lambda, &mu, &nu](auto &&y) {
                     return to_scheme<Boxed_polyhedron>(
-                        ctx, FLUSH(y, lambda, mu, nu));
+                        FLUSH(y, lambda, mu, nu));
                 }, x);
     }
 
-    POP_INVALID_ARGUMENT(
-        args, ", expected bounding volume, polygon, or polyhedron");
+    throw wrong_type_exception(1, s, "bounding volume, polygon, or polyhedron");
 }
 
-#define DEFINE_FLUSH_OPERATION(WHERE, LAMBDA, MU, NU)                   \
-static sexp flush_## WHERE(sexp ctx, sexp self, sexp_sint_t n, sexp args) \
+// ### Functions in the `selections` Library
+
+// Selections can either be based on a bounding volume or they may be
+// converted from different kinds of selections.  We have to use a
+// macro here, because the parameter `F` below is a function template
+// (e.g. `VERTICES_IN`), which we can't pass as a template template
+// parameter.
+
+#define DEFINE_SELECTOR(FUNC, S, T, U, F)                               \
+static SCM FUNC(SCM s)                                                  \
 {                                                                       \
-    sexp_cdr(args) = sexp_list3(ctx, LAMBDA, MU, NU);                   \
-    return flush(ctx, self, 4, args);                                   \
+    if (std::shared_ptr<S> x;                                           \
+        try_pop_argument(1, s, x)) {                                    \
+        return to_scheme<std::shared_ptr<U>>(F(x));                     \
+    }                                                                   \
+                                                                        \
+    if (std::shared_ptr<T> x;                                           \
+        try_pop_argument(1, s, x)) {                                    \
+        return to_scheme<std::shared_ptr<U>>(F(x));                     \
+    }                                                                   \
+                                                                        \
+    if (std::shared_ptr<Bounding_volume> x;                             \
+        try_pop_argument(1, s, x)) {                                    \
+        return to_scheme<std::shared_ptr<U>>(F(x));                     \
+    }                                                                   \
+                                                                        \
+    throw wrong_type_exception(1, s, "selector or bounding volume");    \
 }
 
-DEFINE_FLUSH_OPERATION(west, SEXP_NEG_ONE, SEXP_ZERO, SEXP_ZERO)
-DEFINE_FLUSH_OPERATION(east, SEXP_ONE, SEXP_ZERO, SEXP_ZERO)
+DEFINE_SELECTOR(
+    vertices_in, Face_selector, Edge_selector, Vertex_selector,
+    VERTICES_IN)
+DEFINE_SELECTOR(
+    faces_in, Vertex_selector, Edge_selector, Face_selector,
+    FACES_IN)
+DEFINE_SELECTOR(
+    faces_partially_in, Vertex_selector, Edge_selector, Face_selector,
+    FACES_PARTIALLY_IN)
+DEFINE_SELECTOR(
+    edges_in, Vertex_selector, Face_selector, Edge_selector,
+    EDGES_IN)
+DEFINE_SELECTOR(
+    edges_partially_in, Vertex_selector, Face_selector, Edge_selector,
+    EDGES_PARTIALLY_IN)
 
-DEFINE_FLUSH_OPERATION(south, SEXP_ZERO, SEXP_NEG_ONE, SEXP_ZERO)
-DEFINE_FLUSH_OPERATION(north, SEXP_ZERO, SEXP_ONE, SEXP_ZERO)
+#undef DEFINE_SELECTOR
 
-DEFINE_FLUSH_OPERATION(bottom, SEXP_ZERO, SEXP_ZERO, SEXP_NEG_ONE)
-DEFINE_FLUSH_OPERATION(top, SEXP_ZERO, SEXP_ZERO, SEXP_ONE)
+// Selections can also be derived by expanding or contracting.
 
-#undef DEFINE_FLUSH_OPERATION
+template<int SIGN>
+static SCM relative_selection(SCM s, SCM t)
+{
+    if (std::shared_ptr<Face_selector> x;
+        try_pop_argument(1, s, x)) {
+        int k;
+
+        pop_argument(2, t, k);
+        return to_scheme<std::shared_ptr<Face_selector>>(
+            RELATIVE_SELECTION(x, SIGN * k));
+    }
+
+    if (std::shared_ptr<Vertex_selector> x;
+        try_pop_argument(1, s, x)) {
+        int k;
+
+        pop_argument(2, t, k);
+        return to_scheme<std::shared_ptr<Vertex_selector>>(
+            RELATIVE_SELECTION(x, SIGN * k));
+    }
+
+    throw wrong_type_exception(1, s, "selector");
+}
+
+// This function is defined for many kinds of set-like values, but it
+// is mostly of use for volumes and selections.  It is also defined
+// for polygons and (Nef) polyehdra.
+
+// We export this primarily through the `selection` library, but also
+// make it available through the `operations` and `volumes`
+// libararies.  This seems to be supported behavior in R6RS, which
+// states (in section 7.1):
+
+//   > An identifier can be imported with the same local name from two
+//   > or more libraries or for two levels from the same library only
+//   > if the binding exported by each library is the same ...
+
+// For R7RS the situation is a bit more gray.  Section 5.2 of R7RS
+// small says:
+
+//   > In a program or library declaration, it is an error to import
+//   > the same identifer more than once with different bindings, ...
+
+// Since it's forbidden to import the same identifier *with different
+// bindings*, we may assume it is allowed to do so if it has the same
+// bindings.
+
+static SCM complement(SCM s)
+{
+    if (std::shared_ptr<Bounding_volume> x;
+        try_pop_argument(1, s, x)) {
+        return to_scheme<std::shared_ptr<Bounding_volume>>(COMPLEMENT(x));
+    }
+
+    if (std::shared_ptr<Vertex_selector> x;
+        try_pop_argument(1, s, x)) {
+        return to_scheme<std::shared_ptr<Vertex_selector>>(COMPLEMENT(x));
+    }
+
+    if (std::shared_ptr<Face_selector> x;
+        try_pop_argument(1, s, x)) {
+        return to_scheme<std::shared_ptr<Face_selector>>(COMPLEMENT(x));
+    }
+
+    if (std::shared_ptr<Edge_selector> x;
+        try_pop_argument(1, s, x)) {
+        return to_scheme<std::shared_ptr<Edge_selector>>(COMPLEMENT(x));
+    }
+
+    if (Boxed_polygon x; try_pop_argument(1, s, x)) {
+        return std::visit(
+            [](auto &&y) {
+                return to_scheme<Boxed_polygon>(COMPLEMENT(y));
+            }, x);
+    }
+
+    if (Boxed_polyhedron x; try_pop_argument(1, s, x)) {
+        return std::visit(
+            [](auto &&y) {
+                return to_scheme<Boxed_polyhedron>(COMPLEMENT(y));
+            }, x);
+    }
+
+    throw wrong_type_exception(
+        1, s, "bounding volume, selector, polygon, or polyhedron");
+}
+
+// ### Functions in the `polygons` Library
+
+// A simple polygon is created from a sequence of at least 3 poionts.
+
+static SCM simple_polygon(SCM s, SCM t, SCM u, SCM rest)
+{
+    std::vector<Point_2> v;
+
+    pop_arguments(1, {s, t, u}, v);
+    pop_arguments(4, rest, v);
+
+    return to_scheme<Boxed_polygon>(POLYGON(std::move(v)));
+}
+
+// ### Functions in the `polyhedra` Library
+
+// Octahedra and regular bipyramids can accept a single height
+// parameter, in which case they're symmetric wrt. the XY plane, or
+// different heights may be specified.
+
+static SCM octahedron(SCM s, SCM t, SCM u, SCM v)
+{
+    FT a, b, c, d;
+
+    pop_arguments(1, {s, t, u}, std::tie(a, b, c));
+
+    if (pop_optional(4, v, d)) {
+        return to_scheme<Boxed_polyhedron>(OCTAHEDRON(a, b, c, d));
+    } else {
+        return to_scheme<Boxed_polyhedron>(OCTAHEDRON(a, b, c));
+    }
+}
+
+static SCM regular_bipyramid(SCM s, SCM t, SCM u, SCM v)
+{
+    FT a, b, c;
+    int k;
+
+    pop_arguments(1, {s, t, u}, std::tie(k, a, b));
+
+    if (pop_optional(4, v, c)) {
+        return to_scheme<Boxed_polyhedron>(REGULAR_BIPYRAMID(k, a, b, c));
+    } else {
+        return to_scheme<Boxed_polyhedron>(REGULAR_BIPYRAMID(k, a, b));
+    }
+}
+
+// ### Functions in the `operations` Library
+
+// We start with some trivial functions, which are mostly necessary
+// because they operate on boxed pointers and we have to call
+// `std::visit` on them.
+
+static SCM boundary(SCM s)
+{
+    Boxed_polyhedron a;
+
+    pop_argument(1, s, a);
+
+    return std::visit(
+        [](auto &&x) {
+            return to_scheme<Boxed_polyhedron>(BOUNDARY(x));
+        }, a);
+}
 
 static Boxed_polygon offset(Boxed_polygon &p, const FT &delta)
 {
@@ -596,294 +1101,225 @@ static Boxed_polygon offset(Boxed_polygon &p, const FT &delta)
         }, p);
 }
 
-static sexp extrusion(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+// Below `make_polyhedron_clip_visitor` provides a visitor that
+// will perform the clip via Nef or corefinement operations.  Ref:
+// Selecting Between Nef and Corefinement Operations.
+
+static SCM clip(SCM s, SCM t)
+{
+    Boxed_polyhedron a;
+    Plane_3 Pi;
+
+    pop_argument(1, s, a);
+    pop_argument(2, t, Pi);
+
+    return to_scheme<Boxed_polyhedron>(
+        std::visit(make_polyhedron_clip_visitor(Pi), a));
+}
+
+// Extrusions operate on a polygon and an arbitrary number of
+// transformations.  (If no transformations are specified,
+// `EXTRUSIONS` implicitly inserts a null translation.)
+
+static SCM extrusion(SCM s, SCM rest)
 {
     Boxed_polygon p;
 
-    POP_ARGUMENT(args, p);
+    pop_argument(1, s, p);
 
     std::vector<Aff_transformation_3> v;
 
-    while (!sexp_nullp(args)) {
-        Aff_transformation_3 T;
-        POP_ARGUMENT(args, T);
-        v.push_back(T);
-    }
+    pop_arguments(2, rest, v);
 
     return to_scheme<Boxed_polyhedron>(
-        ctx, std::visit(
+        std::visit(
             [&v](auto &&x) {
                 return EXTRUSION(x, std::move(v));
             }, p));
 }
 
-////////////////
-// Selections //
-////////////////
+// Convex hulls are defined in 2D or 3D and in each case, they
+// ultimately operate on points.  Nevertheless, it is usually
+// conventient to define them on polygons and polyhedra as well,
+// meaning that you take the hull of the points they're made of.  As a
+// result we either expect a mixture of 2D ponints and polygons, or 3D
+// points and polyhedra.
 
-static sexp complement(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+static SCM hull(SCM args)
 {
-    if (std::shared_ptr<Bounding_volume> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Bounding_volume>>(ctx, COMPLEMENT(x));
-    }
+    std::shared_ptr<Polyhedron_hull_operation> p;
+    std::shared_ptr<Polygon_hull_operation> q;
 
-    if (std::shared_ptr<Vertex_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Vertex_selector>>(ctx, COMPLEMENT(x));
-    }
+    int i = 1;
 
-    if (std::shared_ptr<Face_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Face_selector>>(ctx, COMPLEMENT(x));
-    }
+    while (true) {
+        // We open a polygon or polyhedron hull operation, depending
+        // on the first argument and push back all arguments.
 
-    if (std::shared_ptr<Edge_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Edge_selector>>(ctx, COMPLEMENT(x));
-    }
+        if (Boxed_polyhedron x;
+            !q && try_pop_argument(i, args, x)) {
+            if (!p) {
+                p = POLYHEDRON_HULL_OPEN();
+            }
 
-    if (Boxed_polygon x; pop_optional(args, x)) {
+            std::visit(
+                [&p](auto &&y) {
+                    p->push_back(y);
+                }, x);
+
+            i++;
+        } else if (Point_3 x;
+                   !q && try_pop_argument(i, args, x)) {
+            if (!p) {
+                p = POLYHEDRON_HULL_OPEN();
+            }
+
+            p->push_back(x);
+            i++;
+        } else if (Boxed_polygon x;
+                   !p && try_pop_argument(i, args, x)) {
+            if (!q) {
+                q = POLYGON_HULL_OPEN();
+            }
+
+            std::visit(
+                [&q](auto &&y) {
+                    q->push_back(CONVERT_TO<Polygon_set>(y));
+                }, x);
+
+            i++;
+        } else if (Point_2 x;
+                   !p && try_pop_argument(i, args, x)) {
+            if (!q) {
+                q = POLYGON_HULL_OPEN();
+            }
+
+            q->push_back(x);
+            i++;
+        } else if (scm_is_null(args)) {
+            // When all arguments have been consumed, we close and
+            // return the hull operation.
+
+            if (p) {
+                return to_scheme<Boxed_polyhedron>(POLYHEDRON_HULL_CLOSE(p));
+            } else if (q) {
+                return to_scheme<Boxed_polygon>(POLYGON_HULL_CLOSE(q));
+            } else {
+                throw wrong_num_args_exception();
+            }
+        } else if (p) {
+            throw wrong_type_exception(
+                i, scm_car(args), "polyhedron or point-3d");
+        } else if (q) {
+            throw wrong_type_exception(
+                i, scm_car(args), "polygon or point-2d");
+        } else {
+            throw wrong_type_exception(
+                i, scm_car(args), "polygon, polyhedron or point");
+        }
+    }
+}
+
+// Minkowski sums are defined:
+
+static SCM minkowski_sum(SCM s, SCM t)
+{
+    //   1. on polyhedra and
+
+    if (Boxed_polyhedron a;
+        try_pop_argument(1, s, a)) {
+        Boxed_polyhedron b;
+
+        pop_argument(2, t, b);
+
         return std::visit(
-            [&ctx](auto &&y) {
-                return to_scheme<Boxed_polygon>(ctx, COMPLEMENT(y));
-            }, x);
+            [](auto &&x, auto &&y) {
+                return to_scheme<Boxed_polyhedron>(MINKOWSKI_SUM(x, y));
+            }, a, b);
     }
 
-    if (Boxed_polyhedron x; pop_optional(args, x)) {
+    //   2. on polygons.
+
+    if (Boxed_polygon a;
+        try_pop_argument(1, s, a)) {
+        Boxed_polygon b;
+
+        pop_argument(2, t, b);
+
         return std::visit(
-            [&ctx](auto &&y) {
-                return to_scheme<Boxed_polyhedron>(ctx, COMPLEMENT(y));
-            }, x);
+            [](auto &&x, auto &&y) {
+                return to_scheme<Boxed_polygon>(MINKOWSKI_SUM(x, y));
+            }, a, b);
     }
 
-    POP_INVALID_ARGUMENT(args);
+    throw wrong_type_exception(1, s, "polygon or polyhedron");
 }
 
-static sexp boundary(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    Boxed_polyhedron a;
+// Boolean set operations are defined on different types of values,
+// including volumes, selections, polygons and polyhedra.  The Scheme
+// functions need to accept any number of arguments (of the same
+// type), but the operations for polygons and polyhedra are binary
+// operations.
 
-    POP_ARGUMENT(args, a);
+// We handle volumes and selections separately and for geometry, we
+// create left-associative chains of binary boolean operations.
+// (Associativity is important only in the case of difference
+// operations of course.)
 
-    return std::visit(
-        [&ctx](auto &&x) {
-            return to_scheme<Boxed_polyhedron>(ctx, BOUNDARY(x));
-        }, a);
-}
-
-template<int I>
-static sexp relative_selection(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    if (std::shared_ptr<Face_selector> x; pop_optional(args, x)) {
-        int k;
-
-        POP_ARGUMENT(args, k);
-        return to_scheme<std::shared_ptr<Face_selector>>(
-            ctx, RELATIVE_SELECTION(x, I * k));
-    }
-
-    if (std::shared_ptr<Vertex_selector> x; pop_optional(args, x)) {
-        int k;
-
-        POP_ARGUMENT(args, k);
-        return to_scheme<std::shared_ptr<Vertex_selector>>(
-            ctx, RELATIVE_SELECTION(x, I * k));
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected selector");
-}
-
-static sexp vertices_in(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    if (std::shared_ptr<Face_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Vertex_selector>>(ctx, VERTICES_IN(x));
-    }
-
-    if (std::shared_ptr<Edge_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Vertex_selector>>(ctx, VERTICES_IN(x));
-    }
-
-    if (std::shared_ptr<Bounding_volume> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Vertex_selector>>(ctx, VERTICES_IN(x));
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected selector or bounding volume");
-}
-
-static sexp faces_in(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    if (std::shared_ptr<Vertex_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Face_selector>>(ctx, FACES_IN(x));
-    }
-
-    if (std::shared_ptr<Edge_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Face_selector>>(ctx, FACES_IN(x));
-    }
-
-    if (std::shared_ptr<Bounding_volume> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Face_selector>>(ctx, FACES_IN(x));
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected selector or bounding volume");
-}
-
-static sexp faces_partially_in(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    if (std::shared_ptr<Vertex_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Face_selector>>(
-            ctx, FACES_PARTIALLY_IN(x));
-    }
-
-    if (std::shared_ptr<Edge_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Face_selector>>(
-            ctx, FACES_PARTIALLY_IN(x));
-    }
-
-    if (std::shared_ptr<Bounding_volume> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Face_selector>>(
-            ctx, FACES_PARTIALLY_IN(x));
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected selector or bounding volume");
-}
-
-static sexp edges_in(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    if (std::shared_ptr<Vertex_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Edge_selector>>(ctx, EDGES_IN(x));
-    }
-
-    if (std::shared_ptr<Face_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Edge_selector>>(ctx, EDGES_IN(x));
-    }
-
-    if (std::shared_ptr<Bounding_volume> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Edge_selector>>(ctx, EDGES_IN(x));
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected selector or bounding volume");
-}
-
-static sexp edges_partially_in(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    if (std::shared_ptr<Vertex_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Edge_selector>>(
-            ctx, EDGES_PARTIALLY_IN(x));
-    }
-
-    if (std::shared_ptr<Face_selector> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Edge_selector>>(
-            ctx, EDGES_PARTIALLY_IN(x));
-    }
-
-    if (std::shared_ptr<Bounding_volume> x; pop_optional(args, x)) {
-        return to_scheme<std::shared_ptr<Edge_selector>>(
-            ctx, EDGES_PARTIALLY_IN(x));
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected selector or bounding volume");
-}
-
-//////////////
-// Polygons //
-//////////////
-
-static sexp ngon(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    if (sexp_length_unboxed(args) < 3) {
-        return make_args_exception(ctx, self);
-    }
-
-    std::vector<Point_2> v;
-
-    while (v.size() < 3 || !sexp_nullp(args)) {
-        Point_2 P;
-        POP_ARGUMENT(args, P);
-        v.push_back(P);
-    }
-
-    return to_scheme<Boxed_polygon>(ctx, POLYGON(std::move(v)));
-}
-
-////////////////////////
-// Polygons/polyhedra //
-////////////////////////
-
-// The Nef option branch can't be incorporated in the macro, since
-// it's made at run-time.
-
-// Prefer converting away from Nef, to avoid propagating conversions
-// to Nef polyhedra down the line, unless both operands are already
-// Nef polyhedra.
-
-#define HANDLE_SELECTION_TYPE(OP, T)                    \
-if (std::shared_ptr<T> p; pop_optional(args, p)) {      \
-    std::vector<std::shared_ptr<T>> v;                  \
-    v.push_back(p);                                     \
-                                                        \
-    while(!sexp_nullp(args)) {                          \
-        POP_ARGUMENT(args, p);                          \
-        v.push_back(p);                                 \
-    }                                                   \
-                                                        \
-    return to_scheme<std::shared_ptr<T>>(               \
-        ctx, OP(std::move(v)));                         \
+#define HANDLE_SELECTION_TYPE(OP, T)                                    \
+if (std::shared_ptr<T> p; try_pop_argument(1, s, p)) {                  \
+    std::vector<std::shared_ptr<T>> v;                                  \
+    v.push_back(p);                                                     \
+    pop_arguments(2, rest, v);                                          \
+                                                                        \
+    return to_scheme<std::shared_ptr<T>>(OP(std::move(v)));             \
 }
 
 #define DEFINE_SET_OPERATION(NAME, OP)                                  \
-static sexp NAME ##_2(sexp ctx, sexp self, sexp s, sexp t)              \
+static SCM NAME ##_2(SCM s, SCM t)                                      \
 {                                                                       \
-    if (sexp_nullp(t)) {                                                \
+    if (scm_is_null(t)) {                                               \
         return s;                                                       \
     }                                                                   \
                                                                         \
-    if (sexp_isa(s, foreign_type<Boxed_polyhedron>)) {                  \
-        ASSERT_FOREIGN_TYPE(Boxed_polyhedron, t);                       \
+    if (Boxed_polyhedron a;                                             \
+        try_pop_argument(1, s, a)) {                                    \
+        Boxed_polyhedron b;                                             \
+        pop_argument(2, t, b);                                          \
                                                                         \
         return to_scheme<Boxed_polyhedron>(                             \
-            ctx, std::visit(                                            \
-                PERFORM_POLYHEDRON_SET_OPERATION(OP),                   \
-                from_scheme<Boxed_polyhedron>(s),                       \
-                from_scheme<Boxed_polyhedron>(t)));                     \
-    } else if (sexp_isa(s, foreign_type<Boxed_polygon>)) {              \
-        if (sexp_nullp(t)) {                                            \
-            return s;                                                   \
-        }                                                               \
-                                                                        \
-        ASSERT_FOREIGN_TYPE(Boxed_polygon, t);                          \
+            std::visit(                                                 \
+                make_polyhedron_boolean_visitor(OP), a, b));            \
+    } else if (Boxed_polygon a;                                         \
+               try_pop_argument(1, s, a)) {                             \
+        Boxed_polygon b;                                                \
+        pop_argument(2, t, b);                                          \
                                                                         \
         return std::visit(                                              \
-            [&ctx](auto &&x, auto &&y) {                                \
-                return to_scheme<Boxed_polygon>(ctx, OP(x, y));         \
-            },                                                          \
-            from_scheme<Boxed_polygon>(s),                              \
-            from_scheme<Boxed_polygon>(t));                             \
+            [](auto &&x, auto &&y) {                                    \
+                return to_scheme<Boxed_polygon>(OP(x, y));              \
+            }, a, b);                                                   \
     } else {                                                            \
-        return make_type_exception(                                     \
-            ctx, self, "invalid type, expected polygon or polyhedron", s); \
+        throw wrong_type_exception(1, s, "polygon or polyhedron");      \
     }                                                                   \
 }                                                                       \
                                                                         \
-static sexp NAME ##_many(sexp ctx, sexp self, sexp_sint_t n, sexp args) \
+static SCM NAME ##_many(SCM s, SCM rest)                                \
 {                                                                       \
-    sexp s = sexp_car(args);                                            \
-    sexp t = sexp_cdr(args);                                            \
-    sexp r = sexp_car(t) = NAME ##_2(ctx, self, s, sexp_car(t));        \
+    const SCM t = NAME ##_2(s, scm_car(rest));                          \
+    const SCM u = scm_cdr(rest);                                        \
                                                                         \
-    if (n == 2) {                                                       \
-        return r;                                                       \
+    if (scm_is_null(u)) {                                               \
+        return t;                                                       \
     }                                                                   \
                                                                         \
-    return NAME ##_many(ctx, self, n - 1, t);                           \
+    return NAME ##_many(t, u);                                          \
 }                                                                       \
                                                                         \
-static sexp NAME ##_any(sexp ctx, sexp self, sexp_sint_t n, sexp args)  \
+static SCM NAME ##_any(SCM s, SCM rest)                                 \
 {                                                                       \
-    int m = sexp_length_unboxed(args);                                  \
-                                                                        \
-    if (m == 0) {                                                       \
-        return make_args_exception(ctx, self);                          \
-    }                                                                   \
-                                                                        \
-    if (m == 1) {                                                       \
-        return sexp_car(args);                                          \
+    if (scm_is_null(rest)) {                                            \
+        return s;                                                       \
     }                                                                   \
                                                                         \
     HANDLE_SELECTION_TYPE(OP, Bounding_volume);                         \
@@ -891,7 +1327,7 @@ static sexp NAME ##_any(sexp ctx, sexp self, sexp_sint_t n, sexp args)  \
     HANDLE_SELECTION_TYPE(OP, Face_selector);                           \
     HANDLE_SELECTION_TYPE(OP, Edge_selector);                           \
                                                                         \
-    return NAME ##_many(ctx, self, m, args);                            \
+    return NAME ##_many(s, rest);                                       \
 }
 
 DEFINE_SET_OPERATION(union, JOIN)
@@ -901,992 +1337,1244 @@ DEFINE_SET_OPERATION(intersection, INTERSECTION)
 #undef HANDLE_SELECTION_TYPE
 #undef DEFINE_SET_OPERATION
 
-///////////////
-// Polyhedra //
-///////////////
+// A polyhedron can be corefined with:
 
-static sexp octahedron(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+static SCM corefine(SCM s, SCM t)
 {
-    FT a, b, c, d;
-
-    POP_ARGUMENT(args, a);
-    POP_ARGUMENT(args, b);
-    POP_ARGUMENT(args, c);
-
-    if (pop_optional(args, d)) {
-        return to_scheme<Boxed_polyhedron>(ctx, OCTAHEDRON(a, b, c, d));
-    } else {
-        return to_scheme<Boxed_polyhedron>(ctx, OCTAHEDRON(a, b, c));
-    }
-}
-
-static sexp regular_bipyramid(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    FT a, b, c;
-    int k;
-
-    POP_ARGUMENT(args, k);
-    POP_ARGUMENT(args, a);
-    POP_ARGUMENT(args, b);
-
-    if (pop_optional(args, c)) {
-        return to_scheme<Boxed_polyhedron>(ctx, REGULAR_BIPYRAMID(k, a, b, c));
-    } else {
-        return to_scheme<Boxed_polyhedron>(ctx, REGULAR_BIPYRAMID(k, a, b));
-    }
-}
-
-static sexp clip(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    Boxed_polyhedron a;
-    Plane_3 Pi;
-
-    POP_ARGUMENT(args, a);
-    POP_ARGUMENT(args, Pi);
-
-    return to_scheme<Boxed_polyhedron>(
-        ctx, std::visit(PERFORM_POLYHEDRON_CLIP_OPERATION(Pi), a));
-}
-
-static sexp deflate(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    Boxed_polyhedron a;
-
-    POP_ARGUMENT(args, a);
-
-    std::shared_ptr<Vertex_selector> p;
-    pop_optional(args, p, std::shared_ptr<Vertex_selector>(nullptr));
-
-    int m;
-    POP_ARGUMENT(args, m);
-
-    FT w_H, w_M;
-
-    pop_optional(args, w_H, FT(FT::ET(1, 10)));
-    pop_optional(args, w_M, FT(0));
-
-    return std::visit(
-        [&ctx, &p, &m, &w_H, &w_M](auto &&x) {
-            return to_scheme<Boxed_polyhedron>(ctx, DEFLATE(x, p, m, w_H, w_M));
-        }, a);
-}
-
-static sexp color_selection(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    std::variant<std::shared_ptr<Face_selector>,
-                 std::shared_ptr<Vertex_selector>> p;
-
-    Boxed_polyhedron a;
-    POP_ARGUMENT(args, a);
-
-    if (std::shared_ptr<Face_selector> x; pop_optional(args, x)) {
-        p = x;
-    } else if (std::shared_ptr<Vertex_selector> x; pop_optional(args, x)) {
-        p = x;
-    } else {
-        POP_INVALID_ARGUMENT(args, ", expected selector");
+    if (scm_is_eq(t, SCM_UNDEFINED)) {
+        return s;
     }
 
-    FT v[4] = {0, 0, 0, 1};
+    Boxed_polyhedron p;
+    pop_argument(1, s, p);
 
-    if (int n; pop_optional(args, n)) {
-        for (int i = 0; i < 3; i++) {
-            v[i] = (n >> i) & 1;
-        }
+    //   1. another polyhedron, or
+
+    if (Boxed_polyhedron q;
+        try_pop_argument(2, t, q)) {
+        return std::visit(
+            [](auto &&x, auto &&y) {
+                return to_scheme<Boxed_polyhedron>(COREFINE(x, y));
+            }, p, q);
     }
 
-    return std::visit(
-        [&ctx, &v](auto &&x, auto &&y) {
-            return to_scheme<Boxed_polyhedron>(
-                ctx, COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
-        }, a, p);
+    //   2. a plane.
+
+    if (Plane_3 Pi;
+        try_pop_argument(2, t, Pi)) {
+        return std::visit(
+            [&Pi](auto &&x) {
+                return to_scheme<Boxed_polyhedron>(COREFINE(x, Pi));
+            }, p);
+    }
+
+    throw wrong_type_exception(1, s, "polyhedron, or plane-3d");
 }
 
-#define DEFINE_SUBDIVISION_OPERATION(SUFFIX, OP)                \
-static sexp subdivide_ ##SUFFIX(                                \
-    sexp ctx, sexp self, sexp_sint_t n, sexp args)              \
+
+// Subdivision operations take a single polyhedron and an integer
+// number of iterations.
+
+#define DEFINE_SUBDIVISION_OPERATION(NAME_SUFFIX, SUFFIX, OP)   \
+static SCM subdivide_ ##SUFFIX(SCM s, SCM t)                    \
 {                                                               \
     Boxed_polyhedron a;                                         \
-    int m;                                                      \
+    int n;                                                      \
                                                                 \
-    POP_ARGUMENT(args, a);                                      \
-    POP_ARGUMENT(args, m);                                      \
+    pop_argument(1, s, a);                                      \
+    pop_argument(2, t, n);                                      \
                                                                 \
     return std::visit(                                          \
-        [&ctx, &m](auto &&x) {                                  \
-            return to_scheme<Boxed_polyhedron>(ctx, OP(x, m));  \
+        [&n](auto &&x) {                                        \
+            return to_scheme<Boxed_polyhedron>(OP(x, n));       \
         }, a);                                                  \
 }
 
-DEFINE_SUBDIVISION_OPERATION(loop, LOOP)
-DEFINE_SUBDIVISION_OPERATION(catmull_clark, CATMULL_CLARK)
-DEFINE_SUBDIVISION_OPERATION(doo_sabin, DOO_SABIN)
-DEFINE_SUBDIVISION_OPERATION(sqrt_3, SQRT_3)
+DEFINE_SUBDIVISION_OPERATION("loop", loop, LOOP)
+DEFINE_SUBDIVISION_OPERATION("catmull-clark", catmull_clark, CATMULL_CLARK)
+DEFINE_SUBDIVISION_OPERATION("doo-sabin", doo_sabin, DOO_SABIN)
+DEFINE_SUBDIVISION_OPERATION("sqrt-3", sqrt_3, SQRT_3)
 
 #undef DEFINE_SUBDIVISION_OPERATION
 
-#define DEFINE_SIMPLE_MESH_OPERATION(NAME, OP, T)                       \
-static sexp NAME(sexp ctx, sexp self, sexp_sint_t n, sexp args)         \
+
+// All mesh opeations work on polyhedra.  Some of them take an
+// optional selector and a number:
+
+#define DEFINE_MESH_OPERATION(NAME, OP, T)                              \
+static SCM NAME(SCM s, SCM rest)                                        \
 {                                                                       \
     Boxed_polyhedron a;                                                 \
     std::shared_ptr<T> p;                                               \
     FT l;                                                               \
                                                                         \
-    POP_ARGUMENT(args, a);                                              \
-    pop_optional(args, p);                                              \
-    POP_ARGUMENT(args, l);                                              \
+    pop_argument(1, s, a);                                              \
+    int i = 2;                                                          \
+    i += try_pop_argument(i, rest, p);                                  \
+    pop_argument(i, rest, l);                                           \
                                                                         \
     return std::visit(                                                  \
-        [&ctx, &p, &l](auto &&x) {                                      \
-            return to_scheme<Boxed_polyhedron>(ctx, OP(x, p, l));       \
+        [&p, &l](auto &&x) {                                            \
+            return to_scheme<Boxed_polyhedron>(OP(x, p, l));            \
         }, a);                                                          \
 }
 
-DEFINE_SIMPLE_MESH_OPERATION(perturb, PERTURB, Vertex_selector)
-DEFINE_SIMPLE_MESH_OPERATION(refine, REFINE, Face_selector)
+DEFINE_MESH_OPERATION(perturb, PERTURB, Vertex_selector)
+DEFINE_MESH_OPERATION(refine, REFINE, Face_selector)
 
-#undef DEFINE_SIMPLE_MESH_OPERATION
+#undef DEFINE_MESH_OPERATION
 
-static sexp remesh(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    Boxed_polyhedron a;
-    std::shared_ptr<Face_selector> p;
-    std::shared_ptr<Edge_selector> q;
-    FT l;
-    int m;
+// Others take a couple of optional selectors, a number and an
+// integer:
 
-    POP_ARGUMENT(args, a);
-    pop_optional(args, p);
-    pop_optional(args, q);
-    POP_ARGUMENT(args, l);
-    pop_optional(args, m, 1);
-
-    return std::visit(
-        [&ctx, &p, &q, &l, &m](auto &&x) {
-            return to_scheme<Boxed_polyhedron>(ctx, REMESH(x, p, q, l, m));
-        }, a);
+#define DEFINE_MESH_OPERATION(FUNC, OP, T)                              \
+static SCM FUNC(SCM s, SCM rest)                                        \
+{                                                                       \
+    Boxed_polyhedron a;                                                 \
+    std::shared_ptr<Face_selector> p;                                   \
+    std::shared_ptr<T> q;                                               \
+    FT l;                                                               \
+    int n = 1;                                                          \
+                                                                        \
+    pop_argument(1, s, a);                                              \
+                                                                        \
+    int i = 2;                                                          \
+    i += try_pop_argument(i, rest, p);                                  \
+    i += try_pop_argument(i, rest, q);                                  \
+    pop_argument(i, rest, l);                                           \
+    pop_optional(i + 1, rest, n);                                       \
+                                                                        \
+    return std::visit(                                                  \
+        [&p, &q, &l, &n](auto &&x) {                                    \
+            return to_scheme<Boxed_polyhedron>(OP(x, p, q, l, n));      \
+        }, a);                                                          \
 }
 
-static sexp fair(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+DEFINE_MESH_OPERATION(remesh, REMESH, Edge_selector)
+DEFINE_MESH_OPERATION(smooth_shape, SMOOTH_SHAPE, Vertex_selector)
+
+#undef DEFINE_MESH_OPERATION
+
+// And some don't follow any of the preceding patterns.  Fairing
+// requires a selector and takes an optional integer.
+
+static SCM fair(SCM s, SCM t, SCM u)
 {
     Boxed_polyhedron a;
     std::shared_ptr<Vertex_selector> p;
 
-    POP_ARGUMENT(args, a);
-    POP_ARGUMENT(args, p);
+    pop_argument(1, s, a);
+    pop_argument(2, t, p);
 
-    int m;
-    pop_optional(args, m, 1);
+    int m = 1;
+    pop_optional(3, u, m);
 
     return std::visit(
-        [&ctx, &p, &m](auto &&x) {
-            return to_scheme<Boxed_polyhedron>(ctx, FAIR(x, p, m));
+        [&p, &m](auto &&x) {
+            return to_scheme<Boxed_polyhedron>(FAIR(x, p, m));
         }, a);
 }
 
-static sexp smooth_shape(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+// Deflations work on polyhedra.  They also take:
+
+static SCM deflate(SCM s, SCM rest)
 {
     Boxed_polyhedron a;
+    std::shared_ptr<Vertex_selector> p;
 
-    std::shared_ptr<Face_selector> p;
-    std::shared_ptr<Vertex_selector> q;
-    FT t;
+    pop_argument(1, s, a);
+
+    //   1. an optional constraining selector,
+
+    int i = 2;
+    i += try_pop_argument(i, rest, p);
+
+    //   2. an integer number of steps and
+
     int m;
+    pop_argument(i++, rest, m);
 
-    POP_ARGUMENT(args, a);
-    pop_optional(args, p);
-    pop_optional(args, q);
-    POP_ARGUMENT(args, t);
-    pop_optional(args, m, 1);
+    //   3. a couple of optional parameters.
+
+    FT w_H = FT::ET(1, 10), w_M;
+
+    i += pop_optional(i, rest, w_H);
+    pop_optional(i, rest, w_M);
 
     return std::visit(
-        [&ctx, &p, &q, &t, &m](auto &&x) {
-            return to_scheme<Boxed_polyhedron>(
-                ctx, SMOOTH_SHAPE(x, p, q, t, m));
+        [&p, &m, &w_H, &w_M](auto &&x) {
+            return to_scheme<Boxed_polyhedron>(DEFLATE(x, p, m, w_H, w_M));
         }, a);
 }
 
-static sexp deform(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+// Deformations are more complex.  They accept an optional selector
+// for the ROI (defaulting to the whole mesh if omitted) and a number
+// of (select, transformation) pairs.
+
+static SCM deform(SCM s, SCM rest)
 {
     Boxed_polyhedron a;
     std::shared_ptr<Vertex_selector> p, q;
     std::vector<std::pair<std::shared_ptr<Vertex_selector>,
                           Aff_transformation_3>> v;
 
-    POP_ARGUMENT(args, a);
-    pop_optional(args, p);
+    pop_argument(1, s, a);
+
+    // We tentatively pop a selector.  If the next argument is a
+    // transformation, it part of a control pair, otherwise it was the
+    // ROI.
+
+    int i = 2;
+    i += try_pop_argument(i, rest, p);
 
     while (true) {
         Aff_transformation_3 T;
 
-        while (pop_optional(args, q)) {
-            POP_ARGUMENT(args, T);
+        // Now we try to pop control pairs.
+
+        while (try_pop_argument(i, rest, q)) {
+            pop_argument(i + 1, rest, T);
             v.push_back(std::pair(q, T));
+            i += 2;
         }
 
-        // If we read in control selector-transform pairs above, then
-        // the first selector (p) was the ROI and all is well,
-        // otherwise it was the first control region selector and we
-        // need to pop the rest.
+        // If we read in any pairs above, then the first selector
+        // (`p`) was the ROI and all is well, otherwise it was the
+        // first control region selector and we need to pop the rest.
 
         if (!v.empty()) {
             break;
         }
 
-        POP_ARGUMENT(args, T);
+        // Since the first selector (`p`) was a control selector, we
+        // expect a transformation at this point.
+
+        pop_argument(i++, rest, T);
         v.push_back(std::pair(p, T));
 
         p = nullptr;
     }
 
-    FT tau;
-    POP_ARGUMENT(args, tau);
+    // We also have to deal with a couple of numberic parameters.
 
-    unsigned int m;
-    pop_optional(args, m, (tau == 0) ? 10 : std::numeric_limits<unsigned int>::max());
+    FT tau;
+    pop_argument(i++, rest, tau);
+
+    unsigned int m = (tau == 0) ? 10 : std::numeric_limits<unsigned int>::max();
+    pop_optional(i, rest, m);
 
     return std::visit(
-        [&ctx, &p, &v, &tau, &m](auto &&x) {
+        [&p, &v, &tau, &m](auto &&x) {
             return to_scheme<Boxed_polyhedron>(
-                ctx, DEFORM(x, p, std::move(v), tau, m));
+                DEFORM(x, p, std::move(v), tau, m));
         }, a);
 }
 
-static sexp corefine(sexp ctx, sexp self, sexp_sint_t n, sexp args)
+static SCM color_selection(SCM s, SCM t, SCM u)
 {
-    if (sexp_nullp(sexp_cadr(args))) {
-        return sexp_car(args);
-    }
+    std::variant<std::shared_ptr<Face_selector>,
+                 std::shared_ptr<Vertex_selector>> p;
 
-    Boxed_polyhedron p;
-    POP_ARGUMENT(args, p);
+    Boxed_polyhedron a;
+    pop_argument(1, s, a);
 
-    if (Boxed_polyhedron q; pop_optional(args, q)) {
-        return std::visit(
-            [&ctx](auto &&x, auto &&y) {
-                return to_scheme<Boxed_polyhedron>(
-                    ctx, COREFINE(x, y));
-            }, p, q);
-    }
-
-    if (Plane_3 Pi; pop_optional(args, Pi)) {
-        return std::visit(
-            [&ctx, &Pi](auto &&x) {
-                return to_scheme<Boxed_polyhedron>(ctx, COREFINE(x, Pi));
-            }, p);
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected polyhedron, or plane-3d");
-}
-
-static sexp hull(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    std::shared_ptr<Polyhedron_hull_operation> p;
-    std::shared_ptr<Polygon_hull_operation> q;
-
-    while (true) {
-        if (Boxed_polyhedron x; !q && pop_optional(args, x)) {
-            if (!p) {
-                p = std::make_shared<Polyhedron_hull_operation>();
-            }
-
-            std::visit(
-                [&p](auto &&y) {
-                    p->push_back(y);
-                }, x);
-        } else if (Point_3 x; !q && pop_optional(args, x)) {
-            if (!p) {
-                p = std::make_shared<Polyhedron_hull_operation>();
-            }
-
-            p->push_back(x);
-        } else if (Boxed_polygon x; !p && pop_optional(args, x)) {
-            if (!q) {
-                 q = std::make_shared<Polygon_hull_operation>();
-            }
-
-            std::visit(
-                [&q](auto &&y) {
-                    q->push_back(CONVERT_TO<Polygon_set>(y));
-                }, x);
-        } else if (Point_2 x; !p && pop_optional(args, x)) {
-            if (!q) {
-                 q = std::make_shared<Polygon_hull_operation>();
-            }
-
-            q->push_back(x);
-        } else if (sexp_nullp(args)) {
-            return (p
-                    ? to_scheme<Boxed_polyhedron>(ctx, HULL(p))
-                    : to_scheme<Boxed_polygon>(ctx, HULL(q)));
-        } else if (p) {
-            POP_INVALID_ARGUMENT(args, ", expected polyhedron or point-3d");
-        } else if (q) {
-            POP_INVALID_ARGUMENT(args, ", expected polygon or point-2d");
-        } else {
-            POP_INVALID_ARGUMENT(args, ", expected polygon, polyhedron or point");
-        }
-    }
-}
-
-static sexp minkowski_sum(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    if (Boxed_polyhedron x; pop_optional(args, x)) {
-        Boxed_polyhedron y;
-
-        POP_ARGUMENT(args, y);
-
-        return std::visit(
-            [&ctx](auto &&z, auto &&w) {
-                return to_scheme<Boxed_polyhedron>(ctx, MINKOWSKI_SUM(z, w));
-            }, x, y);
-    }
-
-    if (Boxed_polygon x; pop_optional(args, x)) {
-        Boxed_polygon y;
-
-        POP_ARGUMENT(args, y);
-
-        return std::visit(
-            [&ctx](auto &&z, auto &&w) {
-                return to_scheme<Boxed_polygon>(ctx, MINKOWSKI_SUM(z, w));
-            }, x, y);
-    }
-
-    POP_INVALID_ARGUMENT(args, ", expected polygon or polyhedron");
-}
-
-///////////////
-
-#define DEFINE_TYPE(NAME, T)                            \
-{                                                       \
-    sexp_gc_var1(s);                                    \
-    sexp_gc_preserve1(ctx, s);                          \
-    s = sexp_c_string(ctx, NAME, -1);                   \
-    foreign_type<T> =                                   \
-        sexp_register_c_type(ctx, s, finalize<T>);      \
-    sexp_gc_release1(ctx);                              \
-}
-
-#define DEFINE_FOREIGN(NAME, ...)                                       \
-{                                                                       \
-    auto f = __VA_ARGS__;                                               \
-    [[maybe_unused]] sexp s = sexp_define_foreign_proc_rest(            \
-        ctx, env, NAME, 0, reinterpret_cast<void *>(f));                \
-    assert(!sexp_exceptionp(s));                                        \
-}
-
-template <Operation::Message_level L>
-static sexp print(sexp ctx, sexp self, sexp_sint_t n, sexp args)
-{
-    sexp_gc_var1(s);
-    sexp_gc_preserve1(ctx, s);
-
-    while (!sexp_nullp(args)) {
-        sexp t;
-        POP_ARGUMENT(args, t);
-
-        s = sexp_write_to_string(ctx, t);
-        print_message(L, sexp_string_data(s), sexp_string_size(s));
-    }
-
-    sexp_gc_release1(ctx);
-
-    return SEXP_VOID;
-}
-
-static void print_location(sexp l)
-{
-    if (l && sexp_pairp(l)) {
-        if (sexp_stringp(sexp_car(l))) {
-            std::cerr << ANSI_COLOR(1, 31);
-            std::cerr.write(
-                sexp_string_data(sexp_car(l)),
-                sexp_string_size(sexp_car(l)));
-            std::cerr << ANSI_COLOR(0, ) << ':';
-        }
-
-        if (sexp_fixnump(sexp_cdr(l)) && (sexp_cdr(l) >= SEXP_ZERO)) {
-            std::cerr << ANSI_COLOR(1, 37)
-                      << sexp_unbox_fixnum(sexp_cdr(l))
-                      << ANSI_COLOR(0, ) << ':';
-        }
-
-        std::cerr.put(' ');
-    }
-}
-
-static void print_exception(sexp ctx, sexp e)
-{
-    sexp_gc_var2(a, b);
-
-    assert(sexp_exceptionp(e));
-
-    // Unwrap continuable exceptions.
-
-    if ((sexp_exception_kind(e) == sexp_global(ctx, SEXP_G_CONTINUABLE_SYMBOL)
-         && sexp_exceptionp(sexp_exception_irritants(e)))
-        || sexp_exception_kind(e) == SEXP_UNCAUGHT) {
-        return print_exception(ctx, sexp_exception_irritants(e));
-    }
-
-    sexp_gc_preserve2(ctx, a, b);
-
-    a = sexp_exception_source(e);
-    sexp c = sexp_exception_procedure(e);
-    if ((!(a && sexp_pairp(a))) && c && sexp_procedurep(c)) {
-        a = sexp_bytecode_source(sexp_procedure_code(c));
-    }
-
-    if (c) {
-        if (sexp_procedurep(c)) {
-            b = sexp_bytecode_name(sexp_procedure_code(c));
-
-            if (b && sexp_symbolp(b)) {
-                print_location(a);
-
-                b = sexp_symbol_to_string(ctx, b);
-
-                std::cerr << "in procedure: '";
-                std::cerr.write(sexp_string_data(b), sexp_string_size(b));
-                std::cerr << '\'' << std::endl;
-            }
-        } else if (sexp_opcodep(c)) {
-            print_location(a);
-
-            b = sexp_opcode_name(c);
-            assert(sexp_stringp(b));
-
-            std::cerr << "in opcode: '";
-            std::cerr.write(sexp_string_data(b), sexp_string_size(b));
-            std::cerr << '\'' << std::endl;
-        }
-    }
-
-    print_location(a);
-    std::cerr << ANSI_COLOR(1, 31) << "error" << ANSI_COLOR(0, 37) << ": ";
-
-    b = sexp_exception_message(e);
-    if (sexp_stringp(b)) {
-        std::cerr.write(sexp_string_data(b), sexp_string_size(b));
-    } else if (!sexp_nullp(b) && sexp_truep(b)) {
-        b = sexp_write_to_string(ctx, b);
-        std::cerr.write(sexp_string_data(b), sexp_string_size(b));
+    if (std::shared_ptr<Face_selector> x;
+        try_pop_argument(2, t, x)) {
+        p = x;
+    } else if (std::shared_ptr<Vertex_selector> x;
+               try_pop_argument(2, t, x)) {
+        p = x;
     } else {
-        std::cerr << "unhandled exception";
+        throw wrong_type_exception(2, t, "selector");
+    }
 
-        b = sexp_exception_kind(e);
-        if (sexp_symbolp(b)) {
-            b = sexp_symbol_to_string(ctx, b);
+    FT v[4] = {0, 0, 0, 1};
 
-            std::cerr << " of kind '";
-            std::cerr.write(sexp_string_data(b), sexp_string_size(b));
-            std::cerr << "'";
+    if (int n; pop_optional(3, u, n)) {
+        for (int i = 0; i < 3; i++) {
+            v[i] = (n >> i) & 1;
         }
     }
 
-    b = sexp_exception_irritants(e);
-    if (b && sexp_pairp(b)) {
-        std::cerr << ": ";
-
-        while (true) {
-            a = sexp_write_to_string(ctx, sexp_car(b));
-            std::cerr.write(sexp_string_data(a), sexp_string_size(a));
-
-            b = sexp_cdr(b);
-            if (!sexp_nullp(b)) {
-                std::cerr << ", ";
-            } else {
-                break;
-            }
-        };
-    }
-
-    std::cerr << std::endl;
-
-    sexp_gc_release2(ctx);
+    return std::visit(
+        [&v](auto &&x, auto &&y) {
+            return to_scheme<Boxed_polyhedron>(
+                COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+        }, a, p);
 }
 
-static void print_stack_trace(sexp ctx, sexp trace)
+// ## Scheme Library Definitions
+
+// We're now ready to define our Scheme libraries.  This is
+// straightforard enough, except that we need to wrap all functions in
+// a try-catch block as discussed in ref: Handling Scheme Function
+// Arguments.  We use the following template for this purpose.
+
+template <typename T>
+struct function_wrapper;
+
+template <typename R, typename... Args>
+struct function_wrapper<R(* const)(Args...)> {
+    using return_type = R;
+    using argument_types = std::tuple<Args...>;
+
+    template <const char *N, auto F>
+    struct wrapper {
+        static R call(Args... args) {
+            try {
+                return F(std::forward<Args>(args)...);
+            } catch (const wrong_type_exception &e) {
+                scm_wrong_type_arg_msg(
+                    N, e.argnum, e.bad_value, e.expected);
+            } catch (const wrong_num_args_exception &e) {
+                scm_error_num_args_subr(N);
+            }
+
+            assert_not_reached();
+        }
+    };
+};
+
+// Next we define some macros exporting Scheme types and subroutines.
+
+#define DEFINE_FOREIGN_TYPE(NAME, T)                                    \
+    foreign_type<T> = scm_make_foreign_object_type(                     \
+        scm_from_latin1_symbol(NAME),                                   \
+        scm_list_1(scm_from_latin1_symbol("data")),                     \
+        finalize<T>);
+
+#define DEFINE_FOREIGN_PROC(NAME, N, M, L, ...)                         \
+    {                                                                   \
+        static constexpr const char s[] = NAME;                         \
+        constexpr auto f = __VA_ARGS__;                                 \
+        scm_c_define_gsubr(                                             \
+            NAME, N, M, L, reinterpret_cast<scm_t_subr>(                \
+                function_wrapper<decltype(f)>::wrapper<s, f>::call));   \
+        scm_c_export(NAME, NULL);                                       \
+    }
+
+#define DEFINE_FOREIGN_PRIMITIVE(NAME, ...)                             \
+    {                                                                   \
+        static constexpr const char s[] = NAME;                         \
+        constexpr auto f = make_primitive<__VA_ARGS__>;                 \
+                                                                        \
+        scm_c_define_gsubr(                                             \
+            s, 0, 0, 1,                                                 \
+            reinterpret_cast<scm_t_subr>(                               \
+                function_wrapper<decltype(f)>::wrapper<s, f>::call));   \
+        scm_c_export(s, NULL);                                          \
+    }
+
+// Finally we define functions exporting the core symbols for each
+// library.  These are then further augmented in Scheme code located
+// in `scheme/gamma/*.sld` files.
+
+static void define_base(void *)
 {
-    sexp s;
+    DEFINE_FOREIGN_PROC(
+        "set-projection-tolerance!", 0, 1, 0,
+        set_tolerance<Tolerances::projection>);
+    DEFINE_FOREIGN_PROC(
+        "set-curve-tolerance!", 0, 1, 0,
+        set_tolerance<Tolerances::curve>);
+    DEFINE_FOREIGN_PROC(
+        "set-sine-tolerance!", 0, 1, 0,
+        set_tolerance<Tolerances::sine>);
 
-    std::cerr << std::endl;
+    DEFINE_FOREIGN_PROC("%define-option", 2, 0, 0, define_option);
+    DEFINE_FOREIGN_PROC("output", 0, 0, 1, output);
+    DEFINE_FOREIGN_PROC("point", 2, 1, 0, point);
+    DEFINE_FOREIGN_PRIMITIVE("plane", plane, Plane_3, 4);
 
-    for (int i = 0; sexp_pairp(trace); trace = sexp_cdr(trace), i++) {
-        s = sexp_cdar(trace);
+    DEFINE_FOREIGN_TYPE("point-2d", Point_2);
+    DEFINE_FOREIGN_TYPE("point-3d", Point_3);
+    DEFINE_FOREIGN_TYPE("plane-3d", Plane_3);
 
-        std::cerr << "#" << i << ' ';
+    DEFINE_FOREIGN_TYPE("transformation-2d", Aff_transformation_2);
+    DEFINE_FOREIGN_TYPE("transformation-3d", Aff_transformation_3);
 
-        if (sexp t = sexp_bytecode_name(sexp_procedure_code(sexp_caar(trace)));
-            sexp_symbolp(t)) {
-            t = sexp_symbol_to_string(ctx, t);
+    DEFINE_FOREIGN_TYPE("bounding-volume", std::shared_ptr<Bounding_volume>);
 
-            std::cerr << "in " << ANSI_COLOR(0, 33) << '\'';
-            std::cerr.write(sexp_string_data(t), sexp_string_size(t));
-            std::cerr << '\'' << ANSI_COLOR(0, );
+    DEFINE_FOREIGN_TYPE("face-selector", std::shared_ptr<Face_selector>);
+    DEFINE_FOREIGN_TYPE("vertex-selector", std::shared_ptr<Vertex_selector>);
+    DEFINE_FOREIGN_TYPE("edge-selector", std::shared_ptr<Edge_selector>);
 
-            if (sexp_pairp(s)) {
-                std::cerr << ", ";
-            }
-        }
-
-        if (sexp_pairp(s)) {
-            if (sexp t = sexp_car(s); sexp_stringp(t)) {
-                std::cerr << ANSI_COLOR(1, 37);
-                std::cerr.write(sexp_string_data(t), sexp_string_size(t));
-                std::cerr << ANSI_COLOR(0, ) << ':';
-            }
-
-            if (sexp t = sexp_cdr(s); sexp_fixnump(t) && (t >= SEXP_ZERO)) {
-                std::cerr << ANSI_COLOR(1, 37);
-                std::cerr << sexp_unbox_fixnum(t);
-                std::cerr << ANSI_COLOR(0, );
-            }
-        }
-
-        std::cerr << std::endl;
-    }
+    DEFINE_FOREIGN_TYPE("polygon", Boxed_polygon);
+    DEFINE_FOREIGN_TYPE("polyhedron", Boxed_polyhedron);
 }
 
-sexp init_base(
-    sexp ctx, sexp self, sexp_sint_t n, sexp env,
-    const char *version, const sexp_abi_identifier_t abi) {
-
-    DEFINE_FOREIGN(
-        "set-projection-tolerance!", set_tolerance<Tolerances::projection>);
-    DEFINE_FOREIGN(
-        "set-curve-tolerance!", set_tolerance<Tolerances::curve>);
-    DEFINE_FOREIGN(
-        "set-sine-tolerance!", set_tolerance<Tolerances::sine>);
-
-    sexp_define_foreign_proc_rest(
-        ctx, env, "%define-option", 2, reinterpret_cast<void *>(define_option));
-    DEFINE_FOREIGN("output", output);
-    DEFINE_FOREIGN("point", point);
-    DEFINE_FOREIGN("plane", make_primitive<plane, Plane_3, 4>);
-
-    return SEXP_VOID;
+static void define_write(void *)
+{
+    DEFINE_FOREIGN_PROC(
+        "print-note", 0, 0, 1, print_message<Operation::NOTE>);
+    DEFINE_FOREIGN_PROC(
+        "print-warning", 0, 0, 1, print_message<Operation::WARNING>);
+    DEFINE_FOREIGN_PROC(
+        "print-error", 0, 0, 1, print_message<Operation::ERROR>);
 }
 
-sexp init_transformation(
-    sexp ctx, sexp self, sexp_sint_t n, sexp env,
-    const char *version, const sexp_abi_identifier_t abi) {
-    DEFINE_FOREIGN("translation", transformation_2_3<TRANSLATION_3, TRANSLATION_2>);
-    DEFINE_FOREIGN("scaling", transformation_2_3<SCALING_3, SCALING_2>);
+static void define_transformation(void *)
+{
+    DEFINE_FOREIGN_PROC(
+        "translation", 2, 1, 0,
+        translation_2_3<TRANSLATION_3, TRANSLATION_2>);
+    DEFINE_FOREIGN_PROC(
+        "scaling", 2, 1, 0,
+        scaling_2_3<SCALING_3, SCALING_2>);
+    DEFINE_FOREIGN_PROC("rotation", 1, 0, 1, rotation);
 
-    DEFINE_FOREIGN("rotation", rotation);
-    DEFINE_FOREIGN("transformation-apply", transformation_apply);
+    DEFINE_FOREIGN_PROC("transformation-apply", 1, 1, 0, transformation_apply);
 
-    DEFINE_FOREIGN("flush", flush);
-    DEFINE_FOREIGN("flush-south", flush_south);
-    DEFINE_FOREIGN("flush-north", flush_north);
-    DEFINE_FOREIGN("flush-east", flush_east);
-    DEFINE_FOREIGN("flush-west", flush_west);
-    DEFINE_FOREIGN("flush-bottom", flush_bottom);
-    DEFINE_FOREIGN("flush-top", flush_top);
-
-    return SEXP_VOID;
+    DEFINE_FOREIGN_PROC("flush", 3, 1, 0, flush);
 }
 
-sexp init_volumes(
-    sexp ctx, sexp self, sexp_sint_t n, sexp env,
-    const char *version, const sexp_abi_identifier_t abi) {
-    DEFINE_FOREIGN(
-        "bounding-plane", make_primitive<BOUNDING_PLANE<>,
-                                         std::shared_ptr<Bounding_volume>, 4>);
-    DEFINE_FOREIGN(
-        "bounding-halfspace", make_primitive<BOUNDING_HALFSPACE<>,
-                                             std::shared_ptr<Bounding_volume>, 4>);
+static void define_volumes(void *)
+{
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-plane", BOUNDING_PLANE<>,
+        std::shared_ptr<Bounding_volume>, 4);
 
-    DEFINE_FOREIGN(
-        "bounding-halfspace-interior", make_primitive<BOUNDING_HALFSPACE_INTERIOR<>,
-                                             std::shared_ptr<Bounding_volume>, 4>);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-halfspace", BOUNDING_HALFSPACE<>,
+        std::shared_ptr<Bounding_volume>, 4);
 
-    DEFINE_FOREIGN(
-        "bounding-box", make_primitive<BOUNDING_BOX<>,
-                                       std::shared_ptr<Bounding_volume>, 3>);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-halfspace-interior", BOUNDING_HALFSPACE_INTERIOR<>,
+        std::shared_ptr<Bounding_volume>, 4);
 
-    DEFINE_FOREIGN(
-        "bounding-box-boundary", make_primitive<BOUNDING_BOX_BOUNDARY<>,
-                                       std::shared_ptr<Bounding_volume>, 3>);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-box", BOUNDING_BOX<>,
+        std::shared_ptr<Bounding_volume>, 3);
 
-    DEFINE_FOREIGN(
-        "bounding-box-interior", make_primitive<BOUNDING_BOX_INTERIOR<>,
-                                       std::shared_ptr<Bounding_volume>, 3>);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-box-boundary", BOUNDING_BOX_BOUNDARY<>,
+        std::shared_ptr<Bounding_volume>, 3);
 
-    DEFINE_FOREIGN(
-        "bounding-sphere", make_primitive<BOUNDING_SPHERE<>,
-                                          std::shared_ptr<Bounding_volume>, 1>);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-box-interior", BOUNDING_BOX_INTERIOR<>,
+        std::shared_ptr<Bounding_volume>, 3);
 
-    DEFINE_FOREIGN(
-        "bounding-sphere-boundary", make_primitive<BOUNDING_SPHERE_BOUNDARY<>,
-                                          std::shared_ptr<Bounding_volume>, 1>);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-sphere", BOUNDING_SPHERE<>,
+        std::shared_ptr<Bounding_volume>, 1);
 
-    DEFINE_FOREIGN(
-        "bounding-sphere-interior", make_primitive<BOUNDING_SPHERE_INTERIOR<>,
-                                          std::shared_ptr<Bounding_volume>, 1>);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-sphere-boundary", BOUNDING_SPHERE_BOUNDARY<>,
+        std::shared_ptr<Bounding_volume>, 1);
 
-    DEFINE_FOREIGN(
+    DEFINE_FOREIGN_PRIMITIVE(
+        "bounding-sphere-interior", BOUNDING_SPHERE_INTERIOR<>,
+        std::shared_ptr<Bounding_volume>, 1);
+
+    DEFINE_FOREIGN_PRIMITIVE(
         "bounding-cylinder",
-        make_primitive<BOUNDING_CYLINDER<>,
-                      std::shared_ptr<Bounding_volume>, 2>);
+        BOUNDING_CYLINDER<>,
+        std::shared_ptr<Bounding_volume>, 2);
 
-    DEFINE_FOREIGN(
+    DEFINE_FOREIGN_PRIMITIVE(
         "bounding-cylinder-boundary",
-        make_primitive<BOUNDING_CYLINDER_BOUNDARY<>,
-                      std::shared_ptr<Bounding_volume>, 2>);
+        BOUNDING_CYLINDER_BOUNDARY<>,
+        std::shared_ptr<Bounding_volume>, 2);
 
-    DEFINE_FOREIGN(
+    DEFINE_FOREIGN_PRIMITIVE(
         "bounding-cylinder-interior",
-        make_primitive<BOUNDING_CYLINDER_INTERIOR<>,
-                      std::shared_ptr<Bounding_volume>, 2>);
-
-    return SEXP_VOID;
+        BOUNDING_CYLINDER_INTERIOR<>,
+        std::shared_ptr<Bounding_volume>, 2);
 }
 
-sexp init_selection(
-    sexp ctx, sexp self, sexp_sint_t n, sexp env,
-    const char *version, const sexp_abi_identifier_t abi) {
-    DEFINE_FOREIGN("vertices-in", vertices_in);
-    DEFINE_FOREIGN("faces-in", faces_in);
-    DEFINE_FOREIGN("faces-partially-in", faces_partially_in);
-    DEFINE_FOREIGN("edges-in", edges_in);
-    DEFINE_FOREIGN("edges-partially-in", edges_partially_in);
+static void define_selection(void *)
+{
+    DEFINE_FOREIGN_PROC("vertices-in", 1, 0, 0, vertices_in);
+    DEFINE_FOREIGN_PROC("faces-in", 1, 0, 0, faces_in);
+    DEFINE_FOREIGN_PROC("faces-partially-in", 1, 0, 0, faces_partially_in);
+    DEFINE_FOREIGN_PROC("edges-in", 1, 0, 0, edges_in);
+    DEFINE_FOREIGN_PROC("edges-partially-in", 1, 0, 0, edges_partially_in);
 
-    DEFINE_FOREIGN("expand-selection", relative_selection<1>);
-    DEFINE_FOREIGN("contract-selection", relative_selection<-1>);
-
-    return SEXP_VOID;
+    DEFINE_FOREIGN_PROC("expand-selection", 2, 0, 0, relative_selection<+1>);
+    DEFINE_FOREIGN_PROC("contract-selection", 2, 0, 0, relative_selection<-1>);
+    DEFINE_FOREIGN_PROC("complement", 1, 0, 0, complement);
 }
 
-sexp init_polygons(
-    sexp ctx, sexp self, sexp_sint_t n, sexp env,
-    const char *version, const sexp_abi_identifier_t abi) {
-    DEFINE_FOREIGN("simple-polygon", ngon);
-    DEFINE_FOREIGN("regular-polygon",
-                   make_primitive<REGULAR_POLYGON<>, Boxed_polygon, int, FT>);
-
-    DEFINE_FOREIGN(
-        "isosceles-triangle", make_primitive<ISOSCELES_TRIANGLE<>,
-        Boxed_polygon, 2>);
-    DEFINE_FOREIGN(
-        "right-triangle", make_primitive<RIGHT_TRIANGLE<>,
-        Boxed_polygon, 2>);
-    DEFINE_FOREIGN("rectangle", make_primitive<RECTANGLE<>, Boxed_polygon, 2>);
-    DEFINE_FOREIGN("circle", make_primitive<CIRCLE<>, Boxed_polygon, 1>);
-    DEFINE_FOREIGN("circular-sector",
-                   make_primitive<CIRCULAR_SECTOR<>, Boxed_polygon, 2>);
-    DEFINE_FOREIGN("circular-segment",
-                   make_primitive<CIRCULAR_SEGMENT<>, Boxed_polygon, 2>);
-    DEFINE_FOREIGN("ellipse", make_primitive<ELLIPSE<>, Boxed_polygon, 2>);
-    DEFINE_FOREIGN("elliptic-sector",
-                   make_primitive<ELLIPTIC_SECTOR<>, Boxed_polygon, 3>);
-
-    return SEXP_VOID;
+static void define_polygons(void *)
+{
+    DEFINE_FOREIGN_PROC("simple-polygon", 3, 0, 1, simple_polygon);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "regular-polygon", REGULAR_POLYGON<>, Boxed_polygon, int, FT);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "isosceles-triangle", ISOSCELES_TRIANGLE<>, Boxed_polygon, 2);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "right-triangle", RIGHT_TRIANGLE<>, Boxed_polygon, 2);
+    DEFINE_FOREIGN_PRIMITIVE("rectangle", RECTANGLE<>, Boxed_polygon, 2);
+    DEFINE_FOREIGN_PRIMITIVE("circle", CIRCLE<>, Boxed_polygon, 1);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "circular-sector", CIRCULAR_SECTOR<>, Boxed_polygon, 2);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "circular-segment", CIRCULAR_SEGMENT<>, Boxed_polygon, 2);
+    DEFINE_FOREIGN_PRIMITIVE("ellipse", ELLIPSE<>, Boxed_polygon, 2);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "elliptic-sector", ELLIPTIC_SECTOR<>, Boxed_polygon, 3);
 }
 
-sexp init_polyhedra(
-    sexp ctx, sexp self, sexp_sint_t n, sexp env,
-    const char *version, const sexp_abi_identifier_t abi) {
-    DEFINE_FOREIGN("tetrahedron",
-                   make_primitive<TETRAHEDRON<>, Boxed_polyhedron, 3>);
-    DEFINE_FOREIGN("square-pyramid",
-                   make_primitive<SQUARE_PYRAMID<>, Boxed_polyhedron, 3>);
-    DEFINE_FOREIGN("octahedron", octahedron);
-    DEFINE_FOREIGN(
-        "regular-pyramid",
-        make_primitive<REGULAR_PYRAMID<>, Boxed_polyhedron, int, FT, FT>);
-    DEFINE_FOREIGN("regular-bipyramid", regular_bipyramid);
-    DEFINE_FOREIGN("cuboid", make_primitive<CUBOID<>, Boxed_polyhedron, 3>);
-    DEFINE_FOREIGN("icosahedron",
-                   make_primitive<ICOSAHEDRON<>, Boxed_polyhedron, 1>);
-    DEFINE_FOREIGN("sphere", make_primitive<SPHERE<>, Boxed_polyhedron, 1>);
-    DEFINE_FOREIGN("cylinder", make_primitive<CYLINDER<>, Boxed_polyhedron, 2>);
-    DEFINE_FOREIGN(
-        "prism", make_primitive<PRISM<>, Boxed_polyhedron, int, FT, FT>);
+static void define_polyhedra(void *)
+{
+    DEFINE_FOREIGN_PROC("octahedron", 3, 1, 0, octahedron);
+    DEFINE_FOREIGN_PROC("regular-bipyramid", 3, 1, 0, regular_bipyramid);
 
-    return SEXP_VOID;
+    DEFINE_FOREIGN_PRIMITIVE(
+        "tetrahedron", TETRAHEDRON<>, Boxed_polyhedron, 3);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "square-pyramid", SQUARE_PYRAMID<>, Boxed_polyhedron, 3);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "regular-pyramid", REGULAR_PYRAMID<>, Boxed_polyhedron, int, FT, FT);
+    DEFINE_FOREIGN_PRIMITIVE("cuboid", CUBOID<>, Boxed_polyhedron, 3);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "icosahedron", ICOSAHEDRON<>, Boxed_polyhedron, 1);
+    DEFINE_FOREIGN_PRIMITIVE("sphere", SPHERE<>, Boxed_polyhedron, 1);
+    DEFINE_FOREIGN_PRIMITIVE("cylinder", CYLINDER<>, Boxed_polyhedron, 2);
+    DEFINE_FOREIGN_PRIMITIVE("prism", PRISM<>, Boxed_polyhedron, int, FT, FT);
 }
 
-sexp init_operations(
-    sexp ctx, sexp self, sexp_sint_t n, sexp env,
-    const char *version, const sexp_abi_identifier_t abi) {
-    DEFINE_FOREIGN(
-        "offset", make_primitive<offset, Boxed_polygon, Boxed_polygon, FT>);
 
-    DEFINE_FOREIGN("extrusion", extrusion);
-    DEFINE_FOREIGN("hull", hull);
-    DEFINE_FOREIGN("minkowski-sum", minkowski_sum);
+static void define_operations(void *)
+{
+    DEFINE_FOREIGN_PRIMITIVE(
+        "offset", offset, Boxed_polygon, Boxed_polygon, FT);
 
-    DEFINE_FOREIGN("union", union_any);
-    DEFINE_FOREIGN("difference", difference_any);
-    DEFINE_FOREIGN("intersection", intersection_any);
-    DEFINE_FOREIGN("complement", complement);
-    DEFINE_FOREIGN("boundary", boundary);
-    DEFINE_FOREIGN("clip", clip);
-    DEFINE_FOREIGN("deflate", deflate);
+    DEFINE_FOREIGN_PROC("extrusion", 1, 0, 1, extrusion);
+    DEFINE_FOREIGN_PROC("hull", 0, 0, 1, hull);
+    DEFINE_FOREIGN_PROC("minkowski-sum", 2, 0, 0, minkowski_sum);
 
-    DEFINE_FOREIGN("color-selection", color_selection);
-    DEFINE_FOREIGN("subdivide-catmull-clark", subdivide_catmull_clark);
-    DEFINE_FOREIGN("subdivide-doo-sabin", subdivide_doo_sabin);
-    DEFINE_FOREIGN("subdivide-loop", subdivide_loop);
-    DEFINE_FOREIGN("subdivide-sqrt-3", subdivide_sqrt_3);
-    DEFINE_FOREIGN("remesh", remesh);
-    DEFINE_FOREIGN("perturb", perturb);
-    DEFINE_FOREIGN("refine", refine);
-    DEFINE_FOREIGN("fair", fair);
-    DEFINE_FOREIGN("smooth-shape", smooth_shape);
-    DEFINE_FOREIGN("deform", deform);
-    DEFINE_FOREIGN("corefine", corefine);
+    DEFINE_FOREIGN_PROC("subdivide-catmull-clark",
+                        2, 0, 0, subdivide_catmull_clark);
+    DEFINE_FOREIGN_PROC("subdivide-doo-sabin", 2, 0, 0, subdivide_doo_sabin);
+    DEFINE_FOREIGN_PROC("subdivide-loop", 2, 0, 0, subdivide_loop);
+    DEFINE_FOREIGN_PROC("subdivide-sqrt-3", 2, 0, 0, subdivide_sqrt_3);
 
-    return SEXP_VOID;
+    DEFINE_FOREIGN_PROC("union", 1, 0, 1, union_any);
+    DEFINE_FOREIGN_PROC("difference", 1, 0, 1, difference_any);
+    DEFINE_FOREIGN_PROC("intersection", 1, 0, 1, intersection_any);
+    DEFINE_FOREIGN_PROC("boundary", 1, 0, 0, boundary);
+    DEFINE_FOREIGN_PROC("clip", 2, 0, 0, clip);
+    DEFINE_FOREIGN_PROC("corefine", 2, 0, 0, corefine);
+
+    DEFINE_FOREIGN_PROC("perturb", 1, 0, 1, perturb);
+    DEFINE_FOREIGN_PROC("refine", 1, 0, 1, refine);
+    DEFINE_FOREIGN_PROC("remesh", 1, 0, 1, remesh);
+    DEFINE_FOREIGN_PROC("smooth-shape", 1, 0, 1, smooth_shape);
+    DEFINE_FOREIGN_PROC("fair", 2, 1, 0, fair);
+    DEFINE_FOREIGN_PROC("deform", 1, 0, 1, deform);
+    DEFINE_FOREIGN_PROC("deflate", 1, 0, 1, deflate);
+
+    DEFINE_FOREIGN_PROC("color-selection", 2, 1, 0, color_selection);
 }
 
-sexp init_write(
-    sexp ctx, sexp self, sexp_sint_t n, sexp env,
-    const char *version, const sexp_abi_identifier_t abi) {
-    DEFINE_FOREIGN("print-note", print<Operation::NOTE>);
-    DEFINE_FOREIGN("print-warning", print<Operation::WARNING>);
-    DEFINE_FOREIGN("print-error", print<Operation::ERROR>);
+#undef DEFINE_FOREIGN_TYPE
+#undef DEFINE_FOREIGN_PROC
+#undef DEFINE_FOREIGN_PRIMITIVE
 
-    return SEXP_VOID;
+// ## Error Handling
+
+// When Guile encounters an error, it throws an appropriate exception.
+// We want to report this error to the user and, if it is not
+// recoverable, clean up and abort the execution.  To this end, we run
+// user code through `with-exception-handler` which invokes an
+// exception handler on error, crucially, before the stack is unwound,
+// allowing us to print information about the error, including a stack
+// trace.
+
+// The details are a bit more involved of course.  In any case, if
+// there is an error, we're going to want to display information about
+// where the error occured and what the matter was.  We turn to this
+// first.
+
+// ### Reporting Errors
+
+// We want to have a uniform way of printing out errors and warnings,
+// regardless of language front end, so we can't just invoke Guile's
+// functions for printing exception information and stack traces.  We
+// have to make our own.
+
+// The functions below print messages of the form:
+
+// ```
+// foo.scm:7:3: in procedure 'foo':
+// foo.scm:7:3: error: Unbound variable: bar
+// ```
+
+static void print_location(SCM s, SCM port)
+{
+    scm_puts(ANSI_COLOR(1, 37), port);
+    scm_display(scm_cadr(s), port);
+    scm_puts(ANSI_COLOR(0, ), port);
+    scm_putc(':', port);
+    scm_puts(ANSI_COLOR(1, 37), port);
+
+    // anchor: comment in `print_location`
+    // Lifted from the Guile sources:
+
+    //   > Lines are zero-indexed inside Guile, but users expect them
+    //   > to be one-indexed. Columns, on the other hand, are
+    //   > zero-indexed to both. Go figure.
+
+    scm_display(scm_oneplus(scm_caddr(s)), port);
+    scm_puts(ANSI_COLOR(0, ), port);
+    scm_putc(':', port);
+    scm_puts(ANSI_COLOR(1, 37), port);
+    scm_display(scm_cdddr(s), port);
+    scm_puts(ANSI_COLOR(0, ), port);
+    scm_puts(": ", port);
+}
+
+static void print_procedure(SCM s, SCM port)
+{
+    scm_puts("in procedure '", port);
+    scm_puts(ANSI_COLOR(0, 33), port);
+    scm_display(scm_symbol_to_string(s), port);
+    scm_puts(ANSI_COLOR(0, 37), port);
+    scm_putc('\'', port);
+}
+
+// In what follows, we need to make numerous calls to procedures
+// provided by Guile.  The macros below facilitate this.
+
+#define CALL(N, MOD, NAME, ...)                                 \
+scm_call_## N(scm_c_public_ref(MOD, NAME), ##__VA_ARGS__)
+
+#define CALL_G(N, NAME, ...) CALL(N, "guile", NAME, ##__VA_ARGS__)
+#define CALL_X(N, NAME, ...) CALL(N, "ice-9 exceptions", NAME, ##__VA_ARGS__)
+
+// To provide information about the details of the exception itself,
+// we need to consider each exception type separately.
+
+static void print_exception_message(SCM exn, SCM port)
+{
+    // Syntax errors contain information about the form in which they
+    // are detected and, usually, a message.
+
+    if (scm_is_true(CALL_X(1, "syntax-error?", exn))) {
+        SCM a = CALL_X(1, "syntax-error-form", exn);
+        SCM b = CALL_X(1, "syntax-error-subform", exn);
+
+        scm_puts("in ", port);
+        scm_write(a, port);
+
+        if (!scm_is_false(b)) {
+            scm_puts(", at ", port);
+            scm_write(b, port);
+        }
+
+        scm_puts(": ", port);
+
+        if (scm_is_true(
+                CALL_X(1, "exception-with-message?", exn))) {
+            SCM c = CALL_X(1, "exception-message", exn);
+
+            scm_display(c, port);
+        } else {
+            scm_puts("syntax error", port);
+        }
+    } else if (scm_is_true(
+                   CALL_X(1, "exception-with-message?", exn))) {
+        // There are many other kinds of exceptions, but we're only
+        // concerned with whether they have a message for the user.
+
+        SCM a = CALL_X(1, "exception-message", exn);
+
+        // When they do, they usually follow the convention that the
+        // message is a format string, which yields the full message
+        // when applied to a list of values called the irritants (at
+        // least Guile's exceptions do).
+
+        if (scm_is_true(
+                CALL_X(1, "exception-with-irritants?", exn))) {
+            SCM b = CALL_X(1, "exception-irritants", exn);
+
+            std::pair<SCM, SCM> ab = {a, b};
+
+            // This may not always be the case, so when irritants are
+            // provided, we first try to combine them with the message
+            // through `scm_simple_format`.
+
+            if (SCM c = scm_internal_catch(
+                    SCM_BOOL_T,
+                    [](void *data) -> SCM {
+                        auto *p = static_cast<std::pair<SCM, SCM> *>(data);
+                        return scm_simple_format(
+                            SCM_BOOL_F, p->first, p->second);
+                    },
+                    static_cast<void *>(&ab),
+                    [](void *data, SCM key, SCM args) {
+                        return SCM_BOOL_F;
+                    },
+                    nullptr);
+                scm_is_string(c)) {
+                scm_display(c, port);
+            } else {
+                // If this fails, we just print message and irritants
+                // separately.
+
+                scm_display(a, port);
+                scm_c_put_latin1_chars(
+                    port, reinterpret_cast<const uint8_t *>(" "), 1);
+                scm_write(b, port);
+            }
+        } else {
+            // Naturally, when all we have is a message, we just print
+            // it.
+
+            scm_display(a, port);
+        }
+    } else {
+        // Finally, if an exception doesn't even have a message, we
+        // just print the exception as a Scheme value and hope it
+        // makes sense.
+
+        scm_c_put_latin1_chars(
+            port,
+            reinterpret_cast<const uint8_t *>("caught exception "), 17);
+        scm_display(exn, port);
+    }
+
+    scm_newline(port);
+}
+
+// ### Catching Errors
+
+// Returning from an exception handler continues the execution of the
+// program from the point the exception was raised, if the exception
+// was continuable.  If it was not continuable Guile raises a plain
+// non-continuable exception "in the same dynamic environment as the
+// handler".
+
+// This means that the handler that that just exited won't handle the
+// newly raised exception (and justly so, as it could lead to an
+// infinite loop.
+
+// We therefore wrap the loading code inside two handlers: the inner
+// handler displays errors with backtrace and exits.  If the exception
+// was not continuable the outer handler catches the exception raised
+// as a result by Guile and aborts.
+
+static SCM outer_handler(SCM exn)
+{
+    // If the exception we caught was not the plain `&non-continuable`
+    // exception raised by Guile's runtime, then an exception occured
+    // within the inner handler.  This shouldn't happen, but if it
+    // does, print it for debugging purposes (debugging of the inner
+    // handler that is).
+
+    if (scm_is_false(
+            scm_equal_p(
+                exn,
+                CALL_X(0, "make-non-continuable-error")))) {
+        SCM s = scm_current_error_port();
+
+        scm_newline(s);
+        scm_puts("Exception in exception handler:\n", s);
+        print_exception_message(exn, s);
+        scm_newline(s);
+    }
+
+    // Now abort to the prompt's handler.  See below for more details.
+
+    return CALL_G(
+        2, "abort-to-prompt", scm_from_latin1_symbol("%gamma-prompt-tag"),
+        SCM_BOOL_F);
+}
+
+static SCM inner_handler(SCM exn)
+{
+#if 0
+    scm_display(exn, scm_current_error_port());
+    scm_newline(scm_current_error_port());
+#endif
+
+    // The stack trace at the point the exception was raised will have
+    // a couple of frames (literally 2) from the exception handler at
+    // the top, followed by some frames from the executing program and
+    // finally a bunch of frames from Guile's runtime at the bottom.
+
+    // We're only interested in the middle section, so we shave the
+    // two top frames explicitly.  Discarding the bottom frames is
+    // more tricky, but the best way seems to be to run the user code
+    // within a *prompt*.  Prompts have many uses no doubt, but we
+    // mainly use them to delimit the part of the stack that belongs
+    // to the user's program.  We also abort to the prompt on error,
+    // as a way to terminate execution an return control to C++.
+
+    SCM s = scm_make_stack(
+        SCM_BOOL_T,
+        scm_list_2(
+            scm_from_int(2), scm_from_latin1_symbol("%gamma-prompt-tag")));
+    SCM t = scm_current_error_port();
+    const int n = scm_to_int(scm_stack_length(s));
+
+#if 0
+    scm_display_backtrace(s, scm_current_error_port(), SCM_BOOL_F, SCM_BOOL_F);
+    scm_newline(scm_current_error_port());
+    return SCM_UNSPECIFIED;
+#endif
+
+    // Now we go through the frames and:
+
+    for (int i = 0; i < n; i++) {
+        SCM u = scm_stack_ref(s, scm_from_int(i));
+        SCM v = scm_frame_source(u);
+        SCM w = scm_frame_procedure_name(u);
+
+        //   1. on the first frame, we print its location in full,
+        //   followed by the exception's message and
+
+        if (i == 0) {
+            if (scm_is_true(w)) {
+                if (scm_is_true(v)) {
+                    print_location(v, t);
+                }
+
+                print_procedure(w, t);
+                scm_puts(":\n", t);
+            }
+
+            if (scm_is_true(v)) {
+                print_location(v, t);
+            }
+
+            if (scm_is_true(CALL_X(1, "warning?", exn))) {
+                scm_puts(ANSI_COLOR(1, 33), t);
+                scm_puts("warning", t);
+            } else {
+                scm_puts(ANSI_COLOR(0, 31), t);
+                scm_puts("error", t);
+            }
+
+            scm_puts(ANSI_COLOR(0, 37), t);
+            scm_puts(": ", t);
+
+            // Format and print the exception message.
+
+            print_exception_message(exn, t);
+            scm_newline(t);
+        }
+
+        //   2. for all frames, we print a trace of the frame in the
+        //   form:
+
+        //   ```
+        //   #0 in procedure 'foo', at foo.scm:7:3: (foo)
+        //   #1 at foo.scm:8:17: (_)
+        //   #2 at ice-9/boot-9.scm:4408:12: (_)
+        //   ...
+        //   ```
+
+        scm_write_char(scm_integer_to_char(scm_from_char('#')), t);
+        scm_write(scm_from_int(i), t);
+        scm_write_char(scm_integer_to_char(scm_from_char(' ')), t);
+
+        if (scm_is_true(w)) {
+            print_procedure(w, t);
+
+            if (scm_is_true(v)) {
+                scm_puts(", ", t);
+            }
+        }
+
+        if (scm_is_true(v)) {
+            scm_puts("at ", t);
+            print_location(v, t);
+        } else if (scm_is_true(w)) {
+            scm_puts(": ", t);
+        }
+
+        scm_write(scm_frame_call_representation(u), t);
+        scm_newline(t);
+    }
+
+    return SCM_UNSPECIFIED;
+}
+
+#undef CALL
+#undef CALL_G
+#undef CALL_X
+
+// ## The Scheme Evaluation Environment
+
+// We will use `scm_with_guile` to run the code that initializes Guile
+// and runs a Scheme program.  This function accepts a callback
+// (`run_scheme_with_guile` below), so we need a way to pass it the
+// relevant information (i.e. what file to execute and any command
+// line arguments specified for it by the user.
+
+// We use the following struct for that.
+
+struct context {
+    char *input, **first, **last;
+    int result;
+};
+
+static void *run_scheme_with_guile(void *data)
+{
+    // We may be called upon to evaluate user programs more than once
+    // (for instance, if the user specified more than one Scheme
+    // programs on the command line).  Some parts of the
+    // initialization, will only need to be carried out the first
+    // time.
+
+    static bool initialized;
+
+    // First we configure the library search path.  We assemble a set
+    // of suitable calls to `add-to-load-path` and evaluate them
+    // below.  We do this every time and not just on first
+    // initialization, because the user may have specified more
+    // library paths since the previous invocation (e.g. with
+    // something like `... -L ./foo foo.scm -L ./bar bar.scm ...`.
+
+    // Note that add-to-load-path takes care of deduplicating the list
+    // of load paths, so we need not worry about adding an entry more
+    // than once.
+
+    SCM s = SCM_EOL;
+
+    for (const auto &x: Options::library_directories) {
+        s = scm_cons(
+            scm_list_2(
+                scm_from_latin1_symbol("add-to-load-path"),
+                scm_from_latin1_string(x.c_str())), s);
+    }
+
+    // We mostly need this call to `install-r7rs!` to set up
+    // `%load-extensions` to support libraries in `.sld` files.  We
+    // only need to do this once.
+
+    if (!initialized) {
+        s = scm_cons(scm_list_1(scm_from_latin1_symbol("install-r7rs!")), s);
+    }
+
+    // Guile has a tendency to spam the terminal with warnings that
+    // will not likely interest most users.  Redirect them to
+    // `/dev/null` if requested, before any evaluation takes place.
+
+    scm_set_current_warning_port(
+        Flags::print_scheme_warnings
+        ? scm_current_error_port()
+        : scm_sys_make_void_port(scm_from_latin1_string("w")));
+
+    // We need to evaluate the above now (as opposed to within the
+    // exception handlers below), because the load path needs to be
+    // set when we create the evaluation environment below.  Still, no
+    // errors are expected anyway.
+
+    scm_primitive_eval(scm_cons(scm_from_latin1_symbol("begin"), s));
+
+    // Below we create the core libraries as well as a "library"
+    // (`gamma %environment`) that will serve as the execution
+    // environment for user code.  In Guile, modules (i.e. libraries)
+    // and environments are practically the same thing (a set of
+    // bindings of symbols to Scheme objects).
+
+    static SCM env;
+
+    if (!initialized) {
+        initialized = true;
+
+        // Operations and primitives
+
+        scm_c_define_module("gamma %base", define_base, nullptr);
+        scm_c_define_module("gamma %write", define_write, nullptr);
+        scm_c_define_module(
+            "gamma %transformation", define_transformation, nullptr);
+        scm_c_define_module("gamma %volumes", define_volumes, nullptr);
+        scm_c_define_module("gamma %selection", define_selection, nullptr);
+        scm_c_define_module("gamma %polygons", define_polygons, nullptr);
+        scm_c_define_module("gamma %polyhedra", define_polyhedra, nullptr);
+        scm_c_define_module("gamma %operations", define_operations, nullptr);
+
+        // We pre-populate the environment with the base Scheme and
+        // Gamma modules, as they're going to be needed by all
+        // programs.
+
+        env = scm_c_define_module(
+            "gamma %environment",
+            [](void *) {
+                scm_c_use_module("scheme base");
+                scm_c_use_module("gamma base");
+            },
+            nullptr);
+    }
+
+    // When displaying errors or warnings that are related to an
+    // operation, we want to be able to inform the user which
+    // operation we're talking about.  The best way to do that is to
+    // provide the source location where the operation was created.
+
+    // To get that, we need the frame stack at the point of the
+    // operation's creation.  We set up a hook for this purpose, that
+    // will run from its constructor.
+
+    assert(Operation::hook == nullptr);
+    Operation::hook = [](Operation &op) {
+        const SCM s = scm_make_stack(SCM_BOOL_T, scm_list_1(scm_from_int(1)));
+        const int n = scm_to_int(scm_stack_length(s));
+
+        // At this point the frame corresponding to the call to the
+        // procedure that instantiated the operation should be at the
+        // top.  Nevertheless, to be on the safe side, we go through
+        // the stack and get the source localtion of the first frame
+        // with source information.
+
+        for (int i = 0; i < n; i++) {
+            const SCM u = scm_stack_ref(s, scm_from_int(i));
+            const SCM v = scm_frame_source(u);
+
+            if (scm_is_false(v)) {
+                continue;
+            }
+
+            char *s = scm_to_locale_string(scm_cadr(v));
+            op.annotations.insert({"file", std::string(s)});
+            free(s);
+
+            // For the reason behind the `1 + `, ref: comment in
+            // `print_location`.
+
+            op.annotations.insert(
+                {"line", std::to_string(1 + scm_to_int(scm_caddr(v)))});
+
+            op.annotations.insert(
+                {"column", std::to_string(scm_to_int(scm_cdddr(v)))});
+
+            break;
+        }
+
+    };
+
+    // The user can define variable specified on the command line with
+    // `-Dfoo=bar`.  Together with `define-option`, this allows
+    // programs to define parameters that the user can override on the
+    // command line.  We want to allow the definition of any sort of
+    // value, not just numbers or strings, so we treat `bar` above as
+    // Scheme code which we evaluate to get `foo`'s value.
+
+    s = SCM_EOL;
+    for (const auto &x: Options::definitions) {
+        // If the user specifies no value, we assign `#true`
+        // implicitly.  This supports boolean, switch-like options
+        // like `(define-option draft)`, defaulting to `#false`, but
+        // which can be enabled on the command line with `-Ddraft`.
+
+        SCM t = SCM_BOOL_T;
+        const bool p = x.second.empty();
+
+        if (!p) {
+            // If a value has been specified, we evaluate it by having
+            // `eval` read from the supplied string through a port.
+
+            t = scm_list_3(
+                scm_from_latin1_symbol("call-with-input-string"),
+                scm_from_locale_string(x.second.c_str()),
+                scm_list_4(
+                    scm_from_latin1_symbol("lambda"),
+                    scm_list_1(scm_from_latin1_symbol("port")),
+
+                    // We also need to jump through a few hoops to
+                    // name the port, so as to make potential errors
+                    // more descriptive.
+
+                    scm_list_3(
+                        scm_from_latin1_symbol("set-port-filename!"),
+                        scm_from_latin1_symbol("port"),
+                        scm_from_latin1_string("<command line>")),
+                    scm_list_3(
+                        scm_from_latin1_symbol("eval"),
+                        scm_list_2(
+                            scm_from_latin1_symbol("read-syntax"),
+                            scm_from_latin1_symbol("port")),
+                        scm_list_1(scm_from_latin1_symbol("current-module")))));
+        }
+
+        // In Scheme, the define special form creates *internal*
+        // definitions inside lambdas (i.e. scoped to the lambda), so
+        // we need to explicitly evaluate the definitions in the
+        // current module.
+
+        s = scm_cons(
+            scm_list_3(
+                scm_from_latin1_symbol("eval"),
+                scm_list_2(
+                    scm_from_latin1_symbol("quote"),
+                    scm_list_3(
+                        scm_from_latin1_symbol("define"),
+                        scm_from_locale_symbol(
+                            (p ? x.first + "?" : x.first).c_str()),
+                        t)),
+                scm_list_1(scm_from_latin1_symbol("current-module"))), s);
+    }
+
+    // We allow command line arguments to be passed to the program
+    // from the shell.  In the program these are made available
+    // through the `(command-line)` procedure.
+
+    struct context *context = static_cast<struct context *>(data);
+
+    scm_set_program_arguments(
+        context->last - context->first, context->first, context->input);
+
+    // Finally, we're ready to load and evaluate the source file.  To
+    // recapitulate, we need to set up:
+
+    SCM t = scm_list_3(
+        //   1. the outer handler,
+
+        scm_from_latin1_symbol("with-exception-handler"),
+        scm_c_make_gsubr(
+            "%gamma-outer-handler", 1, 0, 0,
+            reinterpret_cast<void *>(outer_handler)),
+        scm_list_3(
+            scm_from_latin1_symbol("lambda"),
+            SCM_EOL,
+
+            //   2. the inner handler,
+
+            scm_list_3(
+                scm_from_latin1_symbol("with-exception-handler"),
+                scm_c_make_gsubr(
+                    "%gamma-inner-handler", 1, 0, 0,
+                    reinterpret_cast<void *>(inner_handler)),
+                scm_list_3(
+                    scm_from_latin1_symbol("lambda"),
+                    SCM_EOL,
+
+                    //   3. the prompt and finally
+
+                    scm_list_4(
+                        scm_from_latin1_symbol("call-with-prompt"),
+                        scm_list_2(
+                            scm_from_latin1_symbol("quote"),
+                            scm_from_latin1_symbol("%gamma-prompt-tag")),
+
+                        //   4. a thunk loading the program from the
+                        //   supplied file name.
+
+                        scm_list_n(
+                            scm_from_latin1_symbol("lambda"),
+                            SCM_EOL,
+                            scm_cons(scm_from_latin1_symbol("begin"), s),
+                            scm_list_3(
+                                scm_from_latin1_symbol("load"),
+                                scm_from_locale_string(context->input),
+                                scm_from_latin1_symbol("read-syntax")),
+                            SCM_BOOL_T,
+                            SCM_UNDEFINED),
+
+                        // If the thunk executes succesfully, i. e. if
+                        // no exception, or only continuable
+                        // exceptions occured, then `#t` is returned
+                        // explicitly above.  In case of a
+                        // non-continuable exception, the prompt's
+                        // handler is invoked by `abort-to-prompt` and
+                        // `#f` is returned.
+
+                        scm_list_3(
+                            scm_from_latin1_symbol("lambda"),
+                            scm_from_latin1_symbol("args"),
+                            SCM_BOOL_F))))));
+#if 0
+    scm_write(t, scm_current_error_port());
+    scm_newline(scm_current_error_port());
+#endif
+
+    // Finally we evaluate all this, convert whatever was returned
+    // (`#t` or `#f`) to a C++ boolean and pass it to `run_scheme`
+    // below and from there back to the front end.
+
+    context->result = scm_is_true(scm_eval(t, env));
+    Operation::hook = nullptr;
+
+    return nullptr;
 }
 
 int run_scheme(const char *input, char **first, char **last)
 {
-    sexp ctx, env;
+    struct context context = {
+        const_cast<char *>(input), first, last, 0};
 
-    sexp_scheme_init();
-    ctx = sexp_make_eval_context(nullptr, nullptr, nullptr, 0, 0);
-    assert(ctx);
+    scm_with_guile(&run_scheme_with_guile, &context);
 
-    // Export libraries
+    return !context.result;
+}
 
-    if (static bool initialized; !initialized) {
-        initialized = 1;
+// When we've evaluated each and every program, we would like to clean
+// up, mainly for two reasons:
 
-        extern struct sexp_library_entry_t *sexp_static_libraries;
-        const std::initializer_list<struct sexp_library_entry_t> entries = {
-            {"gamma/base", init_base},
-            {"gamma/transformation", init_transformation},
-            {"gamma/volumes", init_volumes},
-            {"gamma/selection", init_selection},
-            {"gamma/polygons", init_polygons},
-            {"gamma/polyhedra", init_polyhedra},
-            {"gamma/operations", init_operations},
-            {"gamma/write", init_write},
-        };
+//   1. To reclaim any resources used by the front end, which we're
+//   not going to need any more, but more importantly
 
-        int n = 0;
-        for (; sexp_static_libraries[n].name; n++);
+//   2. because we don't want the front end to hold any more
+//   references to the operations it created (ref: Culling Dead
+//   Operations).
 
-        static std::unique_ptr<struct sexp_library_entry_t[]>
-            static_libraries_array(
-                new struct sexp_library_entry_t[n + entries.size() + 1]);
+// We perform this clean up by "closing" the front end.
 
-        int i = 0;
-        for (; i < n ; i++) {
-            static_libraries_array[i] = sexp_static_libraries[i];
-        }
+static void *close_scheme_with_guile(void *data)
+{
+    // We call `module-clear!` on the execution environment, which has
+    // the effect of deleting all bindings (i.e. all "global
+    // variables") made while executing the program, thus turning
+    // everything the program created into garbage.
 
-        assert(!sexp_static_libraries[i].name);
+    scm_primitive_eval(
+        scm_list_2(
+            scm_from_latin1_symbol("module-clear!"),
+            scm_list_2(
+                scm_from_latin1_symbol("resolve-module"),
+                scm_list_2(
+                    scm_from_latin1_symbol("quote"),
+                    scm_list_2(
+                        scm_from_latin1_symbol("gamma"),
+                        scm_from_latin1_symbol("%environment"))))));
 
-        for (const auto &x: entries) {
-            static_libraries_array[i++] = x;
-        }
+    // We then trigger the garbage collector manually, and run the
+    // finalizers of collected objects, until there are no more.
 
-        static_libraries_array[i] = {nullptr, nullptr};
-        sexp_static_libraries = static_libraries_array.get();
+    do {
+        scm_gc();
+    } while (scm_run_finalizers() > 0);
+
+    // And we should be done.  Unfortunately, as previously explained
+    // (ref: Passing Values between C++ and Scheme), we can't depend
+    // on the garbage collector to call the finalizers of all
+    // unreachble objects.
+
+    // We therefore do it ourselves by going through the sets we've
+    // kept.  We can't delete the left over boxed operations as we do
+    // in the finalizer, because the latter may yet me called (albeit
+    // normally only in tests, where we reuse the same Guile state
+    // repeatedly).  Instead, we reset the contained shared pointers.
+    // If and when the finalizer does run, it will just delete a
+    // variant containing an empty pointer.
+
+    // Note that we have disabled automatic finalization (see below),
+    // so we need not worry about races and locking.
+
+    for (auto &x: boxed_polygons) {
+        std::visit(
+            [](auto &&y) {
+                y.reset();
+            }, *x);
     }
 
-    // Create the environment.
-
-    {
-        sexp_gc_var2(e, f);
-        sexp_gc_preserve2(ctx, e, f);
-
-        // Append user-specified features.
-
-        e = sexp_global(ctx, SEXP_G_FEATURES);
-        assert(sexp_pairp(e));
-        for (; sexp_pairp(sexp_cdr(e)); e = sexp_cdr(e));
-
-        for (const auto &x: Options::scheme_features) {
-            f = sexp_intern(ctx, x.c_str(), -1);
-            e = sexp_cdr(e) = sexp_cons(ctx, f, SEXP_NULL);
-        }
-
-        // Configure the library search path.
-
-        for (const auto &x: Options::include_directories) {
-            sexp_add_module_directory(
-                ctx, (e = sexp_c_string(ctx, x.c_str(), -1)), SEXP_FALSE);
-        }
-
-        sexp_load_standard_env(ctx, nullptr, SEXP_SEVEN);
-
-        // Initialize the environment.
-
-        e = sexp_eval_string(
-            ctx,
-            "(environment"
-            " '(scheme base) '(scheme process-context) '(scheme load)"
-            " '(gamma base))",
-            -1, sexp_global(ctx, SEXP_G_META_ENV));
-
-        if (sexp_exceptionp(e)) {
-            print_exception(ctx, e);
-            sexp_destroy_context(ctx);
-
-            return -1;
-        }
-
-        sexp_load_standard_ports(ctx, e, stdin, stdout, stderr, 1);
-        f = sexp_make_env(ctx);
-        sexp_env_parent(f) = e;
-        sexp_context_env(ctx) = env = f;
-
-        e = sexp_intern(ctx, "repl-import", -1);
-        f = sexp_env_ref(ctx, sexp_global(ctx, SEXP_G_META_ENV), e, SEXP_VOID);
-        e = sexp_intern(ctx, "import", -1);
-        sexp_env_define(ctx, env, e, f);
-
-        sexp_set_parameter(
-            ctx, sexp_global(ctx, SEXP_G_META_ENV),
-            sexp_global(ctx, SEXP_G_INTERACTION_ENV_SYMBOL), env);
-
-        sexp_gc_release2(ctx);
+    for (auto &x: boxed_polyhedra) {
+        std::visit(
+            [](auto &&y) {
+                y.reset();
+            }, *x);
     }
 
-    if (!Flags::eliminate_tail_calls) {
-        sexp_global(ctx, SEXP_G_NO_TAIL_CALLS_P) = SEXP_TRUE;
-    }
+    return nullptr;
+}
 
-    // Types
-
-    DEFINE_TYPE("point-2d", Point_2);
-    DEFINE_TYPE("point-3d", Point_3);
-    DEFINE_TYPE("plane-3d", Plane_3);
-
-    DEFINE_TYPE("transformation-2d", Aff_transformation_2);
-    DEFINE_TYPE("transformation-3d", Aff_transformation_3);
-
-    DEFINE_TYPE("volumes", std::shared_ptr<Bounding_volume>);
-    DEFINE_TYPE("face-selector", std::shared_ptr<Face_selector>);
-    DEFINE_TYPE("vertex-selector", std::shared_ptr<Vertex_selector>);
-    DEFINE_TYPE("edge-selector", std::shared_ptr<Edge_selector>);
-
-    DEFINE_TYPE("polygon", Boxed_polygon);
-    DEFINE_TYPE("polyhedron", Boxed_polyhedron);
-
-    // Annotate operations with source location information.
-
-    assert(Operation::hook == nullptr);
-    Operation::hook = [&ctx](Operation &op) {
-        sexp_gc_var1(s);
-        sexp_gc_preserve1(ctx, s);
-
-        s = sexp_get_stack_trace(ctx);
-
-        for (int i = 0; sexp_pairp(s); s = sexp_cdr(s), i++) {
-            sexp t = sexp_cdar(s);
-
-            if (sexp_pairp(t)) {
-                if (sexp u = sexp_car(t); sexp_stringp(u)) {
-                    op.annotations.insert({
-                            "file", std::string(sexp_string_data(u),
-                                                sexp_string_size(u))});
-                }
-
-                if (sexp u = sexp_cdr(t); sexp_fixnump(u) && (u >= SEXP_ZERO)) {
-                    op.annotations.insert({
-                            "line", std::to_string(sexp_unbox_fixnum(u))});
-                }
-
-                break;
-            }
-        }
-
-        sexp_gc_release1(ctx);
-    };
-
-    int result = 0;
-
-    {
-        sexp_gc_var2(s, t);
-        sexp_gc_preserve2(ctx, s, t);
-
-        // Define variables.
-
-        for (const auto &x: Options::definitions) {
-            if (!x.second.empty()) {
-                s = sexp_intern(ctx, x.first.c_str(), -1);
-                t = sexp_eval_string(ctx, x.second.c_str(), -1, NULL);
-
-                // In case of error print the exception.
-
-                if (sexp_exceptionp(t)) {
-                    sexp_car(sexp_exception_source(t)) =
-                        sexp_c_string(ctx, "<command line>", -1);
-                    goto handle_error;
-                }
-
-                sexp_env_define(ctx, env, s, t);
-            } else {
-                s = sexp_intern(ctx, (x.first + '?').c_str(), -1);
-                sexp_env_define(ctx, env, s, SEXP_TRUE);
-            }
-        }
-
-        // Assemble command-line.
-
-        t = SEXP_NULL;
-        for (char **i = last - 1; i >= first; i--) {
-            s = sexp_c_string(ctx, *i, -1);
-            t = sexp_cons(ctx, s, t);
-        }
-
-        s = sexp_c_string(ctx, input, -1);
-        t = sexp_cons(ctx, s, t);
-
-        s = sexp_intern(ctx, "command-line", -1);
-        sexp_set_parameter(ctx, env, s, t);
-
-        // Load and evaluate the source.
-
-        s = sexp_intern(ctx, "load", -1);
-        t = sexp_env_ref(ctx, env, s, SEXP_FALSE);
-        if (sexp_procedurep(t)) {
-            if (!strcmp(input, "-")) {
-                s = sexp_current_input_port(ctx);
-            } else {
-                s = sexp_c_string(ctx, input, -1);
-            }
-
-            s = sexp_list2(ctx, s, env);
-            t = sexp_apply(ctx, t, s);
-        }
-
-        // Print the exception in case of error.
-
-        if (sexp_exceptionp(t)) {
-handle_error:
-            print_exception(ctx, t);
-
-            t = sexp_exception_stack_trace(t);
-            if (sexp_pairp(t)) {
-                print_stack_trace(ctx, t);
-            }
-
-            result = -1;
-        }
-
-        sexp_gc_release2(ctx);
-    }
-
-    sexp_destroy_context(ctx);
-    Operation::hook = nullptr;
-
-    return result;
+void close_scheme(void)
+{
+    scm_set_automatic_finalization_enabled(0);
+    scm_with_guile(&close_scheme_with_guile, nullptr);
+    scm_set_automatic_finalization_enabled(1);
 }

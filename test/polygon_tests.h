@@ -22,8 +22,21 @@
 
 FT polygon_area(const Polygon_set &S);
 
-const Polygon_set &test_polygon_area(
-    const Polygon_set &S, const double area);
+template<typename T>
+const Polygon_set &test_polygon_area(const Polygon_set &S, const T &area)
+{
+    if (std::getenv("DRAW")) {
+        CGAL::draw(S);
+    }
+
+    if constexpr (std::is_same_v<T, double>) {
+        BOOST_TEST(CGAL::to_double(polygon_area(S)) == area);
+    } else {
+        BOOST_TEST(polygon_area(S) == area);
+    }
+
+    return S;
+}
 
 template<typename T>
 const Polygon_set &test_polygon(const Polygon_set &S,

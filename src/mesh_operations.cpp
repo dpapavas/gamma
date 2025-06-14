@@ -63,7 +63,7 @@ void Color_selection_operation<T>::evaluate()
         }
     }
 
-    this->annotations.insert({"selected", std::to_string(v.size())});
+    annotations.insert({"selected", std::to_string(v.size())});
 }
 
 template void Color_selection_operation<Face_selector>::evaluate();
@@ -175,13 +175,13 @@ void Remesh_operation<T>::evaluate()
 
         if (edge_selector) {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
-                v, CGAL::to_double(this->target), *this->polyhedron,
+                v, CGAL::to_double(target), *this->polyhedron,
                 CGAL::parameters::edge_is_constrained_map(
                     is_constrained).number_of_iterations(
                     iterations));
         } else {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
-                v, CGAL::to_double(this->target), *this->polyhedron,
+                v, CGAL::to_double(target), *this->polyhedron,
                 CGAL::parameters::number_of_iterations(
                     iterations));
         }
@@ -194,14 +194,14 @@ void Remesh_operation<T>::evaluate()
         if (edge_selector) {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
                 CGAL::faces(*this->polyhedron),
-                CGAL::to_double(this->target), *this->polyhedron,
+                CGAL::to_double(target), *this->polyhedron,
                 CGAL::parameters::edge_is_constrained_map(
                     is_constrained).number_of_iterations(
                         iterations));
         } else {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
                 CGAL::faces(*this->polyhedron),
-                CGAL::to_double(this->target), *this->polyhedron,
+                CGAL::to_double(target), *this->polyhedron,
                 CGAL::parameters::number_of_iterations(
                         iterations));
         }

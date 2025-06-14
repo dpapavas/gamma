@@ -3,11 +3,11 @@ set(
   "-fsanitize=address -fsanitize=leak -fno-omit-frame-pointer")
 
 set(
-  CMAKE_CXX_FLAGS_DEBUG "-O0 -g"
+  CMAKE_CXX_FLAGS_DEBUG "-O0 -g "
   CACHE STRING "Compilation flags for debug build")
 
 set(
-  CMAKE_CXX_FLAGS_OPTIMIZE "-O3"
+  CMAKE_CXX_FLAGS_OPTIMIZE "-O3 -g"
   CACHE STRING "Compilation flags for optimized build")
 
 # CGAL_DEBUG keeps CGAL assertions enabled, even if NDEBUG is defined.
@@ -34,20 +34,26 @@ set(
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 
-option(USE_CHIBI "Try to build the Scheme backend" TRUE)
+option(USE_GUILE "Try to build the Scheme backend" TRUE)
 option(USE_LUA "Try to build the Lua backend" TRUE)
 
 project(main)
-cmake_minimum_required(VERSION 3.12...3.29)
+cmake_minimum_required(VERSION 3.18...3.29)
 
 if (POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_definitions(-DCGAL_HAS_THREADS)
 add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter)
 
 add_subdirectory(src)
-add_subdirectory(test)
+
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_BUILD_TYPE STREQUAL "Optimize")
+    add_subdirectory(test)
+endif()
+
+add_subdirectory(doc)

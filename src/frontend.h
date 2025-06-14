@@ -18,33 +18,43 @@
 #ifndef FRONTEND_H
 #define FRONTEND_H
 
-// These implement the various polyhedron boolean operations mode.  In NEF or
-// COREFINE mode, we perform the minimum number of conversions necessary, to
-// force the operation to be carried out with the specified method.  In AUTO
-// mode, we prefer converting away from Nef, to avoid propagating conversions to
-// Nef down the line, unless both operands are already Nef polyhedra, in which
-// case we may as well do the operation with them.
+// ---
 
-#define PERFORM_POLYHEDRON_CLIP_OPERATION(PI)                   \
-[&PI](auto &&x) {                                               \
-    using T = typename std::remove_reference_t<decltype(*x)>;   \
-                                                                \
-    if (Options::polyhedron_booleans                            \
-        == Polyhedron_booleans_mode::NEF) {                     \
-        return Boxed_polyhedron(                                \
-            CLIP(CONVERT_TO<Nef_polyhedron>(x), PI));           \
-    } else if (                                                 \
-        Options::polyhedron_booleans                            \
-        == Polyhedron_booleans_mode::COREFINE                   \
-        && std::is_same_v<T, Polyhedron_operation<Nef_polyhedron>>) {   \
-        return Boxed_polyhedron(                                \
-            CLIP(CONVERT_TO<Polyhedron>(x), PI));               \
-    } else {                                                    \
-        return Boxed_polyhedron(CLIP(x, PI));                   \
-    }                                                           \
+// ## Selecting Between Nef and Corefinement Operations
+
+// In boolean operations that can be implemented either on Nef
+// polyhedra, or using corefinement on plain polyhedra, we decide what
+// to do based on the polyhedron boolean operations mode.
+
+// In NEF or COREFINE mode, we perform the minimum number of
+// conversions necessary, to force the operation to be carried out
+// with the specified method.  In AUTO mode, we prefer converting away
+// from Nef, to avoid propagating conversions to Nef down the line,
+// unless both operands are already Nef polyhedra, in which case we
+// may as well do the operation with them.
+
+// The following return lambdas for use with `std::visit`.  They're
+// needed in every front end, so we define them here.
+
+inline auto make_polyhedron_clip_visitor(const Plane_3 &Pi) {
+    return [&Pi](auto &&x) {
+        using T = typename std::remove_reference_t<decltype(*x)>;
+
+        if (Options::polyhedron_booleans == Polyhedron_booleans_mode::NEF) {
+            return Boxed_polyhedron(
+                CLIP(CONVERT_TO<Nef_polyhedron>(x), Pi));
+        } else if (
+            Options::polyhedron_booleans == Polyhedron_booleans_mode::COREFINE
+            && std::is_same_v<T, Polyhedron_operation<Nef_polyhedron>>) {
+            return Boxed_polyhedron(
+                CLIP(CONVERT_TO<Polyhedron>(x), Pi));
+        } else {
+            return Boxed_polyhedron(CLIP(x, Pi));
+        }
+    };
 }
 
-#define PERFORM_POLYHEDRON_SET_OPERATION(OP)                            \
+#define make_polyhedron_boolean_visitor(OP)                            \
 [](auto &&x, auto &&y) {                                                \
     using T = typename std::remove_reference_t<decltype(*x)>;           \
     using U = typename std::remove_reference_t<decltype(*y)>;           \
@@ -84,6 +94,9 @@
 }
 
 void print_message(Operation::Message_level level, const char *s, const int n);
-void add_output_operations(std::string name, std::vector<Boxed_polyhedron> &v);
+void insert_output_operations(
+    std::string name, std::vector<Boxed_polyhedron> &v);
+
+// ---
 
 #endif

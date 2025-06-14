@@ -18,6 +18,13 @@
 #include "compose_tag.h"
 #include "kernel.h"
 
+// ---
+
+// ## Serialization of Simple Arguments
+
+// For simple values like integers, we just use the insertion operator
+// to add them to the argument list, along with a trailing comma.
+
 #define SIMPLE_STREAM_INSERTION {               \
     s << x << ",";                              \
 }
@@ -31,6 +38,10 @@ void compose_tag_helper<unsigned int>::compose(
     std::ostringstream &s, const unsigned int &x)
 SIMPLE_STREAM_INSERTION
 
+#undef SIMPLE_STREAM_INSERTION
+
+// We do the same for strings, except we also add quotes.
+
 template<>
 void compose_tag_helper<const char *>::compose(
     std::ostringstream &s, const char * const &t)
@@ -38,11 +49,17 @@ void compose_tag_helper<const char *>::compose(
     s << "\"" << t << "\",";
 }
 
+// For CGAL rationals we output the exact form of the number, as
+// `q/r,`.
+
 template<>
 void compose_tag_helper<FT>::compose(std::ostringstream &s, const FT &a)
 {
     s << a.exact() << ",";
 }
+
+// For compound types, we mimick the syntax of operations, outputting
+// `type(arg_1,arg_2,...)`.
 
 template<>
 void compose_tag_helper<Point_2>::compose(

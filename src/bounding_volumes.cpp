@@ -202,7 +202,7 @@ bool Bounding_cylinder::get_bounds(FT (*v)[2]) const
     const FT r = radius * rational_sqrt(axis.squared_length());
     bool p = false;
 
-    // We only support flushing axis-aligned boudning cylinders, as
+    // We only support flushing axis-aligned bounding cylinders, as
     // the general case cannot be implemented with rational
     // arithmetic.
 

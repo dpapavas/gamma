@@ -43,62 +43,46 @@ FT polygon_area(const Polygon_set &S)
     return x;
 }
 
-const Polygon_set &test_polygon_area(
-    const Polygon_set &S, const double area)
-{
-
-    BOOST_TEST(CGAL::to_double(polygon_area(S)) == area);
-
-    return S;
-}
-
-BOOST_FIXTURE_TEST_SUITE(polygon, Reset_operations)
+BOOST_FIXTURE_TEST_SUITE(polygon, Evaluation_fixture)
 
 ////////////////
 // Primitives //
 ////////////////
 
-BOOST_AUTO_TEST_CASE(ngon)
+BOOST_AUTO_TEST_CASE(simple)
 {
-    auto p = POLYGON(
-        std::vector<Point_2>({
-                Point_2(-1, 0),
-                Point_2(1, 0),
-                Point_2(0, 1)}));
+    const auto &result = evaluate(
+        POLYGON(
+            std::vector<Point_2>({
+                    Point_2(-1, 0),
+                    Point_2(1, 0),
+                    Point_2(0, 1)})));
 
-    BOOST_TEST(p->describe()
-               == "polygon(point(-1,0),point(1,0),point(0,1))");
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), 1, 0, 3, 1);
+    BOOST_TEST(result.tag == "polygon(point(-1,0),point(1,0),point(0,1))");
+    test_polygon(*result.value, 1, 0, 3, 1);
 }
 
 BOOST_AUTO_TEST_CASE(regular, * boost::unit_test::tolerance(1e-9))
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
+    const auto &result = evaluate(REGULAR_POLYGON(12, 3));
 
-    auto p = REGULAR_POLYGON(12, 3);
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == "regular_polygon(12,3,1/1000000)");
-
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), 1, 0, 12, 27.0);
+    BOOST_TEST(result.tag == "regular_polygon(12,3,1/1000000)");
+    test_polygon(*result.value, 1, 0, 12, 27.0);
 }
 
 BOOST_AUTO_TEST_CASE(rectangle)
 {
-    auto p = RECTANGLE(2, 3);
+    const auto &result = evaluate(RECTANGLE(2, 3));
 
-    BOOST_TEST(
-        p->describe()
-        == ("polygon(point(-1,-3/2),point(1,-3/2),"
-            "point(1,3/2),point(-1,3/2))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), 1, 0, 4, 6);
+    BOOST_TEST(result.tag == ("polygon(point(-1,-3/2),point(1,-3/2),"
+                              "point(1,3/2),point(-1,3/2))"));
+    test_polygon(*result.value, 1, 0, 4, 6);
 }
 
 ////////////////////
@@ -125,104 +109,101 @@ BOOST_AUTO_TEST_CASE(set_operation_result)
 
 BOOST_AUTO_TEST_CASE(join)
 {
-    auto a = JOIN(RECTANGLE(2, 2),
-                  TRANSFORM(RECTANGLE(4, 4), TRANSLATION_2(2, 2)));
+    const auto &result = evaluate(
+        JOIN(RECTANGLE(2, 2),
+             TRANSFORM(RECTANGLE(4, 4), TRANSLATION_2(2, 2))));
 
-    auto b = JOIN(RECTANGLE(4, 4),
-                  TRANSFORM(RECTANGLE(4, 4), TRANSLATION_2(2, 2)));
+    evaluate_operations();
 
-    auto c = JOIN(RECTANGLE(2, 2),
-                  TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 1)));
-
-    BOOST_TEST(a->describe()
-               == ("join("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)),"
-                   "transform("
-                   "polygon(point(-2,-2),point(2,-2),"
-                   "point(2,2),point(-2,2)),"
-                   "translation(2,2)))"));
-
-    evaluate_unit();
-
-    test_polygon(*a->get_value(), 1, 0, 8, 19);
-    test_polygon(*b->get_value(), 1, 0, 8, 28);
-    test_polygon(*c->get_value(), 1, 0, 8, 7);
+    BOOST_TEST(result.tag == ("join("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "transform("
+                              "polygon(point(-2,-2),point(2,-2),"
+                              "point(2,2),point(-2,2)),"
+                              "translation(2,2)))"));
+    test_polygon(*result.value, 1, 0, 8, 19);
 }
 
 BOOST_AUTO_TEST_CASE(difference)
 {
-    auto a = DIFFERENCE(RECTANGLE(3, 4), RECTANGLE(1, 2));
-    auto b = DIFFERENCE(RECTANGLE(1, 2), RECTANGLE(3, 4));
+    const auto &result = evaluate(DIFFERENCE(RECTANGLE(3, 4), RECTANGLE(1, 2)));
 
-    BOOST_TEST(a->describe()
-               == ("difference("
-                   "polygon(point(-3/2,-2),point(3/2,-2),"
-                   "point(3/2,2),point(-3/2,2)),"
-                   "polygon(point(-1/2,-1),point(1/2,-1),"
-                   "point(1/2,1),point(-1/2,1)))"));
+    evaluate_operations();
 
-    evaluate_unit();
+    BOOST_TEST(result.tag == ("difference("
+                              "polygon(point(-3/2,-2),point(3/2,-2),"
+                              "point(3/2,2),point(-3/2,2)),"
+                              "polygon(point(-1/2,-1),point(1/2,-1),"
+                              "point(1/2,1),point(-1/2,1)))"));
 
-    test_polygon(*a->get_value(), 1, 1, 8, 10);
-    BOOST_TEST(b->get_value()->is_empty());
+    test_polygon(*result.value, 1, 1, 8, 10);
 }
 
 BOOST_AUTO_TEST_CASE(intersection)
 {
-    auto a = INTERSECTION(RECTANGLE(2, 2),
-                          TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 1)));
+    const auto &result = evaluate(
+        INTERSECTION(RECTANGLE(2, 2),
+                     TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 1))));
 
-    BOOST_TEST(a->describe()
-               == ("intersection("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)),"
-                   "transform("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)),"
-                   "translation(1,1)))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*a->get_value(), 1, 0, 4, 1);
+    BOOST_TEST(result.tag == ("intersection("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "transform("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "translation(1,1)))"));
+    test_polygon(*result.value, 1, 0, 4, 1);
 }
 
 BOOST_AUTO_TEST_CASE(symmetric_difference)
 {
-    auto a = SYMMETRIC_DIFFERENCE(
-        RECTANGLE(2, 2),
-        TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 1)));
+    const auto &result = evaluate(
+        SYMMETRIC_DIFFERENCE(
+            RECTANGLE(2, 2),
+            TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 1))));
 
-    BOOST_TEST(a->describe()
-               == ("symmetric_difference("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)),"
-                   "transform("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)),"
-                   "translation(1,1)))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*a->get_value(), 1, 1, 12, 6);
+    BOOST_TEST(result.tag == ("symmetric_difference("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "transform("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "translation(1,1)))"));
+    test_polygon(*result.value, 1, 1, 12, 6);
 }
 
-BOOST_AUTO_TEST_CASE(complement)
+BOOST_AUTO_TEST_CASE(complement_simple)
 {
-    auto a = RECTANGLE(3, 4);
-    auto b = RECTANGLE(1, 2);
-    auto c = COMPLEMENT(b);
-    auto d = INTERSECTION(a, c);
-    auto e = DIFFERENCE(DIFFERENCE(a, b), d);
+    const auto &result = evaluate(COMPLEMENT(RECTANGLE(1, 2)));
 
-    BOOST_TEST(c->describe()
-               == ("complement("
-                   "polygon(point(-1/2,-1),point(1/2,-1),"
-                   "point(1/2,1),point(-1/2,1)))"));
+    evaluate_operations();
 
-    evaluate_unit();
+    BOOST_TEST(result.tag == ("complement("
+                              "polygon(point(-1/2,-1),point(1/2,-1),"
+                              "point(1/2,1),point(-1/2,1)))"));
+}
 
-    BOOST_TEST(e->get_value()->is_empty());
+BOOST_AUTO_TEST_CASE(complement_identity)
+{
+    // Test for correct functionality (A - B) = (A intersecton B').
+
+    const auto &result = evaluate(
+        [] {
+            auto a = RECTANGLE(3, 4);
+            auto b = RECTANGLE(1, 2);
+            auto c = COMPLEMENT(b);
+            auto d = INTERSECTION(a, c);
+            return SYMMETRIC_DIFFERENCE(DIFFERENCE(a, b), d);
+        });
+
+    evaluate_operations();
+
+    BOOST_TEST(result.value->is_empty());
 }
 
 /////////////////////
@@ -231,37 +212,47 @@ BOOST_AUTO_TEST_CASE(complement)
 
 BOOST_AUTO_TEST_CASE(translation)
 {
-    auto a = RECTANGLE(2, 2);
+    const auto &result = evaluate(
+        TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 2)));
 
-    for (double x = -1.0; x <= 1.0; x += 2.0) {
-        for (double y = -1.0; y <= 1.0; y += 2.0) {
-            auto b = TRANSFORM(RECTANGLE(FT::ET(1, 2), FT::ET(1, 2)),
-                               TRANSLATION_2(x, y));
-            std::ostringstream s;
+    evaluate_operations();
 
-            s << ("transform("
-                  "polygon(point(-1/4,-1/4),point(1/4,-1/4),"
-                  "point(1/4,1/4),point(-1/4,1/4)),"
-                  "translation(") << x << "," << y << "))";
+    BOOST_TEST(result.tag == ("transform("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),translation(1,2))"));
+}
 
-            BOOST_TEST(b->describe() == s.str());
+BOOST_AUTO_TEST_CASE(translations)
+{
+    const auto &result = evaluate(
+        [] {
+            auto p = RECTANGLE(2, 2);
 
-            a = DIFFERENCE(a, b);
-        }
-    }
+            for (double x = -1.0; x <= 1.0; x += 2.0) {
+                for (double y = -1.0; y <= 1.0; y += 2.0) {
+                    p = DIFFERENCE(
+                        p, TRANSFORM(
+                            RECTANGLE(FT::ET(1, 2), FT::ET(1, 2)),
+                            TRANSLATION_2(x, y)));
+                }
+            }
 
-    evaluate_unit();
+            return p;
+        });
 
-    test_polygon(*a->get_value(), 1, 0, 12, FT::ET(15, 4));
+    evaluate_operations();
+
+    test_polygon(*result.value, 1, 0, 12, FT::ET(15, 4));
 }
 
 BOOST_AUTO_TEST_CASE(rotation, * boost::unit_test::tolerance(0.0001))
 {
-    auto a = TRANSFORM(RECTANGLE(2, 2), basic_rotation(45));
+    const auto &result = evaluate(
+        TRANSFORM(RECTANGLE(2, 2), basic_rotation(45)));
 
-    evaluate_unit();
+    evaluate_operations();
 
-    const Polygon_set &P = *a->get_value();
+    const Polygon_set &P = *result.value;
     test_polygon(P, 1, 0, 4, 4);
 
     BOOST_TEST(P.number_of_polygons_with_holes() == 1);
@@ -276,26 +267,27 @@ BOOST_AUTO_TEST_CASE(rotation, * boost::unit_test::tolerance(0.0001))
 
 BOOST_AUTO_TEST_CASE(reflection)
 {
-    auto a = POLYGON(
-        std::vector<Point_2>({
-                Point_2(-1, 0),
-                Point_2(1, 0),
-                Point_2(0, 1)}));
+    const auto &result = evaluate(
+        [] {
+            auto a = POLYGON(
+                std::vector<Point_2>({
+                        Point_2(-1, 0),
+                        Point_2(1, 0),
+                        Point_2(0, 1)}));
 
-    auto b = JOIN(a, TRANSFORM(a, SCALING_2(1, -1)));
+            return JOIN(a, TRANSFORM(a, SCALING_2(1, -1)));
+        });
 
-    BOOST_TEST(b->describe()
-               == ("join("
-                   "polygon(point(-1,0),point(1,0),"
-                   "point(0,1)),"
-                   "transform("
-                   "polygon(point(-1,0),point(1,0),"
-                   "point(0,1)),"
-                   "scaling(1,-1)))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*b->get_value(), 1, 0, 4, 2);
+    BOOST_TEST(result.tag == ("join("
+                              "polygon(point(-1,0),point(1,0),"
+                              "point(0,1)),"
+                              "transform("
+                              "polygon(point(-1,0),point(1,0),"
+                              "point(0,1)),"
+                              "scaling(1,-1)))"));
+    test_polygon(*result.value, 1, 0, 4, 2);
 }
 
 BOOST_DATA_TEST_CASE(flush,
@@ -303,89 +295,82 @@ BOOST_DATA_TEST_CASE(flush,
                       ^ boost::unit_test::data::make({0, 1})),
                      x, y)
 {
-    auto p = JOIN(FLUSH(RECTANGLE(2, 2), x, y),
-                  FLUSH(RECTANGLE(2, 2), -x, -y));
+    const auto &result = evaluate(
+        JOIN(FLUSH(RECTANGLE(2, 2), x, y),
+             FLUSH(RECTANGLE(2, 2), -x, -y)));
 
-    std::stringstream s;
-    s << ("join(flush("
-          "polygon(point(-1,-1),point(1,-1),"
-          "point(1,1),point(-1,1)),0,") << x << ",0," << y
-      << ("),flush(polygon(point(-1,-1),point(1,-1),"
-          "point(1,1),point(-1,1)),") << -x << ",0," << -y << ",0))";
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == s.str());
-
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), 1, 0, 6, 8);
+    BOOST_TEST(
+        result.tag == tag(
+            ("join(flush("
+             "polygon(point(-1,-1),point(1,-1),"
+             "point(1,1),point(-1,1)),0,"), x, ",0,", y,
+            ("),flush(polygon(point(-1,-1),point(1,-1),"
+             "point(1,1),point(-1,1)),"), -x, ",0,", -y, ",0))"));
+    test_polygon(*result.value, 1, 0, 6, 8);
 }
 
 /////////////////
 // Convex hull //
 /////////////////
 
-BOOST_AUTO_TEST_CASE(hull)
-{
-    auto h = std::make_shared<Polygon_hull_operation>();
-    h->push_back(RECTANGLE(2, 2));
-    h->push_back(TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 1)));
-    auto a = HULL(h);
-
-    // Make some more hulls, to test concurrent access.
-
-    auto g = std::make_shared<Polygon_hull_operation>();
-    g->push_back(RECTANGLE(2, 2));
-    g->push_back(TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(-1, -1)));
-    auto b = HULL(g);
-
-    auto f = std::make_shared<Polygon_hull_operation>();
-    f->push_back(TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(2, 2)));
-    f->push_back(TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 1)));
-    auto c = HULL(f);
-
-    BOOST_TEST(a->describe()
-               == ("hull("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)),"
-                   "transform("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)),"
-                   "translation(1,1)))"));
-
-    evaluate_unit();
-
-    test_polygon(*a->get_value(), 1, 0, 6, 8);
-    test_polygon(*b->get_value(), 1, 0, 6, 8);
-    test_polygon(*c->get_value(), 1, 0, 6, 8);
-}
-
 BOOST_AUTO_TEST_CASE(hull_single)
 {
-    auto h = std::make_shared<Polygon_hull_operation>();
-    h->push_back(DIFFERENCE(RECTANGLE(2, 2), RECTANGLE(1, 1)));
-    auto p = HULL(h);
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYGON_HULL_OPEN();
+            h->push_back(
+                DIFFERENCE(RECTANGLE(2, 2),
+                           TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(1, 1))));
 
-    evaluate_unit();
+            return POLYGON_HULL_CLOSE(h);
+        });
 
-    test_polygon(*p->get_value(), 1, 0, 4, 4);
+    evaluate_operations();
+
+    test_polygon(*result.value, 1, 0, 5, FT::ET(7, 2));
+}
+
+BOOST_AUTO_TEST_CASE(hull_mixed)
+{
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYGON_HULL_OPEN();
+            h->push_back(RECTANGLE(2, 2));
+            h->push_back(Point_2(-3, 0));
+            h->push_back(Point_2(3, 0));
+            return POLYGON_HULL_CLOSE(h);
+        });
+
+    evaluate_operations();
+
+    BOOST_TEST(result.tag == ("hull("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "point(-3,0),point(3,0))"));
+
+    test_polygon(*result.value, 1, 0, 6, 8);
 }
 
 BOOST_AUTO_TEST_CASE(hull_points)
 {
-    auto h = std::make_shared<Polygon_hull_operation>();
-    h->push_back(Point_2(CGAL::ORIGIN));
-    h->push_back(Point_2(2, 0));
-    h->push_back(Point_2(2, 2));
-    h->push_back(Point_2(0, 2));
-    auto p = HULL(h);
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYGON_HULL_OPEN();
+            h->push_back(Point_2(CGAL::ORIGIN));
+            h->push_back(Point_2(2, 0));
+            h->push_back(Point_2(2, 2));
+            h->push_back(Point_2(0, 2));
 
-    BOOST_TEST(p->describe()
-               == ("hull(point(0,0),point(2,0),"
-                   "point(2,2),point(0,2))"));
+            return POLYGON_HULL_CLOSE(h);
+        });
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_polygon(*p->get_value(), 1, 0, 4, 4);
+    BOOST_TEST(result.tag == ("hull(point(0,0),point(2,0),"
+                              "point(2,2),point(0,2))"));
+    test_polygon(*result.value, 1, 0, 4, 4);
 }
 
 ///////////////////
@@ -394,19 +379,16 @@ BOOST_AUTO_TEST_CASE(hull_points)
 
 BOOST_AUTO_TEST_CASE(minkowski_sum)
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
+    const auto &result = evaluate(
+        MINKOWSKI_SUM(RECTANGLE(2, 2), REGULAR_POLYGON(4, FT::ET(1, 2))));
 
-    auto p = MINKOWSKI_SUM(RECTANGLE(2, 2), REGULAR_POLYGON(4, FT::ET(1, 2)));
+    evaluate_operations();
 
-    BOOST_TEST(
-        p->describe() == ("minkowski_sum(polygon("
-                          "point(-1,-1),point(1,-1),"
-                          "point(1,1),point(-1,1)),"
-                          "regular_polygon(4,1/2,1/1000000))"));
-
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), 1, 0, 8, FT::ET(17, 2));
+    BOOST_TEST(result.tag == ("minkowski_sum(polygon("
+                              "point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "regular_polygon(4,1/2,1/1000000))"));
+    test_polygon(*result.value, 1, 0, 8, FT::ET(17, 2));
 }
 
 ////////////////////
@@ -417,18 +399,18 @@ BOOST_DATA_TEST_CASE(offset,
                      boost::unit_test::data::make({-1, 0, 3}),
                      delta)
 {
-    auto p = OFFSET(RECTANGLE(4, 4), delta);
+    const auto &result = evaluate(
+        OFFSET(RECTANGLE(4, 4), delta));
 
-    std::stringstream s;
-    s << ("offset(polygon(point(-2,-2),point(2,-2),"
-          "point(2,2),point(-2,2)),") << delta << ")";
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == s.str());
 
-    evaluate_unit();
+    BOOST_TEST(result.tag == tag(
+                   ("offset(polygon(point(-2,-2),point(2,-2),"
+                    "point(2,2),point(-2,2)),"), delta, ")"));
 
-    const FT l = (4 + 2 * delta);
-    test_polygon(*p->get_value(), 1, 0, 4, l * l);
+    const FT l = 4 + 2 * delta;
+    test_polygon(*result.value, 1, 0, 4, l * l);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

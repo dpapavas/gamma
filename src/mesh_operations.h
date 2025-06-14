@@ -44,14 +44,14 @@ public:
 
     std::string describe() const override {
         return compose_tag(
-            "color_selection", this->operand, selector,
+            "color_selection", operand, selector,
             static_cast<int>(color.red()), static_cast<int>(color.blue()),
             static_cast<int>(color.green()), static_cast<int>(color.alpha()));
     }
 
     // We don't searialize color maps, so always need to re-evaluate.
 
-    bool store() override {
+    bool store() const override {
         return false;
     };
 

@@ -116,6 +116,8 @@ protected:
     std::shared_ptr<T> polygon;
 
 public:
+    using value_type = T;
+
     Polygon_operation(): polygon(nullptr) {}
 
     bool dispatch() override {
@@ -149,19 +151,19 @@ public:
         return polygon;
     };
 
-    bool store() override;
+    bool store() const override;
     bool load() override;
 };
 
 // Primitives
 
-class Ngon_operation:
+class Simple_polygon_operation:
     public Source_operation<Polygon_operation<Polygon_set>> {
 
     std::vector<Point_2> points;
 
 public:
-    Ngon_operation(std::vector<Point_2> &&v): points(std::move(v)) {}
+    Simple_polygon_operation(std::vector<Point_2> &&v): points(std::move(v)) {}
 
     std::string describe() const override {
         return compose_tag("polygon", points);
@@ -201,26 +203,25 @@ public:
 };
 
 class Polygon_flush_operation:
-    public Sequentially_foldable_operation<Polygon_operation<Polygon_set>> {
-
-    FT coefficients[2][2];
+    public Unary_operation<Polygon_operation<Polygon_set>> {
 
 public:
+    FT coefficients[2][2];
+
     Polygon_flush_operation(
         const std::shared_ptr<Polygon_operation<Polygon_set>> &p,
         const FT &lambda, const FT &mu):
-        Sequentially_foldable_operation<Polygon_operation<Polygon_set>>(p),
+        Unary_operation<Polygon_operation<Polygon_set>>(p),
         coefficients{
             {CGAL::min(lambda, FT(0)), CGAL::max(lambda, FT(0))},
             {CGAL::min(mu, FT(0)),CGAL::max(mu, FT(0))}} {}
 
     std::string describe() const override {
         return compose_tag(
-            "flush", this->operand, coefficients[0], coefficients[1]);
+            "flush", operand, coefficients[0], coefficients[1]);
     }
 
     void evaluate() override;
-    bool fold_operand(const Polygon_operation<Polygon_set> *p) override;
 };
 
 template<typename T, typename U>
@@ -262,7 +263,6 @@ public:
     }
 
     void evaluate() override;
-    bool try_fold();
 };
 
 #define DEFINE_SET_OPERATION(OP)                                        \
@@ -312,13 +312,14 @@ public:
 // Polygon offset
 
 class Polygon_offset_operation:
-    public Sequentially_foldable_operation<Polygon_operation<Polygon_set>> {
-    FT offset;
+    public Unary_operation<Polygon_operation<Polygon_set>> {
 
 public:
+    FT offset;
+
     Polygon_offset_operation(
         const std::shared_ptr<Polygon_operation<Polygon_set>> &p, const FT &delta):
-        Sequentially_foldable_operation<Polygon_operation<Polygon_set>>(p),
+        Unary_operation<Polygon_operation<Polygon_set>>(p),
         offset(delta) {}
 
     std::string describe() const override {
@@ -326,7 +327,6 @@ public:
     }
 
     void evaluate() override;
-    bool fold_operand(const Polygon_operation<Polygon_set> *p) override;
 };
 
 #endif

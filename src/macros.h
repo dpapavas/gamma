@@ -31,6 +31,18 @@
 #include "deform_operations.h"
 #include "evaluation.h"
 
+template<typename T, typename U = Operation, typename... Args>
+static std::shared_ptr<U> make_and_map(Args &&... args) {
+    std::shared_ptr<Operation> p = map_operation(
+        make_operation<T>(std::forward<Args>(args)...));
+
+    if constexpr (std::is_same_v<U, Operation>) {
+        return p;
+    }
+
+    return std::static_pointer_cast<U>(p);
+}
+
 /////////////////////
 // Transformations //
 /////////////////////
@@ -148,27 +160,31 @@ template<typename R = WHAT ##_selector>                                 \
 inline std::shared_ptr<R> JOIN(                                         \
     std::vector<std::shared_ptr<WHAT ##_selector>> &&v)                 \
 {                                                                       \
-    return std::make_shared<Set_union_## WHICH ##_selector>(std::move(v)); \
+    return std::make_shared<Set_union_## WHICH ##_selector>(            \
+        std::move(v));                                                  \
 }                                                                       \
                                                                         \
 template<typename R = WHAT ##_selector>                                 \
 inline std::shared_ptr<R> INTERSECTION(                                 \
     std::vector<std::shared_ptr<WHAT ##_selector>> &&v)                 \
 {                                                                       \
-    return std::make_shared<Set_intersection_## WHICH ##_selector>(std::move(v)); \
+    return std::make_shared<Set_intersection_## WHICH ##_selector>(     \
+        std::move(v));                                                  \
 }                                                                       \
                                                                         \
 template<typename R = WHAT ##_selector>                                 \
 inline std::shared_ptr<R> DIFFERENCE(                                   \
     std::vector<std::shared_ptr<WHAT ##_selector>> &&v)                 \
 {                                                                       \
-    return std::make_shared<Set_difference_## WHICH ##_selector>(std::move(v)); \
+    return std::make_shared<Set_difference_## WHICH ##_selector>(       \
+        std::move(v));                                                  \
 }                                                                       \
                                                                         \
 template<typename R = WHAT ##_selector>                                 \
-inline std::shared_ptr<R> COMPLEMENT(const std::shared_ptr<WHAT ##_selector> &p) \
+inline std::shared_ptr<R> COMPLEMENT(                                   \
+    const std::shared_ptr<WHAT ##_selector> &p)                         \
 {                                                                       \
-    return std::make_shared<Set_complement_## WHICH ##_selector>(p);     \
+    return std::make_shared<Set_complement_## WHICH ##_selector>(p);    \
 }
 
 DEFINE_SELECTOR_SET_OPERATIONS(Face, face)
@@ -212,13 +228,15 @@ inline std::shared_ptr<R> BOUNDING_BOX(const FT &a, const FT &b, const FT &c)
 }
 
 template<typename R = Bounding_volume>
-inline std::shared_ptr<R> BOUNDING_BOX_BOUNDARY(const FT &a, const FT &b, const FT &c)
+inline std::shared_ptr<R> BOUNDING_BOX_BOUNDARY(
+    const FT &a, const FT &b, const FT &c)
 {
     return std::make_shared<Bounding_box>(a, b, c, Bounding_volume::BOUNDARY);
 }
 
 template<typename R = Bounding_volume>
-inline std::shared_ptr<R> BOUNDING_BOX_INTERIOR(const FT &a, const FT &b, const FT &c)
+inline std::shared_ptr<R> BOUNDING_BOX_INTERIOR(
+    const FT &a, const FT &b, const FT &c)
 {
     return std::make_shared<Bounding_box>(a, b, c, Bounding_volume::OPEN);
 }
@@ -302,13 +320,13 @@ inline std::shared_ptr<R> TRANSFORM(
 template<typename R = Polygon_operation<Polygon_set>>
 inline std::shared_ptr<R> POLYGON(std::vector<Point_2> &&v)
 {
-    return add_operation<Ngon_operation, R>(std::move(v));
+    return make_and_map<Simple_polygon_operation, R>(std::move(v));
 }
 
 template<typename R = Polygon_operation<Polygon_set>>
 inline std::shared_ptr<R> REGULAR_POLYGON(const int n, const FT &r)
 {
-    return add_operation<Regular_polygon_operation, R>(n, r);
+    return make_and_map<Regular_polygon_operation, R>(n, r);
 }
 
 template<typename R = Polygon_operation<Polygon_set>>
@@ -354,19 +372,19 @@ inline std::shared_ptr<R> RECTANGLE(const FT &a, const FT &b)
 template<typename R = Polygon_operation<Circle_polygon_set>>
 inline std::shared_ptr<R> CIRCLE(const FT &r)
 {
-    return add_operation<Circle_operation, R>(r);
+    return make_and_map<Circle_operation, R>(r);
 }
 
 template<typename R = Polygon_operation<Circle_polygon_set>>
 inline std::shared_ptr<R> CIRCULAR_SEGMENT(const FT &c, const FT &h)
 {
-    return add_operation<Circular_segment_operation, R>(c, h);
+    return make_and_map<Circular_segment_operation, R>(c, h);
 }
 
 template<typename R = Polygon_operation<Circle_polygon_set>>
 inline std::shared_ptr<R> CIRCULAR_SECTOR(const FT &r, const FT &a)
 {
-    return add_operation<Circular_sector_operation, R>(r, a);
+    return make_and_map<Circular_sector_operation, R>(r, a);
 }
 
 template<typename T, typename R = Polygon_operation<T>, typename U>
@@ -376,13 +394,15 @@ inline std::shared_ptr<R> CONVERT_TO(
     if constexpr (std::is_same_v<T, U>) {
         return p;
     } else {
-        return add_operation<Polygon_convert_operation<T, U>, R>(p);
+        return make_and_map<Polygon_convert_operation<T, U>, R>(p);
     }
 }
 
-// Circles must first be converted into conics, if they're to be
-// scaled.  Transforming them may therefore result in one of two
-// types, to be determined at runtime.
+// Transformations that scale non-uniformly, turn circles into
+// ellipses.  Circles must first be converted into conics, if they're
+// to be thus transformed.  As a result, we must return a pointer to
+// `Operation` when transforming circle polygons, the exact type to be
+// determined at runtime, via dynamic casting.
 
 template<typename T, typename R = std::conditional_t<
                          std::is_same_v<T, Circle_polygon_set>,
@@ -392,13 +412,20 @@ inline std::shared_ptr<R> TRANSFORM(
     Aff_transformation_2 X)
 {
     if constexpr (std::is_same_v<T, Circle_polygon_set>) {
-        if (CGAL::abs(X.m(0, 0) * X.m(1, 1) - X.m(0, 1) * X.m(1, 0)) != 1) {
-            return TRANSFORM<Conic_polygon_set, Operation>(
+        const Vector_2 u = X.transform(Vector_2(1, 0)),
+            v = X.transform(Vector_2(0, 1));
+
+        // To determine if we need to convert to a conic polygon, we
+        // simply test whether the transformed basis vectors are still
+        // orthogonal and of equal lengths.
+
+        if (u * v != 0 || CGAL::squared_length(u) != CGAL::squared_length(v)) {
+            return TRANSFORM<Conic_polygon_set, R>(
                 CONVERT_TO<Conic_polygon_set>(p), X);
         }
     }
 
-    return add_operation<Polygon_transform_operation<T>, R>(p, X);
+    return make_and_map<Polygon_transform_operation<T>, R>(p, X);
 }
 
 template<typename T, typename R = Polygon_operation<Polygon_set>>
@@ -406,7 +433,7 @@ inline std::shared_ptr<R> FLUSH(
     const std::shared_ptr<Polygon_operation<T>> &p,
     const FT &lambda, const FT &mu)
 {
-    return add_operation<Polygon_flush_operation, R>(
+    return make_and_map<Polygon_flush_operation, R>(
         CONVERT_TO<Polygon_set>(p), lambda, mu);
 }
 
@@ -437,10 +464,17 @@ inline std::shared_ptr<R> ELLIPTIC_SECTOR(const FT &a, const FT &b, const FT &c)
     }
 }
 
-template<typename R = Polygon_operation<Polygon_set>>
-inline std::shared_ptr<R> HULL(const std::shared_ptr<Polygon_hull_operation> &p)
+template<typename R = Polygon_hull_operation>
+inline std::shared_ptr<R> POLYGON_HULL_OPEN()
 {
-    return add_operation<Polygon_hull_operation, R>(p);
+    return make_operation<Polygon_hull_operation, R>();
+}
+
+template<typename R = Polygon_operation<Polygon_set>>
+inline std::shared_ptr<R> POLYGON_HULL_CLOSE(
+    std::shared_ptr<Polygon_hull_operation> &p)
+{
+    return std::static_pointer_cast<R>(map_operation(p));
 }
 
 template<typename T, typename R = Polygon_operation<Polygon_set>,
@@ -449,7 +483,7 @@ inline auto MINKOWSKI_SUM(
     const std::shared_ptr<Polygon_operation<T>> &p,
     const std::shared_ptr<Polygon_operation<U>> &q)
 {
-    return add_operation<Polygon_minkowski_sum_operation, R>(
+    return make_and_map<Polygon_minkowski_sum_operation, R>(
         CONVERT_TO<Polygon_set>(p),
         CONVERT_TO<Polygon_set>(q));
 }
@@ -458,7 +492,7 @@ template<typename T, typename R = Polygon_operation<Polygon_set>>
 inline std::shared_ptr<R> OFFSET(
     const std::shared_ptr<Polygon_operation<T>> &p, const FT &delta)
 {
-    return add_operation<Polygon_offset_operation, R>(
+    return make_and_map<Polygon_offset_operation, R>(
         CONVERT_TO<Polygon_set>(p), delta);
 }
 
@@ -477,10 +511,11 @@ inline std::shared_ptr<R> NAME(                                         \
     const std::shared_ptr<Polygon_operation<T>> &p,                     \
     const std::shared_ptr<Polygon_operation<T>> &q)                     \
 {                                                                       \
-    return add_operation<Polygon_## WHAT ##_operation<T>, R>(p, q);     \
+    return make_and_map<Polygon_## WHAT ##_operation<T>, R>(p, q);      \
 }                                                                       \
                                                                         \
-template<typename T, typename U, typename R = Polygon_set_operation_result<T, U>, \
+template<typename T, typename U,                                        \
+         typename R = Polygon_set_operation_result<T, U>,               \
          typename = std::enable_if_t<!std::is_same_v<T, U>>>            \
 inline std::shared_ptr<R> NAME(                                         \
     const std::shared_ptr<Polygon_operation<T>> &p,                     \
@@ -489,10 +524,10 @@ inline std::shared_ptr<R> NAME(                                         \
     if constexpr (                                                      \
         std::is_same_v<T, Polygon_set>                                  \
         || std::is_abstract_v<Polygon_convert_operation<T, U>>) {       \
-        return add_operation<Polygon_## WHAT ##_operation<U>, R>(       \
+        return make_and_map<Polygon_## WHAT ##_operation<U>, R>(        \
             CONVERT_TO<U>(p), q);                                       \
     } else {                                                            \
-        return add_operation<Polygon_## WHAT ##_operation<T>, R>(       \
+        return make_and_map<Polygon_## WHAT ##_operation<T>, R>(        \
             p, CONVERT_TO<T>(q));                                       \
     }                                                                   \
 }
@@ -508,7 +543,7 @@ template<typename T, typename R = Polygon_operation<T>>
 inline std::shared_ptr<R> COMPLEMENT(
     const std::shared_ptr<Polygon_operation<T>> &p)
 {
-    return add_operation<Polygon_complement_operation<T>, R>(p);
+    return make_and_map<Polygon_complement_operation<T>, R>(p);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>, typename T>
@@ -516,71 +551,76 @@ inline std::shared_ptr<R> EXTRUSION(
     const std::shared_ptr<Polygon_operation<T>> &p,
     std::vector<Aff_transformation_3> &&v)
 {
-    return add_operation<Extrusion_operation, R>(CONVERT_TO<Polygon_set>(p),
-                                                 std::move(v));
+    return make_and_map<Extrusion_operation, R>(
+        CONVERT_TO<Polygon_set>(p),
+        v.size() > 0
+        ? std::move(v)
+        : std::vector<Aff_transformation_3>({
+                TRANSLATION_3(0, 0, 0)}));
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> TETRAHEDRON(const FT &a, const FT &b, const FT &c)
 {
-    return add_operation<Tetrahedron_operation, R>(a, b, c);
+    return make_and_map<Tetrahedron_operation, R>(a, b, c);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> SQUARE_PYRAMID(const FT &a, const FT &b, const FT &c)
 {
-    return add_operation<Square_pyramid_operation, R>(a, b, c);
+    return make_and_map<Square_pyramid_operation, R>(a, b, c);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> OCTAHEDRON(const FT &a, const FT &b, const FT &c)
 {
-    return add_operation<Octahedron_operation, R>(a, b, c);
+    return make_and_map<Octahedron_operation, R>(a, b, c);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> OCTAHEDRON(
     const FT &a, const FT &b, const FT &c, const FT &d)
 {
-    return add_operation<Octahedron_operation, R>(a, b, c, d);
+    return make_and_map<Octahedron_operation, R>(a, b, c, d);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> CUBOID(const FT &a, const FT &b, const FT &c)
 {
-    return add_operation<Cuboid_operation, R>(a, b, c);
+    return make_and_map<Cuboid_operation, R>(a, b, c);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> ICOSAHEDRON(const FT &r)
 {
-    return add_operation<Icosahedron_operation, R>(r);
+    return make_and_map<Icosahedron_operation, R>(r);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> SPHERE(const FT &r)
 {
-    return add_operation<Sphere_operation, R>(r);
+    return make_and_map<Sphere_operation, R>(r);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> REGULAR_PYRAMID(const int n, const FT &r, const FT &h)
 {
-    return add_operation<Regular_pyramid_operation, R>(n, r, h);
+    return make_and_map<Regular_pyramid_operation, R>(n, r, h);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> REGULAR_BIPYRAMID(
     const int n, const FT &r, const FT &h)
 {
-    return add_operation<Regular_bipyramid_operation, R>(n, r, h);
+    return make_and_map<Regular_bipyramid_operation, R>(n, r, h);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
 inline std::shared_ptr<R> REGULAR_BIPYRAMID(
     const int n, const FT &r, const FT &h_1, const FT &h_2)
 {
-    return add_operation<Regular_bipyramid_operation, R>(n, r, h_1, h_2);
+    return make_and_map<
+        Regular_bipyramid_operation, R>(n, r, h_1, h_2);
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
@@ -621,7 +661,7 @@ inline std::shared_ptr<R> TRANSFORM(
     const std::shared_ptr<Polyhedron_operation<T>> &p,
     const Aff_transformation_3 &X)
 {
-    return add_operation<Polyhedron_transform_operation<T>, R>(p, X);
+    return make_and_map<Polyhedron_transform_operation<T>, R>(p, X);
 }
 
 template<typename T, typename R = Polyhedron_operation<Polyhedron>>
@@ -637,21 +677,27 @@ inline std::shared_ptr<R> FLUSH(
     const std::shared_ptr<Polyhedron_operation<T>> &p,
     const FT &lambda, const FT &mu, const FT &nu)
 {
-    return add_operation<Polyhedron_flush_operation<T>, R>(p, lambda, mu, nu);
+    return make_and_map<Polyhedron_flush_operation<T>, R>(p, lambda, mu, nu);
+}
+
+template<typename R = Polyhedron_hull_operation>
+inline std::shared_ptr<R> POLYHEDRON_HULL_OPEN()
+{
+    return make_operation<Polyhedron_hull_operation, R>();
 }
 
 template<typename R = Polyhedron_operation<Polyhedron>>
-inline std::shared_ptr<R> HULL(
-    const std::shared_ptr<Polyhedron_hull_operation> &p)
+inline std::shared_ptr<R> POLYHEDRON_HULL_CLOSE(
+    std::shared_ptr<Polyhedron_hull_operation> &p)
 {
-    return add_operation<Polyhedron_hull_operation, R>(p);
+    return std::static_pointer_cast<R>(map_operation(p));
 }
 
 template<typename T, typename R = Polyhedron_operation<T>>
 inline std::shared_ptr<R> CLIP(
     const std::shared_ptr<Polyhedron_operation<T>> &p, const Plane_3 &Pi)
 {
-    return add_operation<Polyhedron_clip_operation<T>, R>(p, Pi);
+    return make_and_map<Polyhedron_clip_operation<T>, R>(p, Pi);
 }
 
 template<typename T, typename R = Polyhedron_operation<T>, typename U>
@@ -661,7 +707,7 @@ inline std::shared_ptr<R> CONVERT_TO(
     if constexpr (std::is_same_v<T, U>) {
         return p;
     } else {
-        return add_operation<Polyhedron_convert_operation<T, U>, R>(p);
+        return make_and_map<Polyhedron_convert_operation<T, U>, R>(p);
     }
 }
 
@@ -671,7 +717,7 @@ inline auto MINKOWSKI_SUM(
     const std::shared_ptr<Polyhedron_operation<T>> &p,
     const std::shared_ptr<Polyhedron_operation<U>> &q)
 {
-    return add_operation<Polyhedron_minkowski_sum_operation, R>(
+    return make_and_map<Polyhedron_minkowski_sum_operation, R>(
         CONVERT_TO<Nef_polyhedron>(p),
         CONVERT_TO<Nef_polyhedron>(q));
 }
@@ -685,7 +731,7 @@ inline auto NAME(                                                       \
     const std::shared_ptr<Polyhedron_operation<T>> &p,                  \
     const std::shared_ptr<Polyhedron_operation<U>> &q)                  \
 {                                                                       \
-    return add_operation<Polyhedron_## WHAT ##_operation<T>, R>(        \
+    return make_and_map<Polyhedron_## WHAT ##_operation<T>, R>(         \
         p, CONVERT_TO<T>(q));                                           \
 }
 
@@ -699,7 +745,8 @@ inline auto SYMMETRIC_DIFFERENCE(
     const std::shared_ptr<Polyhedron_operation<T>> &p,
     const std::shared_ptr<Polyhedron_operation<U>> &q)
 {
-    return add_operation<Polyhedron_symmetric_difference_operation, R>(
+    return make_and_map<
+        Polyhedron_symmetric_difference_operation, R>(
         CONVERT_TO<Nef_polyhedron>(p),
         CONVERT_TO<Nef_polyhedron>(q));
 }
@@ -710,14 +757,14 @@ template<typename T, typename R = Polyhedron_operation<T>>
 inline std::shared_ptr<R> COMPLEMENT(
     const std::shared_ptr<Polyhedron_operation<T>> &p)
 {
-    return add_operation<Polyhedron_complement_operation<T>, R>(p);
+    return make_and_map<Polyhedron_complement_operation<T>, R>(p);
 }
 
 template<typename T, typename R = Polyhedron_operation<Nef_polyhedron>>
 inline std::shared_ptr<R> BOUNDARY(
     const std::shared_ptr<Polyhedron_operation<T>> &p)
 {
-    return add_operation<Polyhedron_boundary_operation, R>(
+    return make_and_map<Polyhedron_boundary_operation, R>(
         CONVERT_TO<Nef_polyhedron>(p));
 }
 
@@ -734,10 +781,10 @@ inline std::shared_ptr<R> NAME(                                         \
 #define FOR(OP, ...)                                                    \
 {                                                                       \
     if constexpr (std::is_same_v<T, Nef_polyhedron>) {                  \
-        return add_operation<OP<Polyhedron>, R>(                        \
+        return make_and_map<OP<Polyhedron>, R>(                         \
             CONVERT_TO<Polyhedron>(p), __VA_ARGS__);                    \
     } else {                                                            \
-        return add_operation<OP<T>, R>(p, __VA_ARGS__);                 \
+        return make_and_map<OP<T>, R>(p, __VA_ARGS__);                  \
     }                                                                   \
 }
 
@@ -770,7 +817,7 @@ inline std::shared_ptr<R> COLOR_SELECTION(
     const std::shared_ptr<U> &q,
     const FT r, const FT g, const FT b, const FT a)
 {
-    return add_operation<Color_selection_operation<U>, R>(
+    return make_and_map<Color_selection_operation<U>, R>(
         CONVERT_TO<Surface_mesh>(p), q, r, g, b, a);
 }
 
@@ -844,13 +891,13 @@ inline auto COREFINE(
     const std::shared_ptr<Polyhedron_operation<U>> &q)
 {
     if constexpr (!std::is_same_v<T, Nef_polyhedron>) {
-        return add_operation<Corefine_operation<T>, R>(
+        return make_and_map<Corefine_operation<T>, R>(
             p, CONVERT_TO<T>(q));
     } else if constexpr (!std::is_same_v<U, Nef_polyhedron>) {
-        return add_operation<Corefine_operation<U>, R>(
+        return make_and_map<Corefine_operation<U>, R>(
             CONVERT_TO<U>(p), q);
     } else {
-        return add_operation<Corefine_operation<Polyhedron>, R>(
+        return make_and_map<Corefine_operation<Polyhedron>, R>(
             CONVERT_TO<Polyhedron>(p), CONVERT_TO<Polyhedron>(q));
     }
 }
@@ -862,20 +909,22 @@ inline auto COREFINE(
     const std::shared_ptr<Polyhedron_operation<T>> &p, const Plane_3 &pi)
 {
     if constexpr (!std::is_same_v<T, Nef_polyhedron>) {
-        return add_operation<Corefine_with_plane_operation<T>, R>(p, pi);
+        return make_and_map<
+            Corefine_with_plane_operation<T>, R>(p, pi);
     } else {
-        return add_operation<Corefine_with_plane_operation<Polyhedron>, R>(
+        return make_and_map<
+            Corefine_with_plane_operation<Polyhedron>, R>(
             CONVERT_TO<Polyhedron>(p), pi);
     }
 }
 
 #define DEFINE_WRITE_OPERATION(WHAT)                                    \
-template<typename R = Sink_operation>                                   \
+template<typename R = Operation>                                        \
 inline std::shared_ptr<R> WRITE_## WHAT(                                \
     const char *filename,                                               \
     std::vector<std::shared_ptr<Polyhedron_operation<Surface_mesh>>> &&v) \
 {                                                                       \
-    return add_operation<Write_## WHAT ##_operation, R>(                \
+    return make_and_map<Write_## WHAT ##_operation, R>(                 \
         filename, std::move(v));                                        \
 }
 
@@ -883,13 +932,12 @@ DEFINE_WRITE_OPERATION(OFF)
 DEFINE_WRITE_OPERATION(STL)
 DEFINE_WRITE_OPERATION(WRL)
 
-template<typename R = Sink_operation>
+template<typename R = Operation>
 inline std::shared_ptr<R> PIPE(
     const char *geom_name,
     std::vector<std::shared_ptr<Polyhedron_operation<Surface_mesh>>> &&v)
 {
-    return add_operation<Pipe_to_geomview_operation, R>(
-        geom_name, std::move(v));
+    return make_and_map<Pipe_to_geomview_operation, R>(geom_name, std::move(v));
 }
 
 #undef DEFINE_WRITE_OPERATION

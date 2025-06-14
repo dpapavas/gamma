@@ -1,0 +1,63 @@
+{
+  libgc_conditional_jump
+  Memcheck:Cond
+  ...
+  fun:GC_mark_from
+}
+{
+  libgc_uninitialized_value
+  Memcheck:Value8
+  ...
+  fun:GC_mark_from
+}
+{
+  libgc_conditional_jump
+  Memcheck:Cond
+  fun:GC_*
+}
+{
+  libgc_uninitialized_value
+  Memcheck:Value8
+  fun:GC_*
+}
+
+# The GC_start_mark_threads_inner function starts the marker threads
+# as detached threads runninng forever.  This seems to cause part of
+# the thread's TLS to not be freed at exit and show up as possible
+# memory leak.
+
+{
+   libgc_leak_GC_allow_register_threads
+   Memcheck:Leak
+   match-leak-kinds: possible
+   ...
+   fun:allocate_dtv
+}
+
+{
+   libgc_misc
+   Helgrind:Misc
+   ...
+   fun:GC_*
+}
+
+{
+   libgc_race
+   Helgrind:Race
+   ...
+   fun:GC_*
+}
+
+# {
+#    cgal_race
+#    Helgrind:Race
+#    ...
+#    fun:*CGAL*
+# }
+
+# {
+#    cgal_gmp_race
+#    Helgrind:Race
+#    ...
+#    fun:__gmpn_copyi
+# }

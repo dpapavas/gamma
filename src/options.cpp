@@ -35,7 +35,6 @@
 
 #include "options.h"
 #include "operation.h"
-#include "evaluation.h"
 
 namespace Flags {
     // Debugging
@@ -66,10 +65,12 @@ namespace Flags {
 
     // Evaluation
 
+    int dry_run = 0;
     int evaluate = 1;
     int fold_transformations = 1;
     int fold_booleans = 1;
     int fold_flushes = 1;
+    int fold_offsets = 1;
     int eliminate_dead_operations = 1;
     int store_operations = 1;
     int load_operations = 1;
@@ -83,14 +84,14 @@ namespace Flags {
 
     // Scheme backend
 
-    int eliminate_tail_calls = 1;
+    int print_scheme_warnings = 0;
 }
 
 namespace Options {
     // Debugging
 
     const char *dump_graph;
-    const char *dump_operations;
+    const char *dump_list;
     const char *dump_log;
     int dump_short_tags = -1;
 
@@ -121,11 +122,7 @@ namespace Options {
     // Backend
 
     std::forward_list<std::pair<std::string, std::string>> definitions;
-    std::forward_list<std::string> include_directories;
-
-#ifdef HAVE_SCHEME
-    std::forward_list<std::string> scheme_features;
-#endif
+    std::forward_list<std::string> library_directories;
 }
 
 static bool has_suffix(const char *s, const char *x)
@@ -146,7 +143,7 @@ int parse_options(int argc, char *argv[])
         DIAGNOSTICS_COLOR,
         DIAGNOSTICS_ELIDE_TAGS,
         DUMP_GRAPH,
-        DUMP_OPERATIONS,
+        DUMP_LIST,
         DUMP_LOG,
         DUMP_SHORT_TAGS,
         DIAGNOSTICS_SHORTEN_TAGS,
@@ -157,8 +154,8 @@ int parse_options(int argc, char *argv[])
         STORE_THRESHOLD};
 
     static struct option options[] = {
-        {"help", no_argument, 0, 'h'},
-        {"version", no_argument, 0, VERSION},
+        {"help", no_argument, nullptr, 'h'},
+        {"version", no_argument, nullptr, VERSION},
 
         // Debugging
 
@@ -166,54 +163,58 @@ int parse_options(int argc, char *argv[])
         {"no-dump-abridged-tags", no_argument, &Flags::dump_abridged_tags, 0},
         {"dump-annotations", no_argument, &Flags::dump_annotations, 1},
         {"no-dump-annotations", no_argument, &Flags::dump_annotations, 0},
-        {"dump-graph", optional_argument, 0, DUMP_GRAPH},
-        {"no-dump-graph", no_argument, 0, -DUMP_GRAPH},
-        {"dump-operations", optional_argument, 0, DUMP_OPERATIONS},
-        {"no-dump-operations", no_argument, 0, -DUMP_OPERATIONS},
-        {"dump-log", optional_argument, 0, DUMP_LOG},
-        {"no-dump-log", no_argument, 0, -DUMP_LOG},
+        {"dump-graph", optional_argument, nullptr, DUMP_GRAPH},
+        {"no-dump-graph", no_argument, nullptr, -DUMP_GRAPH},
+        {"dump-list", optional_argument, nullptr, DUMP_LIST},
+        {"no-dump-list", no_argument, nullptr, -DUMP_LIST},
+        {"dump-log", optional_argument, nullptr, DUMP_LOG},
+        {"no-dump-log", no_argument, nullptr, -DUMP_LOG},
         {"no-dump-short-tags", no_argument, &Options::dump_short_tags, -1},
-        {"dump-short-tags", optional_argument, 0, DUMP_SHORT_TAGS},
+        {"dump-short-tags", optional_argument, nullptr, DUMP_SHORT_TAGS},
         {"no-diagnostics-shorten-tags", no_argument, &Options::diagnostics_shorten_tags, -1},
-        {"diagnostics-shorten-tags", optional_argument, 0, DIAGNOSTICS_SHORTEN_TAGS},
+        {"diagnostics-shorten-tags", optional_argument, nullptr, DIAGNOSTICS_SHORTEN_TAGS},
 
         // Diagnostics
 
-        {"no-diagnostics-color", optional_argument, 0, -DIAGNOSTICS_COLOR},
-        {"diagnostics-color", optional_argument, 0, DIAGNOSTICS_COLOR},
-        {"no-diagnostics-elide-tags", no_argument, 0, -DIAGNOSTICS_ELIDE_TAGS},
-        {"diagnostics-elide-tags", optional_argument, 0, DIAGNOSTICS_ELIDE_TAGS},
+        {"no-diagnostics-color", optional_argument, nullptr, -DIAGNOSTICS_COLOR},
+        {"diagnostics-color", optional_argument, nullptr, DIAGNOSTICS_COLOR},
+        {"no-diagnostics-elide-tags", no_argument, nullptr, -DIAGNOSTICS_ELIDE_TAGS},
+        {"diagnostics-elide-tags", optional_argument, nullptr, DIAGNOSTICS_ELIDE_TAGS},
 
         // Evaluation
 
-        {"threads", required_argument, 0, 't'},
+        {"threads", required_argument, nullptr, 't'},
         {"no-threads", no_argument, &Options::threads, 0},
         {"evaluate", no_argument, &Flags::evaluate, 1},
         {"no-evaluate", no_argument, &Flags::evaluate, 0},
+        {"dry-run", no_argument, &Flags::dry_run, 1},
+        {"no-dry-run", no_argument, &Flags::dry_run, 0},
         {"fold-transformations", no_argument, &Flags::fold_transformations, 1},
         {"no-fold-transformations", no_argument, &Flags::fold_transformations, 0},
         {"fold-booleans", no_argument, &Flags::fold_booleans, 1},
         {"no-fold-booleans", no_argument, &Flags::fold_booleans, 0},
         {"fold-flushes", no_argument, &Flags::fold_flushes, 1},
         {"no-fold-flushes", no_argument, &Flags::fold_flushes, 0},
-        {"polyhedron-booleans", required_argument, 0, POLYHEDRON_BOOLEANS},
+        {"fold-offsets", no_argument, &Flags::fold_offsets, 1},
+        {"no-fold-offsets", no_argument, &Flags::fold_offsets, 0},
+        {"polyhedron-booleans", required_argument, nullptr, POLYHEDRON_BOOLEANS},
         {"eliminate-dead-operations", no_argument, &Flags::eliminate_dead_operations, 1},
         {"no-eliminate-dead-operations", no_argument, &Flags::eliminate_dead_operations, 0},
         {"store-operations", no_argument, &Flags::store_operations, 1},
         {"no-store-operations", no_argument, &Flags::store_operations, 0},
         {"load-operations", no_argument, &Flags::load_operations, 1},
         {"no-load-operations", no_argument, &Flags::load_operations, 0},
-        {"store-compression", optional_argument, 0, STORE_COMPRESSION},
+        {"store-compression", optional_argument, nullptr, STORE_COMPRESSION},
         {"no-store-compression", no_argument, &Options::store_compression, -1},
-        {"rewrite-pass-limit", required_argument, 0, REWRITE_PASS_LIMIT},
+        {"rewrite-pass-limit", required_argument, nullptr, REWRITE_PASS_LIMIT},
         {"no-rewrite-pass-limit", no_argument, &Options::rewrite_pass_limit, -1},
-        {"store-threshold", required_argument, 0, STORE_THRESHOLD},
+        {"store-threshold", required_argument, nullptr, STORE_THRESHOLD},
         {"no-store-threshold", no_argument, &Options::store_threshold, 0},
 
         // Output
 
-        {"output", required_argument, 0, 'o'},
-        {"no-output", required_argument, 0, NO_OUTPUT},
+        {"output", required_argument, nullptr, 'o'},
+        {"no-output", required_argument, nullptr, NO_OUTPUT},
         {"output-stl", no_argument, &Flags::output_stl, 1},
         {"stl", no_argument, &Flags::output_stl, 1},
         {"no-output-stl", no_argument, &Flags::output_stl, 0},
@@ -230,11 +231,11 @@ int parse_options(int argc, char *argv[])
         // Scheme
 
 #ifdef HAVE_SCHEME
-        {"eliminate-tail-calls", no_argument, &Flags::eliminate_tail_calls, 1},
-        {"no-eliminate-tail-calls", no_argument, &Flags::eliminate_tail_calls, 0},
+        {"print-scheme-warnings", no_argument, &Flags::print_scheme_warnings, 1},
+        {"no-print-scheme-warnings", no_argument, &Flags::print_scheme_warnings, 0},
 #endif
 
-        {0, 0, 0, 0}
+        {nullptr, 0, nullptr, 0}
     };
 
 #define PUSH_SIMPLE_OPTION(X) {                 \
@@ -339,7 +340,7 @@ int parse_options(int argc, char *argv[])
 #ifdef HAVE_SCHEME
                 "F:"
 #endif
-                "I:D:o:i",
+                "L:D:o:i",
                 options, &n)) != -1) {
         switch (option) {
         case 1: {
@@ -379,20 +380,23 @@ int parse_options(int argc, char *argv[])
 
             /* Load and evaluate the source file. */
 
-            std::filesystem::path p(optarg);
+            std::filesystem::path p = std::filesystem::canonical(optarg);
             std::string s = p.filename();
 
-            Options::include_directories.push_front(p.parent_path().native());
-
-            begin_unit(s.c_str());
-
-            if (run(optarg, argv + argc_max, argv + argc) != 0) {
-                return -EXIT_FAILURE;
+            if (p.has_parent_path()) {
+                Options::library_directories.push_front(
+                    p.parent_path().native());
             }
 
-            evaluate_unit();
+            int i = run(optarg, argv + argc_max, argv + argc);
 
-            Options::include_directories.pop_front();
+            if (p.has_parent_path()) {
+                Options::library_directories.pop_front();
+            }
+
+            if (i != 0) {
+                goto error;
+            }
 
             break;
         }
@@ -425,7 +429,7 @@ int parse_options(int argc, char *argv[])
                     "  --version             Display version information.\n\n"
 
                     "Debugging options:\n"
-                    "  --dump-operations[=FILE] Dump evaluated operations.\n"
+                    "  --dump-list[=FILE]       Dump evaluated operations.\n"
                     "  --dump-log[=FILE]        Dump evaluation log.\n"
                     "  --dump-graph[=FILE]      Dump evaluation graph.\n"
                     "  --no-dump-abridged-tags  Do not substitute operands in dumped operation\n"
@@ -438,11 +442,13 @@ int parse_options(int argc, char *argv[])
                     "  --polyhedron-booleans=MODE\n"
                     "                        Set polyhedron boolean operation execution strategy.\n"
                     "                        MODE can be one of 'nef', 'auto'.\n"
-                    "  --no-evaluate         Go through the motions, but don't evaluate anything.\n"
+                    "  --dry-run             Go through the motions, but don't evaluate anything.\n"
+                    "  --no-evaluate         Skip evaluation altogether.\n"
                     "  --no-fold-transformations\n"
                     "                        Disable transformation operation folding.\n"
                     "  --no-fold-booleans    Disable boolean operation folding.\n"
                     "  --no-fold-flushes     Disable flush operation folding.\n"
+                    "  --no-fold-offsets     Disable polygon offset operation folding.\n"
                     "  --no-eliminate-dead-operations\n"
                     "                        Do not skip evaluation of unneeded operations.\n"
                     "  --no-store-operations Do not store evaluated operations to disk.\n"
@@ -469,7 +475,7 @@ int parse_options(int argc, char *argv[])
 
                     "Backend options:\n"
                     "  -x LANG               Specify the language of the following input files.\n"
-                    "  -I DIR                Add the directory DIR to the list of directories\n"
+                    "  -L DIR                Add the directory DIR to the list of directories\n"
                     "                        to be searched for modules or libraries.\n"
                     "  -D NAME               Predefine global variable with a value of true (or set\n"
                     "                        its value if it is already defined).\n"
@@ -479,9 +485,8 @@ int parse_options(int argc, char *argv[])
 
 #ifdef HAVE_SCHEME
                     "Scheme backend options:\n"
-                    "  -F FEAT               Add the feature FEAT to the list of Scheme features.\n"
-                    "  --no-eliminate-tail-calls\n"
-                    "                        Disable tail-call elimination.\n"
+                    "  --print-scheme-warnings\n"
+                    "                        Print warnings from the Scheme fronend.\n"
 #endif
 
                     "Diagnostics options:\n"
@@ -550,11 +555,11 @@ int parse_options(int argc, char *argv[])
         case -DUMP_GRAPH:
             STRING_OPTION(dump_graph);
 
-        case DUMP_OPERATIONS:
-            OPTIONAL_ARGUMENT(dump_operations, "\0");
+        case DUMP_LIST:
+            OPTIONAL_ARGUMENT(dump_list, "\0");
             [[fallthrough]];
-        case -DUMP_OPERATIONS:
-            STRING_OPTION(dump_operations);
+        case -DUMP_LIST:
+            STRING_OPTION(dump_list);
 
         case DUMP_LOG:
             OPTIONAL_ARGUMENT(dump_log, "\0");
@@ -633,8 +638,8 @@ int parse_options(int argc, char *argv[])
             NOMINAL_OPTION(language, "auto", Language::AUTO);
             OPTION_END;
 
-        case 'I':
-            PUSH_SIMPLE_OPTION(include_directories);
+        case 'L':
+            PUSH_SIMPLE_OPTION(library_directories);
 
         case 'D':
             if (const char *p = strchr(optarg, '=')) {
@@ -648,11 +653,6 @@ int parse_options(int argc, char *argv[])
                     std::pair(std::string(optarg), std::string()));
             }
 
-#ifdef HAVE_SCHEME
-        case 'F':
-            PUSH_SIMPLE_OPTION(scheme_features);
-#endif
-
         case 'o':
             PUSH_SIMPLE_OPTION(outputs);
 
@@ -660,7 +660,7 @@ int parse_options(int argc, char *argv[])
             REMOVE_SIMPLE_OPTION(outputs);
 
         case '?':
-            return -EXIT_FAILURE;
+            goto error;
         }
 
         continue;
@@ -676,7 +676,9 @@ int parse_options(int argc, char *argv[])
 
         std::cerr << "'" << std::endl;
 
-        return -EXIT_FAILURE;
+      error:
+        optind = -EXIT_FAILURE;
+        break;
     }
 
 #undef INTEGER_OPTION

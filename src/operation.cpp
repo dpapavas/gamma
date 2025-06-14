@@ -19,140 +19,54 @@
 #include <cstring>
 #include <chrono>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <sstream>
+#include <mutex>
 
 #include <CGAL/exceptions.h>
 
 #include "options.h"
 #include "operation.h"
 
-std::function<void(Operation &)> Operation::hook;
+// ---
 
-static std::uint32_t rotl32 (std::uint32_t x, unsigned int n) {
-    return (x << n) | (x >> (32 - n));
-}
+// ## Operation Evaluation Messages
 
-static std::string sha1digest(const std::string &message)
+// This member function takes care of outputting a message regarding
+// itself to the user.  This is typically done during evaluation of
+// the operation, to notify the user about something that transpired
+// during the course of it (typically a warning, error or simply
+// noteworthy information).
+
+static std::mutex mutex;
+
+void Operation::message(Message_level level, const std::string &message) const
 {
-    const std::uint8_t *s =
-        reinterpret_cast<const std::uint8_t *>(message.c_str());
-    const int n = message.size();
+    std::string t;
 
-    std::uint8_t buffer[64];
+    // As the evaluation progresses, there tend to form longer and
+    // longer strings of nested operations, whose tags are
+    // consequently quite long.  For instance, even for a simple
+    // program calculating a hollow sphere, the final operation would
+    // be tagged with something like
+    // `'write_off("a.off",mesh(difference(sphere(2,1/15,1/1000000),sphere(1,1/15,1/1000000))))'`.
 
-    std::uint32_t h_0 = 0x67452301;
-    std::uint32_t h_1 = 0xefcdab89;
-    std::uint32_t h_2 = 0x98badcfe;
-    std::uint32_t h_3 = 0x10325476;
-    std::uint32_t h_4 = 0xc3d2e1f0;
+    // Such tags are hard for the programmer to parse and are not very
+    // useful as parts of diagnostic messages.  We therefore usualy
+    // *elide* tags, by substituting operations deeper than a given
+    // level with an ellipsis.
 
-    for (int j = 0; j < ((n + 9 + 63) / 64) * 64; j += 64) {
-        const std::uint8_t *p;
-
-        if (n - j >= 64) {
-            // Not the last block; do not pad.
-
-            p = s + j;
-        } else {
-            int i = 0;
-
-            p = buffer;
-
-            // Copy rest of message and add the terminating 1 bit.
-
-            if (j <= n) {
-                memcpy(buffer, s + j, (i = n - j));
-                buffer[i++] = 0x80;
-            }
-
-            // Pad as needed with zeros and append the message length
-            // as 64bit big-endian if it fits (otherwise another block
-            // must be added).
-
-            if (i <= 56) {
-
-                memset(buffer + i, 0, 56 - i);
-                for (auto [k, m] = std::pair<int, std::uint64_t>(63, n * 8);
-                     k >= 56;
-                     k--, m >>= 8) {
-                    buffer[k] = m & 0xff;
-                }
-            } else {
-                memset(buffer + i, 0, 64 - i);
-            }
-        }
-
-        // Process the block.
-
-        std::uint32_t w[80];
-
-        for (int i = 0; i < 16 ; i++) {
-            const std::uint8_t *q = p + i * 4;
-            w[i] = q[3] | (q[2] << 8) | (q[1] << 16) | (q[0] << 24);
-        }
-
-        for (int i = 16; i < 80 ; i++) {
-            w[i] = rotl32(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
-        }
-
-        std::uint32_t a = h_0;
-        std::uint32_t b = h_1;
-        std::uint32_t c = h_2;
-        std::uint32_t d = h_3;
-        std::uint32_t e = h_4;
-
-        for (int i = 0; i < 80 ; i++) {
-            std::uint32_t f, k;
-
-            if (i < 20) {
-                f = (b & c) | ((~ b) & d);
-                k = 0x5a827999;
-            } else if (i < 40) {
-                f = b ^ c ^ d;
-                k = 0x6ed9eba1;
-            } else if (i < 60) {
-                f = (b & c) | (b & d) | (c & d);
-                k = 0x8f1bbcdc;
-            } else {
-                f = b ^ c ^ d;
-                k = 0xca62c1d6;
-            }
-
-            std::uint32_t g = rotl32(a, 5) + f + e + k + w[i];
-
-            e = d;
-            d = c;
-            c = rotl32(b, 30);
-            b = a;
-            a = g;
-        }
-
-        h_0 = h_0 + a;
-        h_1 = h_1 + b;
-        h_2 = h_2 + c;
-        h_3 = h_3 + d;
-        h_4 = h_4 + e;
-    }
-
-    // Output the digest in hex form.
-
-    std::ostringstream h;
-    h << std::hex << h_0 << h_1 << h_2 << h_3 << h_4;
-    return h.str();
-}
-
-void Operation::message(Message_level level, std::string message)
-{
-    std::string tag;
+    // With `--diagnostics-elide-tags=2`, the above tag would
+    // therefore become `'write_off("a.off",mesh(difference(...)))'`.
 
     if (Options::diagnostics_elide_tags < 0) {
-        tag = get_tag();
+        t = tag;
     } else {
         std::ostringstream s;
 
         int i = 0;
-        for (const char d: get_tag()) {
+        for (const char d: tag) {
             if (d == ')') {
                 i -= 1;
             }
@@ -170,18 +84,42 @@ void Operation::message(Message_level level, std::string message)
             }
         }
 
-        tag = s.str();
+        t = s.str();
     }
+
+    // Even after elision, tags can still be too long (consider a
+    // union of 100 translated spheres).  We therefore also shorthen
+    // the tag, to a given maximum length.
 
     if (Options::diagnostics_shorten_tags >= 0
-        && static_cast<int>(tag.size()) > Options::diagnostics_shorten_tags) {
-        tag.erase(Options::diagnostics_shorten_tags, std::string::npos);
-        tag += "...";
+        && static_cast<int>(t.size()) > Options::diagnostics_shorten_tags) {
+        t.erase(Options::diagnostics_shorten_tags, std::string::npos);
+        t += "...";
     }
 
-    // Output the file and line number, if available.
+    // Now, assuming the operation has been annotated by the front end
+    // with source file `hello.scm`, line number 42 and column number
+    // 6, we output the error message `"No world to greet"` as:
 
-    for (int i = 0; i < 2; i++) {
+    // ```
+    // hello.scm:42:6: in operation 'greet(world)'
+    // hello.scm:42:6: error: No world to greet
+    // ```
+
+    // Normally, operations will alway have a tag (`'greet(world)'` in
+    // the example above), which will allow us to print the first
+    // line.  As a special case (ref: Program Messages), we allow
+    // dummy operations, which are instantiated temporarily for the
+    // purpose of printing messages not related to any operations.
+    // These don't have a tag and we simply skip the first line.
+
+    // We print the location and message tag below.  Since multiple
+    // workers might be printing messages concurrently, we use a mutex
+    // to synchronize output to the console.
+
+    std::lock_guard<std::mutex> lock(mutex);
+
+    for (int i = t.empty(); i < 2; i++) {
         if (auto f = annotations.find("file"); f != annotations.end()) {
             switch (level) {
             case NOTE: std::cerr << ANSI_COLOR(1, 32); break;
@@ -192,32 +130,39 @@ void Operation::message(Message_level level, std::string message)
             std::cerr << f->second << ANSI_COLOR(0, 37) << ":";
         }
 
-        if (auto l = annotations.find("line"); l != annotations.end()) {
-            std::cerr << ANSI_COLOR(1, 37) << l->second << ANSI_COLOR(0, 37)
-                      << ": ";
+        for (const char *x: {"line", "column"}) {
+            if (auto l = annotations.find(x); l != annotations.end()) {
+                std::cerr << ANSI_COLOR(1, 37)
+                          << l->second << ANSI_COLOR(0, 37)
+                          << ": ";
+            }
         }
 
         if (i == 0) {
-            std::cerr << "in operation '" << tag << "'\n";
+            std::cerr << "in operation '" << t << "'\n";
         }
     }
 
-    // Output the message kind.
+    // This is followed by the message kind.
 
     switch (level) {
     case NOTE:
-        std::cerr << ANSI_COLOR(1, 32) << "note" << ANSI_COLOR(0, 37) << ": ";
+        std::cerr << ANSI_COLOR(1, 32) << "note"
+                  << ANSI_COLOR(0, 37) << ": ";
         break;
     case WARNING:
         std::cerr << ANSI_COLOR(1, 33) << "warning"
                   << ANSI_COLOR(0, 37) << ": ";
         break;
     case ERROR:
-        std::cerr << ANSI_COLOR(1, 31) << "error" << ANSI_COLOR(0, 37) << ": ";
+        std::cerr << ANSI_COLOR(1, 31) << "error"
+                  << ANSI_COLOR(0, 37) << ": ";
         break;
     }
 
-    // Output the message, splicing in the operation tag, as needed.
+    // Finally, we output the message.  It can be useful to refer to
+    // the operation itself in the message, so we substitue a `%` in
+    // the message string with the operation tag.
 
     for (auto c = message.cbegin(); c != message.cend(); c++) {
         if (*c != '%') {
@@ -225,49 +170,38 @@ void Operation::message(Message_level level, std::string message)
         } else if (c + 1 != message.cend() && *(c + 1) == '%') {
             std::cerr.put(*c++);
         } else {
-            std::cerr << '\'' << ANSI_COLOR(1, 37) << tag
+            std::cerr << '\'' << ANSI_COLOR(1, 37) << t
                       << ANSI_COLOR(0, 37) << '\'';
         }
     }
 
     std::cerr << std::endl;
 
+    // If the user specified `-Werror`, we turn a warning into the
+    // error.
+
     if (Flags::warn_error && level == WARNING) {
         throw operation_warning_error("previous warning treated as error");
     }
 }
 
-std::string Operation::digest()
-{
-    if (tag_digest.empty()) {
-        tag_digest = sha1digest(get_tag());
-    }
+// ## Operation Dispatch
 
-    return tag_digest;
-}
-
-void Operation::select()
-{
-    selected = true;
-    store_path = digest() + (Options::store_compression < 0 ? ".o" : ".zo");
-
-    if (!Flags::load_operations) {
-        return;
-    }
-
-    std::ifstream f(store_path);
-    loadable = f && f.is_open();
-
-    return;
-}
+// To dispatch an operation is to produce its result its result.  This
+// can happen in one of two (or, more precisely, three) ways.
 
 bool Operation::dispatch()
 {
-    if (!Flags::evaluate) {
+    // If `--dry-run` has been specified, we don't evaluate the
+    // operation at all.  The evaluation process doesn't differ in all
+    // other respects; it just doesn't calculate anything.
+
+    if (Flags::dry_run) {
         return false;
     }
 
-    // Try loading if previously stored.
+    // If the operation is loadable, we attempt to load it from its
+    // store.
 
     if (loadable) {
         if (load()) {
@@ -283,7 +217,9 @@ bool Operation::dispatch()
         return true;
     }
 
-    // Evaluate.
+    // If no such store exists, we attempt to evaluate it.  We also
+    // measure the time needed to do so and annotate the operation
+    // with this time.
 
     auto t_0 = std::chrono::steady_clock::now();
     evaluate();
@@ -298,6 +234,11 @@ bool Operation::dispatch()
         annotations.insert({"in", s.str()});
     }
 
+    // This time also counts towards the operation's cost, which also
+    // includes the time needed to calculate all its ancestors.  In
+    // other words, it is the time we would need to produce the
+    // operation's result from scratch.
+
     cost += delta;
 
     {
@@ -307,6 +248,11 @@ bool Operation::dispatch()
 
         annotations.insert({"cost", s.str()});
     }
+
+    // If operation storing is enabled and the cost exceeds a small
+    // threshold value (which is there so as not to spend more time
+    // storing and loading an operation than we would've spent
+    // evaluating) we also store the operation.
 
     if (Flags::store_operations
         && cost > Options::store_threshold) {

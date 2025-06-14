@@ -107,10 +107,25 @@ const Surface_mesh &test_polyhedron(
     return M;
 }
 
-#define UNIT_TETRAHEDRON() TETRAHEDRON(1, 1, 1)
+template<typename T, typename U = Polyhedron>
+static constexpr std::string conversion_tag(const std::string s)
+{
+    if constexpr(std::is_same_v<T, U>) {
+        return s;
+    } else if constexpr(std::is_same_v<T, Polyhedron>) {
+        return "polyhedron(" + s + ")";
+    } else if constexpr(std::is_same_v<T, Nef_polyhedron>) {
+        return "nef(" + s + ")";
+    } else {
+        static_assert(std::is_same_v<T, Surface_mesh>);
+        return "mesh(" + s + ")";
+    }
+}
+
+#define UNIT_TETRAHEDRON TETRAHEDRON(1, 1, 1)
 #define test_unit_tetrahedron(X) test_polyhedron(X, 4, 12, 4, FT(FT::ET(1, 6)))
 
-BOOST_FIXTURE_TEST_SUITE(polyhedron, Reset_operations)
+BOOST_FIXTURE_TEST_SUITE(polyhedron, Evaluation_fixture)
 
 ////////////////
 // Primitives //
@@ -122,186 +137,136 @@ BOOST_DATA_TEST_CASE(tetrahedron,
                       * boost::unit_test::data::make({1, -1})),
                      i, j, k)
 {
-    auto p = TETRAHEDRON(i, j, k);
-    std::stringstream s;
+    const auto &result = evaluate(TETRAHEDRON(i, j, k));
 
-    s << "tetrahedron(" << i << "," << j << "," << k << ")";
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == s.str());
-
-    evaluate_unit();
-
-    test_unit_tetrahedron(*p->get_value());
+    BOOST_TEST(
+        result.tag == tag("tetrahedron(", i, ",", j, ",", k, ")"));
+    test_unit_tetrahedron(*result.value);
 }
 
 BOOST_DATA_TEST_CASE(square_pyramid,
                      (boost::unit_test::data::make({3, -3})),
                      h)
 {
-    auto p = SQUARE_PYRAMID(2, 2, h);
-    std::stringstream s;
+    const auto &result = evaluate(SQUARE_PYRAMID(2, 2, h));
 
-    s << "square_pyramid(2,2," << h << ")";
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == s.str());
-
-    evaluate_unit();
-
-    test_polyhedron(*p->get_value(), 5, 16, 5, 2);
+    BOOST_TEST(result.tag == tag("square_pyramid(2,2,", h, ")"));
+    test_polyhedron(*result.value, 5, 16, 5, 2);
 }
 
 BOOST_DATA_TEST_CASE(octahedron,
                      (boost::unit_test::data::make({1, -1})
-                      * boost::unit_test::data::make({FT(FT::ET(1, 2)),
-                                                      FT(FT::ET(-1, 2))})),
+                      * boost::unit_test::data::make(
+                          {FT(FT::ET(1, 2)), FT(FT::ET(-1, 2))})),
                      h_1, h_2)
 {
-    auto p = OCTAHEDRON(2, 2, h_1, h_2);
-    std::stringstream s;
+    const auto &result = evaluate(OCTAHEDRON(2, 2, h_1, h_2));
 
-    s << "octahedron(2,2," << h_1 << "," << h_2.exact() << ")";
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == s.str());
-
-    evaluate_unit();
-
-    test_polyhedron(
-        *p->get_value(), 6, 24, 8, 2 * CGAL::abs(h_1 + h_2) / 3);
+    BOOST_TEST(
+        result.tag == tag("octahedron(2,2,", h_1, ",", h_2.exact(), ")"));
+    test_polyhedron(*result.value, 6, 24, 8, 2 * CGAL::abs(h_1 + h_2) / 3);
 }
 
 BOOST_AUTO_TEST_CASE(cuboid)
 {
-    auto p = CUBOID(2, 3, 4);
-    BOOST_TEST(p->describe() == "cuboid(2,3,4)");
+    const auto &result = evaluate(CUBOID(2, 3, 4));
 
-    evaluate_unit();
+    evaluate_operations();
 
-    const Polyhedron &P = *p->get_value();
-    test_polyhedron(P, 8, 24, 6, 2 * 3 * 4);
-    BOOST_TEST(CGAL::centroid(P.points_begin(), P.points_end())
-               == Point_3(CGAL::ORIGIN));
+    BOOST_TEST(result.tag == "cuboid(2,3,4)");
+    test_polyhedron(*result.value, 8, 24, 6, 2 * 3 * 4);
+    BOOST_TEST(
+        CGAL::centroid(result.value->points_begin(), result.value->points_end())
+        == Point_3(CGAL::ORIGIN));
 }
 
 BOOST_AUTO_TEST_CASE(icosahedron, * boost::unit_test::tolerance(0.0001))
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
+    const auto &result = evaluate(ICOSAHEDRON(2));
 
-    auto p = ICOSAHEDRON(2);
-    BOOST_TEST(p->describe() == "icosahedron(2,1/1000000)");
+    evaluate_operations();
 
-    evaluate_unit();
-
+    BOOST_TEST(result.tag == "icosahedron(2,1/1000000)");
     test_polyhedron(
-        *p->get_value(), 12, 60, 20,
+        *result.value, 12, 60, 20,
         80 * (1 + sqrt(5) / 3) / std::pow(2 * sqrt(5) + 10, 1.5) * 8);
 }
 
 BOOST_AUTO_TEST_CASE(sphere, * boost::unit_test::tolerance(0.0025))
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
-    Tolerances::curve = FT::ET(1, 500);
+    const auto &result = evaluate(SPHERE(2));
 
-    auto p = SPHERE(2);
-    BOOST_TEST(p->describe() == "sphere(2,1/500,1/1000000)");
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron_volume(*p->get_value(), std::acos(-1) * 4 / 3 * 8);
+    BOOST_TEST(result.tag == "sphere(2,1/1000,1/1000000)");
+    test_polyhedron_volume(*result.value, std::acos(-1) * 4 / 3 * 8);
 }
 
 BOOST_AUTO_TEST_CASE(cylinder, * boost::unit_test::tolerance(0.0015))
 {
-    Tolerances::curve = FT::ET(1, 500);
+    const auto &result = evaluate(CYLINDER(2, 10));
 
-    auto p = CYLINDER(2, 10);
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron_volume(*p->get_value(), std::acos(-1) * 4 * 10);
+    test_polyhedron_volume(*result.value, std::acos(-1) * 4 * 10);
 }
 
 BOOST_DATA_TEST_CASE(regular_pyramid,
                      (boost::unit_test::data::make({3, -3})),
                      h)
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
+    const auto &result = evaluate(REGULAR_PYRAMID(4, 1, h));
 
-    auto p = REGULAR_PYRAMID(4, 1, h);
-    std::stringstream s;
+    evaluate_operations();
 
-    s << "regular_pyramid(4,1," << h << ",1/1000000)";
-
-    BOOST_TEST(p->describe() == s.str());
-
-    evaluate_unit();
-
-    test_polyhedron(*p->get_value(), 5, 16, 5, 2);
+    BOOST_TEST(result.tag == tag("regular_pyramid(4,1,", h, ",1/1000000)"));
+    test_polyhedron(*result.value, 5, 16, 5, 2);
 }
 
 BOOST_DATA_TEST_CASE(regular_bipyramid,
                      (boost::unit_test::data::make({1, -1})
                       * boost::unit_test::data::make({FT(FT::ET(1, 2)),
-                                                      FT(FT::ET(-1, 2))})),
+                              FT(FT::ET(-1, 2))})),
                      h_1, h_2)
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
+    const auto &result = evaluate(REGULAR_BIPYRAMID(4, 1, h_1, h_2));
 
-    auto p = REGULAR_BIPYRAMID(4, 1, h_1, h_2);
-    std::stringstream s;
+    evaluate_operations();
 
-    s << "regular_bipyramid(4,1," << h_1 << "," << h_2.exact() << ",1/1000000)";
-
-    BOOST_TEST(p->describe() == s.str());
-
-    evaluate_unit();
-
-    test_polyhedron(
-        *p->get_value(), 6, 24, 8, 2 * CGAL::abs(h_1 + h_2) / 3);
+    BOOST_TEST(
+        result.tag == tag(
+            "regular_bipyramid(4,1,", h_1, ",", h_2.exact(), ",1/1000000)"));
+    test_polyhedron(*result.value, 6, 24, 8, 2 * CGAL::abs(h_1 + h_2) / 3);
 }
 
 ///////////////////////////
 // Conversion operations //
 ///////////////////////////
 
-#define DEFINE_CONVERSION_TEST_CASE_1(T, NAME)                          \
-    BOOST_AUTO_TEST_CASE(to_## T)                                       \
-    {                                                                   \
-        auto p = CONVERT_TO<T>(UNIT_TETRAHEDRON());                     \
+#define DEFINE_CONVERSION_TEST_CASE(T)                                  \
+BOOST_AUTO_TEST_CASE_TEMPLATE(to_## T, U, polyhedron_types)             \
+{                                                                       \
+    const auto &result = evaluate(                                      \
+        CONVERT_TO<T>(CONVERT_TO<U>(UNIT_TETRAHEDRON)));                \
                                                                         \
-        BOOST_TEST(p->describe() == #NAME "(tetrahedron(1,1,1))");      \
-                                                                        \
-        evaluate_unit();                                                \
-        test_unit_tetrahedron(*p->get_value());                         \
-    }
+    evaluate_operations();                                              \
+    BOOST_TEST(                                                         \
+        result.tag == (conversion_tag<T, U>(                            \
+                           conversion_tag<U>("tetrahedron(1,1,1)"))));  \
+    test_unit_tetrahedron(*result.value);                               \
+}
 
-#define DEFINE_CONVERSION_TEST_CASE_2(T, U)             \
-    BOOST_AUTO_TEST_CASE(T ##_to_## U)                  \
-    {                                                   \
-        auto a = CONVERT_TO<T>(UNIT_TETRAHEDRON());     \
-        auto b = CONVERT_TO<U>(a);                      \
-                                                        \
-        evaluate_unit();                                \
-                                                        \
-        if constexpr (std::string_view(#T) == #U) {     \
-            BOOST_TEST(a == b);                         \
-        } else {                                        \
-            test_unit_tetrahedron(*b->get_value());     \
-        }                                               \
-    }
+DEFINE_CONVERSION_TEST_CASE(Polyhedron)
+DEFINE_CONVERSION_TEST_CASE(Nef_polyhedron)
+DEFINE_CONVERSION_TEST_CASE(Surface_mesh)
 
-DEFINE_CONVERSION_TEST_CASE_1(Nef_polyhedron, nef)
-DEFINE_CONVERSION_TEST_CASE_1(Surface_mesh, mesh)
-
-DEFINE_CONVERSION_TEST_CASE_2(Nef_polyhedron, Polyhedron)
-DEFINE_CONVERSION_TEST_CASE_2(Nef_polyhedron, Nef_polyhedron)
-DEFINE_CONVERSION_TEST_CASE_2(Nef_polyhedron, Surface_mesh)
-
-DEFINE_CONVERSION_TEST_CASE_2(Surface_mesh, Polyhedron)
-DEFINE_CONVERSION_TEST_CASE_2(Surface_mesh, Nef_polyhedron)
-DEFINE_CONVERSION_TEST_CASE_2(Surface_mesh, Surface_mesh)
-
-#undef DEFINE_CONVERSION_TEST_CASE_1
-#undef DEFINE_CONVERSION_TEST_CASE_2
+#undef DEFINE_CONVERSION_TEST_CASE
 
 ////////////////////
 // Transformation //
@@ -309,65 +274,72 @@ DEFINE_CONVERSION_TEST_CASE_2(Surface_mesh, Surface_mesh)
 
 BOOST_AUTO_TEST_CASE(rotation, * boost::unit_test::tolerance(0.0001))
 {
-    const double v[3] = {1, 1, 1};
+    const auto &result = evaluate(
+        [] {
+            const double v[] = {1, 1, 1};
 
-    auto p = INTERSECTION(
-        TRANSFORM(
-            UNIT_TETRAHEDRON(),
-            basic_rotation(90, 1)
-            * basic_rotation(90, 2)),
-        TRANSFORM(
-            UNIT_TETRAHEDRON(),
-            axis_angle_rotation(120, v)));
+            return INTERSECTION(
+                TRANSFORM(
+                    UNIT_TETRAHEDRON,
+                    basic_rotation(90, 1)
+                    * basic_rotation(90, 2)),
+                TRANSFORM(
+                    UNIT_TETRAHEDRON,
+                    axis_angle_rotation(120, v)));
+        });
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_polyhedron_volume(*p->get_value(), 1.0 / 6.0);
+    test_polyhedron_volume(*result.value, 1.0 / 6.0);
 }
 
 BOOST_AUTO_TEST_CASE(reflection)
 {
-    auto p = TRANSFORM(UNIT_TETRAHEDRON(), SCALING_3(-1, 1, 1));
+    const auto &result = evaluate(
+        TRANSFORM(UNIT_TETRAHEDRON, SCALING_3(-1, 1, 1)));
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_unit_tetrahedron(*p->get_value());
+    test_unit_tetrahedron(*result.value);
 }
 
 BOOST_AUTO_TEST_CASE(nef_reflection)
 {
-    auto a = CONVERT_TO<Nef_polyhedron>(UNIT_TETRAHEDRON());
-    auto b = JOIN(a, TRANSFORM(a, SCALING_3(-1, 1, 1)));
+    const auto &result = evaluate(
+        JOIN(
+            CONVERT_TO<Nef_polyhedron>(UNIT_TETRAHEDRON),
+            TRANSFORM(
+                CONVERT_TO<Nef_polyhedron>(
+                    UNIT_TETRAHEDRON), SCALING_3(-1, 1, 1))));
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_polyhedron(*b->get_value(), 4, 12, 4, FT(FT::ET(1, 3)));
+    test_polyhedron(*result.value, 4, 12, 4, FT(FT::ET(1, 3)));
 }
 
 BOOST_AUTO_TEST_CASE(mesh_reflection)
 {
-    auto p = TRANSFORM(CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON()),
-                       SCALING_3(-1, 1, 1));
+    const auto &result = evaluate(
+        TRANSFORM(CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON),
+                  SCALING_3(-1, 1, 1)));
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_unit_tetrahedron(*p->get_value());
+    test_unit_tetrahedron(*result.value);
 }
 
 BOOST_AUTO_TEST_CASE(polygon_transformation)
 {
-    auto p = TRANSFORM(RECTANGLE(2, 2),
-                       basic_rotation(90, 0));
+    const auto &result = evaluate(
+        TRANSFORM(RECTANGLE(2, 2), basic_rotation(90, 0)));
 
-    BOOST_TEST(p->describe()
-               == ("extrusion("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)),"
-                   "rotation(1,0,0,0,0,-1,0,1,0))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron(*p->get_value(), 4, 8, 1);
+    BOOST_TEST(result.tag == ("extrusion("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "rotation(1,0,0,0,0,-1,0,1,0))"));
+    test_polyhedron(*result.value, 4, 8, 1);
 }
 
 BOOST_DATA_TEST_CASE(flush,
@@ -376,35 +348,33 @@ BOOST_DATA_TEST_CASE(flush,
                       ^ boost::unit_test::data::make({0, 0, 1})),
                      x, y, z)
 {
-    auto p = JOIN(FLUSH(CUBOID(2, 2, 2), x, y, z),
-                  FLUSH(CUBOID(2, 2, 2), -x, -y, -z));
+    const auto &result = evaluate(
+        JOIN(
+            FLUSH(CUBOID(2, 2, 2), x, y, z),
+            FLUSH(CUBOID(2, 2, 2), -x, -y, -z)));
 
-    std::stringstream s;
-    s << ("join(flush("
-          "cuboid(2,2,2),0,")
-      << x << ",0," << y << ",0," << z
-      << ("),flush(cuboid(2,2,2),")
-      << -x << ",0," << -y << ",0," << -z<< ",0))";
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == s.str());
-
-    evaluate_unit();
-
-    test_polyhedron(*p->get_value(), 12, 60, 20, 16);
+    BOOST_TEST(
+        result.tag == tag(
+            "join(flush(cuboid(2,2,2),0,", x, ",0,", y, ",0,", z,
+            "),flush(cuboid(2,2,2),", -x, ",0,", -y, ",0,", -z, ",0))"));
+    test_polyhedron(*result.value, 12, 60, 20, 16);
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(flush_type, T, polyhedron_types)
 {
-    auto p = JOIN(
+    const auto &result = evaluate(
+        JOIN(
         FLUSH(CONVERT_TO<T>(CUBOID(2, 2, 2)), 1, 0, 0),
-        FLUSH(CONVERT_TO<T>(CUBOID(2, 2, 2)), -1, 0, 0));
+        FLUSH(CONVERT_TO<T>(CUBOID(2, 2, 2)), -1, 0, 0)));
 
-    evaluate_unit();
+    evaluate_operations();
 
     if constexpr(std::is_same_v<T, Nef_polyhedron>) {
-        test_polyhedron(*p->get_value(), 8, 24, 6, 16);
+        test_polyhedron(*result.value, 8, 24, 6, 16);
     } else {
-        test_polyhedron(*p->get_value(), 12, 60, 20, 16);
+        test_polyhedron(*result.value, 12, 60, 20, 16);
     }
 }
 
@@ -414,128 +384,133 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(flush_type, T, polyhedron_types)
 
 BOOST_AUTO_TEST_CASE(extrude)
 {
-    std::vector<Aff_transformation_3> u({
-            TRANSLATION_3(0, 0, 0),
-            TRANSLATION_3(0, 0, 4)});
-
-    std::vector<Aff_transformation_3> v({
-            TRANSLATION_3(0, 0, 0),
-            TRANSLATION_3(0, 0, -4)});
-
     // Do a couple of extrusions to test concurrent access to the same
     // underlying polygon.
 
-    auto a = EXTRUSION(RECTANGLE(2, 3), std::move(u));
-    auto b = EXTRUSION(
-        TRANSFORM(RECTANGLE(2, 3), basic_rotation(45)),
-        std::move(v));
+    const auto &result = evaluate(
+        JOIN(
+            EXTRUSION(
+                RECTANGLE(2, 3),
+                std::move(
+                    std::vector(
+                        {TRANSLATION_3(0, 0, 1), TRANSLATION_3(0, 0, 5)}))),
+            EXTRUSION(
+                TRANSFORM(RECTANGLE(2, 3), basic_rotation(45)),
+                std::move(
+                    std::vector(
+                        {TRANSLATION_3(0, 0, -1), TRANSLATION_3(0, 0, -5)})))));
 
-    BOOST_TEST(a->describe()
-               == ("extrusion("
-                   "polygon(point(-1,-3/2),point(1,-3/2),"
-                   "point(1,3/2),point(-1,3/2)),"
-                   "translation(0,0,0),"
-                   "translation(0,0,4))"));
+    evaluate_operations();
 
-    evaluate_unit();
+    BOOST_TEST(
+        result.tag == (
+            "join(extrusion("
+            "polygon(point(-1,-3/2),point(1,-3/2),point(1,3/2),point(-1,3/2)),"
+            "translation(0,0,1),translation(0,0,5)),"
+            "extrusion(transform("
+            "polygon(point(-1,-3/2),point(1,-3/2),point(1,3/2),point(-1,3/2)),"
+            "rotation(803761/1136689,-803760/1136689,803760/1136689,803761/1136689)),"
+            "translation(0,0,-1),translation(0,0,-5)))"));
 
-    BOOST_TEST_REQUIRE(CGAL::is_valid_polygon_mesh(*a->get_value()));
-    BOOST_TEST_REQUIRE(CGAL::is_closed(*a->get_value()));
-
-    test_polyhedron(*a->get_value(), 8, 36, 12, 24);
-    test_polyhedron(*b->get_value(), 8, 36, 12, 24);
+    test_polyhedron(*result.value, 16, 72, 24, 48);
+    BOOST_TEST(CGAL::is_valid_polygon_mesh(*result.value));
+    BOOST_TEST(CGAL::is_closed(*result.value));
 }
 
-BOOST_AUTO_TEST_CASE(extrude_circe, * boost::unit_test::tolerance(0.001))
+BOOST_AUTO_TEST_CASE(extrude_circle, * boost::unit_test::tolerance(0.001))
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
-    Tolerances::curve = FT::ET(1, 1000);
+    const auto &result = evaluate(
+        EXTRUSION(
+            DIFFERENCE(CIRCLE(3), RECTANGLE(2, 2)),
+            {TRANSLATION_3(0, 0, 0), TRANSLATION_3(0, 0, 1)}));
 
-    auto a = DIFFERENCE(CIRCLE(3), RECTANGLE(2, 2));
-    auto b = EXTRUSION(a, {TRANSLATION_3(0, 0, 0), TRANSLATION_3(0, 0, 1)});
+    evaluate_operations();
 
-    BOOST_TEST(b->describe()
-               == ("extrusion("
-                   "segments(difference(circle(3),circles("
-                   "polygon(point(-1,-1),point(1,-1),"
-                   "point(1,1),point(-1,1)))),"
-                   "1/1000,1/1000000),"
-                   "translation(0,0,0),"
-                   "translation(0,0,1))"));
+    BOOST_TEST(result.tag == ("extrusion("
+                              "segments(difference(circle(3),circles("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)))),"
+                              "1/1000,1/1000000),"
+                              "translation(0,0,0),"
+                              "translation(0,0,1))"));
 
-    evaluate_unit();
-
-    BOOST_TEST_REQUIRE(CGAL::is_valid_polygon_mesh(*b->get_value()));
-    BOOST_TEST_REQUIRE(CGAL::is_closed(*b->get_value()));
-
-    test_polyhedron_volume(*b->get_value(), std::acos(-1) * 9 - 4);
+    test_polyhedron_volume(*result.value, std::acos(-1) * 9 - 4);
+    BOOST_TEST(CGAL::is_valid_polygon_mesh(*result.value));
+    BOOST_TEST(CGAL::is_closed(*result.value));
 }
 
 BOOST_TEST_DECORATOR(* boost::unit_test::tolerance(0.01))
 BOOST_DATA_TEST_CASE(extrude_closed,
                      (boost::unit_test::data::make({1, 5}) *
                       boost::unit_test::data::make({0, 1})),
-                     rho, p)
+                     rho, q)
 {
-    std::vector<Aff_transformation_3> v;
-    v.reserve(37);
+    const auto &result = evaluate(
+        [&rho, &q] {
+            std::vector<Aff_transformation_3> v;
+            v.reserve(37);
 
-    for (int i = 0; i < 37; i++) {
-        v.push_back(basic_rotation(i * 10, 1) * TRANSLATION_3(rho, 0, 0));
-    }
+            for (int i = 0; i < 37; i++) {
+                v.push_back(
+                    basic_rotation(i * 10, 1) * TRANSLATION_3(rho, 0, 0));
+            }
 
-    auto a = (!p ? RECTANGLE(2, 2)
-                 : DIFFERENCE(RECTANGLE(2, 2), RECTANGLE(1, 1)));
-    auto b = EXTRUSION(a, std::move(v));
+            return EXTRUSION(
+                (!q ? RECTANGLE(2, 2)
+                 : DIFFERENCE(RECTANGLE(2, 2), RECTANGLE(1, 1))),
+                std::move(v));
+        });
 
-    evaluate_unit();
+    evaluate_operations();
 
-    BOOST_TEST_REQUIRE(CGAL::is_valid_polygon_mesh(*b->get_value()));
-    BOOST_TEST_REQUIRE(CGAL::is_closed(*b->get_value()));
-
-    test_polyhedron_volume(*b->get_value(), 2 * std::acos(-1) * rho * (4 - p));
+    test_polyhedron_volume(*result.value, 2 * std::acos(-1) * rho * (4 - q));
+    BOOST_TEST(CGAL::is_valid_polygon_mesh(*result.value));
+    BOOST_TEST(CGAL::is_closed(*result.value));
 }
 
 BOOST_DATA_TEST_CASE(extrude_many,
                      (boost::unit_test::data::make({1, 2, 11})
                       * boost::unit_test::data::make({0, 1})),
-                     n, p)
+                     n, q)
 {
-    auto a = (!p ? RECTANGLE(2, 2)
-                 : DIFFERENCE(RECTANGLE(2, 2), RECTANGLE(1, 1)));
+    const auto &result = evaluate(
+        [&n, &q] {
+            std::vector<Aff_transformation_3> v;
+            v.reserve(n);
 
-    std::vector<Aff_transformation_3> v;
+            for (int i = 0; i < n; i += 1) {
+                v.push_back(
+                    TRANSLATION_3(
+                        FT::ET(i % 2 > 0 ? -1 : 1), FT::ET(0), FT::ET(i)));
+            }
 
-    for (int i = 0; i < n; i += 1) {
-        v.push_back(
-            TRANSLATION_3(FT::ET(i % 2 > 0 ? -1 : 1), FT::ET(0), FT::ET(i)));
-    }
+            return EXTRUSION(
+                (!q
+                 ? RECTANGLE(2, 2)
+                 : DIFFERENCE(RECTANGLE(2, 2), RECTANGLE(1, 1))), std::move(v));
+        });
 
-    auto b = EXTRUSION(a, std::move(v));
+    evaluate_operations();
 
-    BOOST_TEST(v.empty());
-
-    evaluate_unit();
-
-    BOOST_TEST_REQUIRE(CGAL::is_valid_polygon_mesh(*b->get_value()));
+    BOOST_TEST(CGAL::is_valid_polygon_mesh(*result.value));
 
     if (n > 1) {
-        BOOST_TEST_REQUIRE(CGAL::is_closed(*b->get_value()));
+        BOOST_TEST(CGAL::is_closed(*result.value));
     }
 
-    if (n == 1 && p == 0) {
-        test_polyhedron(*b->get_value(), 4, 8, 1);
+    if (n == 1 && q == 0) {
+        test_polyhedron(*result.value, 4, 8, 1);
     } else {
-        test_polyhedron(*b->get_value(),
-                        4 * n * (p + 1),
-                        ((n == 1) * (p + 1) * 4
-                         + (1 + (n > 1)) * (p == 0 ? 6 : 24)
-                         + 24 * (p + 1) * (n - 1)),
-                        (1 + (n > 1)) * (p == 0 ? 2 : 8) + 8 * (p + 1) * (n - 1));
+        test_polyhedron(
+            *result.value,
+            4 * n * (q + 1),
+            ((n == 1) * (q + 1) * 4 + (1 + (n > 1)) * (q == 0 ? 6 : 24)
+             + 24 * (q + 1) * (n - 1)),
+            (1 + (n > 1)) * (q == 0 ? 2 : 8) + 8 * (q + 1) * (n - 1));
     }
 
     if (n > 1) {
-        test_polyhedron_volume(*b->get_value(), FT((4 - p) * (n - 1)));
+        test_polyhedron_volume(*result.value, FT((4 - q) * (n - 1)));
     }
 }
 
@@ -545,67 +520,72 @@ BOOST_DATA_TEST_CASE(extrude_many,
 
 BOOST_AUTO_TEST_CASE(hull)
 {
-    auto h = std::make_shared<Polyhedron_hull_operation>();
-    h->push_back(TETRAHEDRON(FT::ET(1, 2), 1, 1));
-    h->push_back(TETRAHEDRON(FT::ET(-1, 2), 1, 1));
-    auto a = HULL(h);
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYHEDRON_HULL_OPEN();
+            h->push_back(TETRAHEDRON(FT::ET(1, 2), 1, 1));
+            h->push_back(TETRAHEDRON(FT::ET(-1, 2), 1, 1));
+            return POLYHEDRON_HULL_CLOSE(h);
+        });
 
-    auto g = std::make_shared<Polyhedron_hull_operation>();
-    g->push_back(
-        TRANSFORM(TETRAHEDRON(FT::ET(-1, 2), 1, 1),
-            SCALING_3(-1, 1, 1)));
-    g->push_back(TETRAHEDRON(FT::ET(-1, 2), 1, 1));
-    auto b = HULL(g);
+    evaluate_operations();
 
-    auto f = std::make_shared<Polyhedron_hull_operation>();
-    f->push_back(TETRAHEDRON(FT::ET(1, 2), 1, 1));
-    f->push_back(Point_3(FT(FT::ET(-1, 2)), 0, 0));
-    auto c = HULL(f);
+    BOOST_TEST(
+        result.tag == "hull(tetrahedron(1/2,1,1),tetrahedron(-1/2,1,1))");
+    test_unit_tetrahedron(*result.value);
+}
 
-    BOOST_TEST(a->describe()
-               == "hull(tetrahedron(1/2,1,1),tetrahedron(-1/2,1,1))");
+BOOST_AUTO_TEST_CASE(hull_mixed)
+{
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYHEDRON_HULL_OPEN();
+            h->push_back(TETRAHEDRON(FT::ET(1, 2), 1, 1));
+            h->push_back(Point_3(FT(FT::ET(-1, 2)), 0, 0));
+            return POLYHEDRON_HULL_CLOSE(h);
+        });
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_unit_tetrahedron(*a->get_value());
-    test_unit_tetrahedron(*b->get_value());
-    test_unit_tetrahedron(*c->get_value());
+    BOOST_TEST(result.tag == "hull(tetrahedron(1/2,1,1),point(-1/2,0,0))");
+    test_unit_tetrahedron(*result.value);
 }
 
 BOOST_AUTO_TEST_CASE(hull_points)
 {
-    auto h = std::make_shared<Polyhedron_hull_operation>();
-    h->push_back(Point_3(CGAL::ORIGIN));
-    h->push_back(Point_3(1, 0, 0));
-    h->push_back(Point_3(0, 1, 0));
-    h->push_back(Point_3(0, 0, 1));
-    auto p = HULL(h);
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYHEDRON_HULL_OPEN();
+            h->push_back(Point_3(CGAL::ORIGIN));
+            h->push_back(Point_3(1, 0, 0));
+            h->push_back(Point_3(0, 1, 0));
+            h->push_back(Point_3(0, 0, 1));
+            return POLYHEDRON_HULL_CLOSE(h);
+        });
 
-    BOOST_TEST(p->describe()
-               == ("hull(point(0,0,0),point(1,0,0),"
-                   "point(0,1,0),point(0,0,1))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_unit_tetrahedron(*p->get_value());
+    BOOST_TEST(result.tag == ("hull(point(0,0,0),point(1,0,0),"
+                              "point(0,1,0),point(0,0,1))"));
+    test_unit_tetrahedron(*result.value);
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(hulls, T, polyhedron_types)
 {
-    auto h = std::make_shared<Polyhedron_hull_operation>();
-    h->push_back(TETRAHEDRON(1, 1, 1));
-    h->push_back(
-        TRANSFORM(CONVERT_TO<T>(TETRAHEDRON(1, 1, 1)), TRANSLATION_3(2, 0, 0)));
-    auto p = HULL(h);
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYHEDRON_HULL_OPEN();
+            h->push_back(UNIT_TETRAHEDRON);
+            h->push_back(
+                TRANSFORM(
+                    CONVERT_TO<T>(UNIT_TETRAHEDRON), TRANSLATION_3(2, 0, 0)));
+            return POLYHEDRON_HULL_CLOSE(h);
+        });
 
-    BOOST_TEST(
-        p->describe().rfind(
-            "hull(tetrahedron(1,1,1),transform(", 0) == 0);
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron(*p->get_value(), 6, 24, 8, FT(FT::ET(7, 6)));
-}
+    test_polyhedron(*result.value, 6, 24, 8, FT(FT::ET(7, 6)));
+};
 
 ///////////////////
 // Minkowski sum //
@@ -613,15 +593,14 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(hulls, T, polyhedron_types)
 
 BOOST_AUTO_TEST_CASE(minkowski_sum)
 {
-    auto p = MINKOWSKI_SUM(CUBOID(10, 10, 10), OCTAHEDRON(2, 2, 1));
+    const auto &result = evaluate(
+        MINKOWSKI_SUM(CUBOID(10, 10, 10), OCTAHEDRON(2, 2, 1)));
 
-    BOOST_TEST(
-        p->describe() == ("minkowski_sum(nef(cuboid(10,10,10)),"
-                          "nef(octahedron(2,2,1,1)))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron(*p->get_value(), 24, 96, 26, FT(FT::ET(4984, 3)));
+    BOOST_TEST(result.tag == ("minkowski_sum(nef(cuboid(10,10,10)),"
+                              "nef(octahedron(2,2,1,1)))"));
+    test_polyhedron(*result.value, 24, 96, 26, FT(FT::ET(4984, 3)));
 }
 
 /////////////////
@@ -630,61 +609,44 @@ BOOST_AUTO_TEST_CASE(minkowski_sum)
 
 BOOST_AUTO_TEST_CASE(loop)
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
+    const auto &result = evaluate(LOOP(ICOSAHEDRON(1), 2));
 
-    auto p = LOOP(ICOSAHEDRON(1), 2);
-    auto q = LOOP(
-        TRANSFORM(ICOSAHEDRON(1), basic_rotation(45, 2)), 1);
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == "loop(icosahedron(1,1/1000000),2)");
-
-    evaluate_unit();
-
+    BOOST_TEST(result.tag == "loop(icosahedron(1,1/1000000),2)");
     test_polyhedron(
-        *p->get_value(), 12 + 60 / 2 + 2 * 60, 4 * 4 * 60, 4 * 4 * 20);
-    test_polyhedron(
-        *q->get_value(), 12 + 60 / 2, 4 * 60, 4 * 20);
+        *result.value, 12 + 60 / 2 + 2 * 60, 4 * 4 * 60, 4 * 4 * 20);
 }
 
 BOOST_AUTO_TEST_CASE(catmull_clark)
 {
-    auto p = CATMULL_CLARK(CUBOID(1, 1, 1), 2);
+    const auto &result = evaluate(CATMULL_CLARK(CUBOID(1, 1, 1), 2));
 
-    BOOST_TEST(
-        p->describe() == ("catmull_clark(cuboid(1,1,1),2)"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron(*p->get_value(),
-                    8 + 24 / 2 + 2 * 24 + 6 + 4 * 6,
-                    4 * 4 * 24,
-                    4 * 4 * 6);
+    BOOST_TEST(result.tag == "catmull_clark(cuboid(1,1,1),2)");
+    test_polyhedron(
+        *result.value, 8 + 24 / 2 + 2 * 24 + 6 + 4 * 6, 4 * 4 * 24, 4 * 4 * 6);
 }
 
 BOOST_AUTO_TEST_CASE(doo_sabin)
 {
-    auto p = DOO_SABIN(UNIT_TETRAHEDRON(), 1);
+    const auto &result = evaluate(DOO_SABIN(UNIT_TETRAHEDRON, 1));
 
-    BOOST_TEST(p->describe() == "doo_sabin(tetrahedron(1,1,1),1)");
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron(
-        *p->get_value(), 3 * 4, 2 * 12 + 6 * 4, 4 + 12 / 2 + 4);
+    BOOST_TEST(result.tag == "doo_sabin(tetrahedron(1,1,1),1)");
+    test_polyhedron(*result.value, 3 * 4, 2 * 12 + 6 * 4, 4 + 12 / 2 + 4);
 }
 
 BOOST_AUTO_TEST_CASE(sqrt_3)
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
+    const auto &result = evaluate(SQRT_3(ICOSAHEDRON(1), 2));
 
-    auto p = SQRT_3(ICOSAHEDRON(1), 2);
+    evaluate_operations();
 
-    BOOST_TEST(p->describe() == "sqrt_3(icosahedron(1,1/1000000),2)");
-
-    evaluate_unit();
-
-    test_polyhedron(
-        *p->get_value(), 12 + 20 + 60, 3 * 3 * 60, 3 * 60);
+    BOOST_TEST(result.tag == "sqrt_3(icosahedron(1,1/1000000),2)");
+    test_polyhedron(*result.value, 12 + 20 + 60, 3 * 3 * 60, 3 * 60);
 }
 
 ////////////////////
@@ -693,163 +655,177 @@ BOOST_AUTO_TEST_CASE(sqrt_3)
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(join, T, polyhedron_types)
 {
-    auto p = JOIN(
-        CONVERT_TO<T>(UNIT_TETRAHEDRON()),
-        CONVERT_TO<T>(TETRAHEDRON(-1, 1, 1)));
+    const auto &result = evaluate(
+        JOIN(
+            CONVERT_TO<T>(UNIT_TETRAHEDRON),
+            CONVERT_TO<T>(TETRAHEDRON(-1, 1, 1))));
 
-    if constexpr (std::is_same_v<T, Polyhedron>) {
-        BOOST_TEST(p->describe()
-                   == "join(tetrahedron(1,1,1),tetrahedron(-1,1,1))");
-    }
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron_volume(*p->get_value(), FT(FT::ET(1, 3)));
+    BOOST_TEST(
+        result.tag == tag(
+            "join(", conversion_tag<T>("tetrahedron(1,1,1)"), ",",
+            conversion_tag<T>("tetrahedron(-1,1,1))")));
+    test_polyhedron_volume(*result.value, FT(FT::ET(1, 3)));
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(difference, T, polyhedron_types)
 {
-    auto p = DIFFERENCE(
-        CONVERT_TO<T>(UNIT_TETRAHEDRON()),
-        CONVERT_TO<T>(TETRAHEDRON(FT::ET(1, 2), FT::ET(1, 2), FT::ET(1, 2))));
+    const auto &result = evaluate(
+        DIFFERENCE(
+            CONVERT_TO<T>(UNIT_TETRAHEDRON),
+            CONVERT_TO<T>(TETRAHEDRON(
+                              FT::ET(1, 2), FT::ET(1, 2), FT::ET(1, 2)))));
 
-    if constexpr (std::is_same_v<T, Polyhedron>) {
-        BOOST_TEST(
-            p->describe()
-            == ("difference(tetrahedron(1,1,1),tetrahedron(1/2,1/2,1/2))"));
-    }
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron_volume(*p->get_value(), FT(FT::ET(7, 48)));
+    BOOST_TEST(
+        result.tag == tag(
+            "difference(", conversion_tag<T>("tetrahedron(1,1,1)"), ",",
+            conversion_tag<T>("tetrahedron(1/2,1/2,1/2)"), ")"));
+    test_polyhedron_volume(*result.value, FT(FT::ET(7, 48)));
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(intersection, T, polyhedron_types)
 {
-    auto p = INTERSECTION(
-        CONVERT_TO<T>(UNIT_TETRAHEDRON()),
-        CONVERT_TO<T>(TRANSFORM(UNIT_TETRAHEDRON(),
-                                    TRANSLATION_3(FT::ET(1, 2), 0, 0))));
+    const auto &result = evaluate(
+        INTERSECTION(
+            CONVERT_TO<T>(UNIT_TETRAHEDRON),
+            CONVERT_TO<T>(TRANSFORM(UNIT_TETRAHEDRON,
+                                    TRANSLATION_3(FT::ET(1, 2), 0, 0)))));
 
-    if constexpr (std::is_same_v<T, Polyhedron>) {
-        BOOST_TEST(p->describe()
-                   == ("intersection("
-                       "tetrahedron(1,1,1),"
-                       "transform("
-                       "tetrahedron(1,1,1),"
-                       "translation(1/2,0,0)))"));
-    }
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron(*p->get_value(), 4, 12, 4, FT(FT::ET(1, 48)));
+    BOOST_TEST(
+        result.tag == tag(
+            "intersection(", conversion_tag<T>("tetrahedron(1,1,1)"), ",",
+            conversion_tag<T>(
+                "transform(tetrahedron(1,1,1),translation(1/2,0,0))"), ")"));
+    test_polyhedron(*result.value, 4, 12, 4, FT(FT::ET(1, 48)));
 }
 
 BOOST_AUTO_TEST_CASE(symmetric_difference)
 {
-    auto p = SYMMETRIC_DIFFERENCE(UNIT_TETRAHEDRON(),
-                                  TRANSFORM(UNIT_TETRAHEDRON(),
-                                            TRANSLATION_3(FT::ET(1, 2), 0, 0)));
+    const auto &result = evaluate(
+        SYMMETRIC_DIFFERENCE(
+            UNIT_TETRAHEDRON,
+            TRANSFORM(UNIT_TETRAHEDRON, TRANSLATION_3(FT::ET(1, 2), 0, 0))));
 
-    BOOST_TEST(p->describe()
-               == ("symmetric_difference("
-                   "nef(tetrahedron(1,1,1)),"
-                   "nef(transform("
-                   "tetrahedron(1,1,1),"
-                   "translation(1/2,0,0))))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
+    BOOST_TEST(result.tag == ("symmetric_difference("
+                              "nef(tetrahedron(1,1,1)),"
+                              "nef(transform("
+                              "tetrahedron(1,1,1),"
+                              "translation(1/2,0,0))))"));
     test_polyhedron(
-        *p->get_value(), 10, 34, 10, FT(2 * (FT::ET(1, 6) - FT::ET(1, 48))));
+        *result.value, 10, 34, 10, FT(2 * (FT::ET(1, 6) - FT::ET(1, 48))));
 }
 
 BOOST_AUTO_TEST_CASE(complement)
 {
-    auto a = CUBOID(3, 4, 5);
-    auto b = CUBOID(1, 2, 3);
-    auto c = COMPLEMENT(b);
-    auto d = INTERSECTION(a, c);
-    auto e = DIFFERENCE(DIFFERENCE(a, b), d);
+    const auto &result = evaluate(
+        [] {
+            auto a = CUBOID(4, 5, 6);
+            auto b = CUBOID(1, 2, 3);
 
-    BOOST_TEST(c->describe() == ("complement(cuboid(1,2,3))"));
+            return SYMMETRIC_DIFFERENCE(
+                DIFFERENCE(a, b),
+                INTERSECTION(a, COMPLEMENT(b)));
+        });
 
-    evaluate_unit();
+    evaluate_operations();
 
-    BOOST_TEST(e->get_value()->is_empty());
+    BOOST_TEST(
+        result.tag == (
+            "symmetric_difference(nef(difference(cuboid(4,5,6),cuboid(1,2,3))),"
+            "nef(intersection(cuboid(4,5,6),complement(cuboid(1,2,3)))))"));
+    BOOST_TEST(result.value->is_empty());
 }
 
 BOOST_AUTO_TEST_CASE(boundary)
 {
-    auto a = BOUNDARY(CUBOID(6, 7, 8));
-    auto b = DIFFERENCE(CUBOID(7, 8, 9), CUBOID(5, 6, 7));
-    auto c = MINKOWSKI_SUM(a, CUBOID(1, 1, 1));
-    auto d = DIFFERENCE(c, b);
+    const auto &result = evaluate(
+        [] {
+            auto a = BOUNDARY(CUBOID(6, 7, 8));
+            auto b = DIFFERENCE(CUBOID(7, 8, 9), CUBOID(5, 6, 7));
+            auto c = MINKOWSKI_SUM(a, CUBOID(1, 1, 1));
+            return DIFFERENCE(c, b);
+        });
 
-    BOOST_TEST(a->describe() == ("boundary(nef(cuboid(6,7,8)))"));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    BOOST_TEST(d->get_value()->is_empty());
+    BOOST_TEST(
+        result.tag == ("difference(minkowski_sum("
+                       "boundary(nef(cuboid(6,7,8))),nef(cuboid(1,1,1))),"
+                       "nef(difference(cuboid(7,8,9),cuboid(5,6,7))))"));
+    BOOST_TEST(result.value->is_empty());
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(non_manifold_edge, T, polyhedron_types)
 {
-    auto p = JOIN(
-        CONVERT_TO<T>(TETRAHEDRON(1, 1, 1)),
-        CONVERT_TO<T>(TETRAHEDRON(1, -1, -1)));
+    const auto &result = evaluate(
+        JOIN(
+            CONVERT_TO<T>(TETRAHEDRON(1, 1, 1)),
+            CONVERT_TO<T>(TETRAHEDRON(1, -1, -1))));
 
-    evaluate_unit();
+    evaluate_operations();
 
     if constexpr(std::is_same_v<T, Nef_polyhedron>) {
-        test_polyhedron(*p->get_value(), 6, 22, 8, FT(FT::ET(1, 3)));
+        test_polyhedron(*result.value, 6, 22, 8, FT(FT::ET(1, 3)));
     } else {
-        bool failed = p->annotations.find("failure") != p->annotations.end();
-        BOOST_TEST(failed);
+        // A resulting mesh with non-manifold edges should fail,
+        // so the sink should remain unevaluated.
+
+        BOOST_TEST(result.value == nullptr);
     }
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(non_manifold_vertex, T, polyhedron_types)
 {
-    auto p = JOIN(
-        CONVERT_TO<T>(TETRAHEDRON(1, 1, 1)),
-        CONVERT_TO<T>(TETRAHEDRON(-1, -1, -1)));
+    const auto &result = evaluate(
+        JOIN(
+            CONVERT_TO<T>(TETRAHEDRON(1, 1, 1)),
+            CONVERT_TO<T>(TETRAHEDRON(-1, -1, -1))));
 
-    evaluate_unit();
+    evaluate_operations();
 
     if constexpr(std::is_same_v<T, Nef_polyhedron>) {
-        test_polyhedron(*p->get_value(), 7, 24, 8, FT(FT::ET(1, 3)));
+        test_polyhedron(*result.value, 7, 24, 8, FT(FT::ET(1, 3)));
     } else {
-        test_polyhedron(*p->get_value(), 8, 24, 8, FT(FT::ET(1, 3)));
+        test_polyhedron(*result.value, 8, 24, 8, FT(FT::ET(1, 3)));
     }
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(clip, T, polyhedron_types)
 {
-    auto p = CLIP(CONVERT_TO<T>(TETRAHEDRON(2, 2, 2)), Plane_3(0, 0, -1, 1));
+    const auto &result = evaluate(
+        CLIP(CONVERT_TO<T>(TETRAHEDRON(2, 2, 2)), Plane_3(0, 0, -1, 1)));
 
-    if constexpr (std::is_same_v<T, Polyhedron>) {
-        BOOST_TEST(p->describe()
-                   == ("clip(tetrahedron(2,2,2),plane(0,0,-1,1))"));
-    }
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polyhedron_volume(*p->get_value(), FT(FT::ET(1, 6)));
+    BOOST_TEST(result.tag == tag(
+                   "clip(", conversion_tag<T>("tetrahedron(2,2,2)"),
+                   ",plane(0,0,-1,1))"));
+    test_polyhedron_volume(*result.value, FT(FT::ET(1, 6)));
 }
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(clip_non_manifold, T, polyhedron_types)
 {
-    auto p = CLIP(
-        CONVERT_TO<T>(
-            DIFFERENCE(CUBOID(4, 4, 4),
-                       TRANSFORM(CUBOID(2, 2, 4), TRANSLATION_3(1, 1, 0)))),
-        Plane_3(-1, -1, 0, 0));
+    const auto &result = evaluate(
+        CLIP(
+            CONVERT_TO<T>(
+                DIFFERENCE(
+                    CUBOID(4, 4, 4),
+                    TRANSFORM(CUBOID(2, 2, 4), TRANSLATION_3(1, 1, 0)))),
+            Plane_3(-1, -1, 0, 0)));
 
-    evaluate_unit();
+    evaluate_operations();
 
     if constexpr (std::is_same_v<T, Nef_polyhedron>) {
-        test_polyhedron(*p->get_value(), 10, 34, 10, 16);
+        test_polyhedron(*result.value, 10, 34, 10, 16);
+    } else {
+        BOOST_TEST(result.value == nullptr);
     }
 }
 
@@ -859,22 +835,24 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(clip_non_manifold, T, polyhedron_types)
 BOOST_TEST_DECORATOR(* boost::unit_test::disabled())
 BOOST_DATA_TEST_CASE(spheres,
                      boost::unit_test::data::make({false, true}),
-                     p)
+                     q)
 {
-    Tolerances::curve = FT::ET(1, 500);
-    std::shared_ptr<Polyhedron_operation<Polyhedron>> v[4];
+    const auto &result = evaluate(
+        [&q] {
+            std::shared_ptr<Polyhedron_operation<Polyhedron>> v[4];
 
-    for (int i = 0; i < 4; i++) {
-        v[i] = TRANSFORM(
-            SPHERE(FT(2 + (p ? FT::ET(i, 10) : 0))),
-            TRANSLATION_3(FT(i * FT::ET(3, 2)), 0, 0));
-    }
+            for (int i = 0; i < 4; i++) {
+                v[i] = TRANSFORM(
+                    SPHERE(FT(2 + (q ? FT::ET(i, 10) : 0))),
+                    TRANSLATION_3(FT(i * FT::ET(3, 2)), 0, 0));
+            }
 
-    auto a = JOIN(JOIN(v[0], v[1]), JOIN(v[2], v[3]));
+            return JOIN(JOIN(v[0], v[1]), JOIN(v[2], v[3]));
+        });
 
-    evaluate_unit();
+    evaluate_operations();
 
-    BOOST_TEST(a->get_value());
+    BOOST_TEST(!result.value->is_empty());
 }
 
 // Intersections and differences of various small cubes with a larger
@@ -882,41 +860,43 @@ BOOST_DATA_TEST_CASE(spheres,
 
 BOOST_AUTO_TEST_CASE(cube_tessellation, * boost::unit_test::disabled())
 {
-    const int n = 5;
-    const int m = 2 * n + 1;
-    std::vector<std::shared_ptr<Polyhedron_operation<Nef_polyhedron>>> v;
+    const auto &result = evaluate(
+        [] {
+            const int n = 5;
+            const int m = 2 * n + 1;
+            std::vector<
+                std::shared_ptr<Polyhedron_operation<Nef_polyhedron>>> v;
 
-    auto a = CONVERT_TO<Nef_polyhedron>(CUBOID(m, m, m));
-    const auto b = a;
+            auto a = CONVERT_TO<Nef_polyhedron>(CUBOID(m, m, m));
+            const auto b = a;
 
-    v.reserve(m * m * m);
+            v.reserve(m * m * m);
 
-    for (int i = -n; i <= n ; i++) {
-        for (int j = -n; j <= n ; j++) {
-            for (int k = -n; k <= n ; k++) {
-                auto x = ((i + j + k) % 2
-                          ? INTERSECTION(
-                              b, TRANSFORM(CONVERT_TO<Nef_polyhedron>(
-                                               CUBOID(1, 1, 1)),
-                                           TRANSLATION_3(i, j, k)))
-                          : INTERSECTION(
-                              TRANSFORM(CONVERT_TO<Nef_polyhedron>(
-                                            CUBOID(1, 1, 1)),
-                                        TRANSLATION_3(i, j, k)), b));
-                v.push_back(x);
+            for (int i = -n; i <= n; i++) {
+                for (int j = -n; j <= n; j++) {
+                    for (int k = -n; k <= n; k++) {
+                        auto x = ((i + j + k) % 2
+                                  ? INTERSECTION(
+                                      b, TRANSFORM(CONVERT_TO<Nef_polyhedron>(
+                                                       CUBOID(1, 1, 1)),
+                                                   TRANSLATION_3(i, j, k)))
+                                  : INTERSECTION(
+                                      TRANSFORM(CONVERT_TO<Nef_polyhedron>(
+                                                    CUBOID(1, 1, 1)),
+                                                TRANSLATION_3(i, j, k)), b));
+                        v.push_back(x);
 
-                a = DIFFERENCE(a, x);
+                        a = DIFFERENCE(a, x);
+                    }
+                }
             }
-        }
-    }
 
-    evaluate_unit();
+            return a;
+        });
 
-    BOOST_TEST(a->get_value()->is_empty());
+    evaluate_operations();
 
-    for (const auto &x: v) {
-        test_polyhedron(*x->get_value(), 8, 24, 6, FT(1));
-    }
+    BOOST_TEST(result.value->is_empty());
 }
 
 /////////////////////
@@ -925,13 +905,18 @@ BOOST_AUTO_TEST_CASE(cube_tessellation, * boost::unit_test::disabled())
 
 BOOST_AUTO_TEST_CASE(write_off)
 {
-    auto p = WRITE_OFF("test.off",
-                       {CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON())});
+    {
+        auto p = WRITE_OFF(
+            "test.off", {CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON)});
 
-    BOOST_TEST(p->describe()
-               == "write_off(\"test.off\",mesh(tetrahedron(1,1,1)))");
+        BOOST_TEST(
+            p->describe()
+            == "write_off(\"test.off\",mesh(tetrahedron(1,1,1)))");
 
-    evaluate_unit();
+        sink_operation(std::move(p));
+    }
+
+    evaluate_operations();
 
     Polyhedron P;
     std::ifstream("test.off") >> P;
@@ -942,13 +927,18 @@ BOOST_AUTO_TEST_CASE(write_off)
 
 BOOST_AUTO_TEST_CASE(write_stl)
 {
-    auto p = WRITE_STL("test.stl",
-                       {CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON())});
+    {
+        auto p = WRITE_STL(
+            "test.stl", {CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON)});
 
-    BOOST_TEST(p->describe()
-               == "write_stl(\"test.stl\",mesh(tetrahedron(1,1,1)))");
+        BOOST_TEST(
+            p->describe()
+            == "write_stl(\"test.stl\",mesh(tetrahedron(1,1,1)))");
 
-    evaluate_unit();
+        sink_operation(std::move(p));
+    }
+
+    evaluate_operations();
 
     std::ifstream f = std::ifstream("test.stl");
     std::string s;
@@ -963,16 +953,20 @@ BOOST_AUTO_TEST_CASE(write_stl)
 
 BOOST_AUTO_TEST_CASE(write_wrl)
 {
-    auto p = WRITE_WRL("test.wrl",
-                       {CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON())});
+    {
+        auto p = WRITE_WRL(
+            "test.wrl", {CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON)});
 
-    BOOST_TEST(p->describe()
-               == "write_wrl(\"test.wrl\",mesh(tetrahedron(1,1,1)))");
+        BOOST_TEST(
+            p->describe()
+            == "write_wrl(\"test.wrl\",mesh(tetrahedron(1,1,1)))");
 
-    evaluate_unit();
+        sink_operation(std::move(p));
+    }
+
+    evaluate_operations();
 
     BOOST_TEST(std::ifstream("test.wrl").good());
-
     std::filesystem::remove("test.wrl");
 }
 

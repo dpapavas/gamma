@@ -19,5 +19,6 @@
 #define LUA_FRONTEND_H
 
 int run_lua(const char *input, char **first, char **last);
+void close_lua(void);
 
 #endif

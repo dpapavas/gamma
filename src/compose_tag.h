@@ -22,14 +22,34 @@
 #include <ostream>
 #include <tuple>
 
-// Simple values
+// ---
+
+// ## Tag Composition
+
+// We compose the operation's tag as a textual representation of the
+// operation.  Roughly, we give each operation a unique name and then
+// its tag is a string of the form `"name(arg_1, arg_2, ...)"`.  For
+// example, a `Sphere_operation` with radius equal to 1, would be
+// `"sphere(1)"` and a union of two spheres might be
+// `"join(sphere(1),sphere(2))"`.
+
+// The arguments can either be
+
+//   * simple algebraic values, such as integers, rationals, etc.,
+//   * strings, e.g. file names for output operations,
+//   * geometric values, like points, vectors, transformations etc., or
+//   * other operations.
+
+// Implementations for "simple" values, can be found below; ref:
+// Serialization of Simple Arguments.  Other implementations are
+// bundled with the types they're meant for.
+
+// Some declarations follow.
 
 template<typename T, typename = void>
 struct compose_tag_helper {
     static void compose(std::ostringstream &s, const T &x);
 };
-
-// Iterables
 
 template<typename T, typename U>
 struct compose_tag_helper<std::pair<T, U>> {
@@ -58,6 +78,10 @@ struct compose_tag_helper<T, std::void_t<decltype(std::declval<T>().begin()),
     }
 };
 
+// This template uses the various `compose_tag_helper` templates,
+// which provide serializations for specific kinds of values, passed
+// as arguments to an operation named `name`, to compose the tag.
+
 template<typename... Args>
 std::string compose_tag(const char *name, Args &&... args)
 {
@@ -83,5 +107,7 @@ std::string compose_tag(const char *name, Args &&... args)
 
     return s.str();
 }
+
+// ---
 
 #endif

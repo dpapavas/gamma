@@ -30,6 +30,8 @@ protected:
     std::shared_ptr<T> polyhedron;
 
 public:
+    using value_type = T;
+
     Polyhedron_operation(): polyhedron(nullptr) {}
     Polyhedron_operation(const bool p):
         Threadsafe_operation(p), polyhedron(nullptr) {}
@@ -41,7 +43,7 @@ public:
         return polyhedron;
     };
 
-    bool store() override;
+    bool store() const override;
     bool load() override;
 };
 
@@ -65,15 +67,15 @@ public:
 
 template<typename T>
 class Polyhedron_flush_operation:
-    public Sequentially_foldable_operation<Polyhedron_operation<T>> {
-
-    FT coefficients[3][2];
+    public Unary_operation<Polyhedron_operation<T>> {
 
 public:
+    FT coefficients[3][2];
+
     Polyhedron_flush_operation(
         const std::shared_ptr<Polyhedron_operation<T>> &p,
         const FT &lambda, const FT &mu, const FT &nu):
-        Sequentially_foldable_operation<Polyhedron_operation<T>>(p),
+        Unary_operation<Polyhedron_operation<T>>(p),
         coefficients{
             {CGAL::min(lambda, FT(0)), CGAL::max(lambda, FT(0))},
             {CGAL::min(mu, FT(0)),CGAL::max(mu, FT(0))},
@@ -86,7 +88,6 @@ public:
     }
 
     void evaluate() override;
-    bool fold_operand(const Polyhedron_operation<T> *p) override;
 };
 
 // Conversion operations
@@ -197,7 +198,7 @@ public:
     using Binary_operation<Polyhedron_operation<Nef_polyhedron>>::Binary_operation;
 
     std::string describe() const override {
-        return compose_tag("symmetric_difference", this->first, this->second);
+        return compose_tag("symmetric_difference", first, second);
     }
 
     void evaluate() override;

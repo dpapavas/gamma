@@ -38,26 +38,20 @@
 
 using types = boost::mpl::list<Polyhedron, Surface_mesh>;
 
-BOOST_FIXTURE_TEST_SUITE(selection, Reset_operations)
+BOOST_FIXTURE_TEST_SUITE(selection, Coarse_evaluation_fixture)
 
-BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
-{
-    Tolerances::projection = FT::ET(1, 1'000'000);
-    Tolerances::curve = FT::ET(1, 100);
-
-    const FT epsilon(FT::ET(1, 1'000'000));
-    auto p = CONVERT_TO<T>(CUBOID(2, 2, 2));
-    auto q = CONVERT_TO<T>(DIFFERENCE(CYLINDER(2, 2), CYLINDER(1, 1)));
-    auto r = CONVERT_TO<T>(DIFFERENCE(SPHERE(2), SPHERE(1)));
-
-    evaluate_unit();
-
+static const FT epsilon(FT::ET(1, 1'000'000));
 #define TEST_SELECTION(S, N) BOOST_TEST(S->apply(M).size() == N);
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
+{
+    const auto &result = evaluate(CONVERT_TO<T>(CUBOID(2, 2, 2)));
+    evaluate_operations();
+    auto &M = *result.value;
 
     // Plane
 
     {
-        auto M = *p->get_value();
         const auto V = BOUNDING_PLANE(0, 0, 1, -1);
         const auto W = BOUNDING_PLANE(0, 0, 1, -1 + epsilon);
 
@@ -78,7 +72,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Halfspace interior
 
     {
-        auto M = *p->get_value();
         const auto V = BOUNDING_HALFSPACE_INTERIOR(0, 0, 1, -1);
         const auto W = BOUNDING_HALFSPACE_INTERIOR(0, 0, 1, -1 + epsilon);
 
@@ -99,7 +92,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Halfspace
 
     {
-        auto M = *p->get_value();
         const auto V = BOUNDING_HALFSPACE(0, 0, 1, -1);
         const auto W = BOUNDING_HALFSPACE(0, 0, 1, -1 + epsilon);
 
@@ -120,7 +112,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Box
 
     {
-        auto M = *p->get_value();
         const auto V = BOUNDING_BOX(2, 2, 2);
         const auto W = BOUNDING_BOX(2 - epsilon, 2 - epsilon, 2);
 
@@ -141,7 +132,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Box interior
 
     {
-        auto M = *p->get_value();
         const auto V = TRANSFORM(
             BOUNDING_BOX_INTERIOR(4, 4, 4), TRANSLATION_3(1, 1, 1));
         const auto W = TRANSFORM(
@@ -165,7 +155,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Box boundary
 
     {
-        auto M = *p->get_value();
         const auto V = TRANSFORM(
             BOUNDING_BOX_BOUNDARY(4, 4, 4), TRANSLATION_3(1, 1, 1));
         const auto W = TRANSFORM(
@@ -185,11 +174,18 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
         TEST_SELECTION(EDGES_IN(W), 0);
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 0);
     }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(on_cylinder, T, types)
+{
+    const auto &result = evaluate(
+        CONVERT_TO<T>(DIFFERENCE(CYLINDER(2, 2), CYLINDER(1, 1))));
+    evaluate_operations();
+    auto &M = *result.value;
 
     // Cylinder
 
     {
-        auto M = *q->get_value();
         const auto V = BOUNDING_CYLINDER(2, 2);
         const auto W = TRANSFORM(V, TRANSLATION_3(0, 0, epsilon));
 
@@ -210,7 +206,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Cylinder interior
 
     {
-        auto M = *q->get_value();
         const auto V = BOUNDING_CYLINDER_INTERIOR(2, 2);
         const auto W = TRANSFORM(V, TRANSLATION_3(0, 0, epsilon));
 
@@ -231,7 +226,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Cylinder boundary
 
     {
-        auto M = *q->get_value();
         const auto V = BOUNDING_CYLINDER_BOUNDARY(2, 2);
         const auto W = TRANSFORM(V, TRANSLATION_3(0, 0, epsilon));
 
@@ -248,11 +242,18 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
         TEST_SELECTION(EDGES_IN(W), 61);
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 125);
     }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(on_sphere, T, types)
+{
+    const auto &result = evaluate(
+        CONVERT_TO<T>(DIFFERENCE(SPHERE(2), SPHERE(1))));
+    evaluate_operations();
+    auto &M = *result.value;
 
     // Sphere
 
     {
-        auto M = *r->get_value();
         const auto V = BOUNDING_SPHERE(2);
         const auto W = BOUNDING_SPHERE(2 - epsilon);
 
@@ -273,7 +274,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Sphere interior
 
     {
-        auto M = *r->get_value();
         const auto V = BOUNDING_SPHERE_INTERIOR(2);
         const auto W = BOUNDING_SPHERE_INTERIOR(2 + epsilon);
 
@@ -294,7 +294,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
     // Sphere boundary
 
     {
-        auto M = *r->get_value();
         const auto V = BOUNDING_SPHERE_BOUNDARY(2);
         const auto W = BOUNDING_SPHERE_BOUNDARY(2 + epsilon);
 
@@ -311,13 +310,13 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(bounded, T, types)
         TEST_SELECTION(EDGES_IN(W), 0);
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 0);
     }
-
-#undef TEST_SELECTION
 }
 
-// Relative
+#undef TEST_SELECTION
 
-BOOST_AUTO_TEST_CASE_TEMPLATE(vertices, T, types)
+// ### Relative Selection Tests (Expansion and Contraction)
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(relative_vertices, T, types)
 {
     std::vector<Aff_transformation_3> v;
 
@@ -327,10 +326,10 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(vertices, T, types)
         v.push_back(TRANSLATION_3(0, 0, i));
     }
 
-    auto p = CONVERT_TO<T>(EXTRUSION(RECTANGLE(1, 1), std::move(v)));
-
-    evaluate_unit();
-    auto &P = *p->get_value();
+    const auto &result = evaluate(
+        CONVERT_TO<T>(EXTRUSION(RECTANGLE(1, 1), std::move(v))));
+    evaluate_operations();
+    auto &P = *result.value;
 
     // a: plane z = 0
 
@@ -393,7 +392,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(vertices, T, types)
     BOOST_TEST(hv == ev);
 }
 
-BOOST_AUTO_TEST_CASE_TEMPLATE(faces, T, types)
+BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 {
     std::vector<Aff_transformation_3> v;
 
@@ -401,10 +400,10 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(faces, T, types)
         v.push_back(TRANSLATION_3(0, 0, i));
     }
 
-    auto p = CONVERT_TO<T>(EXTRUSION(RECTANGLE(1, 1), std::move(v)));
-
-    evaluate_unit();
-    auto &P = *p->get_value();
+    const auto &result = evaluate(
+        CONVERT_TO<T>(EXTRUSION(RECTANGLE(1, 1), std::move(v))));
+    evaluate_operations();
+    auto &P = *result.value;
 
     // a: planes -1 <= z <= 1
 
@@ -452,7 +451,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(faces, T, types)
     BOOST_TEST(COMPLEMENT(b)->apply(P) == ev);
 }
 
-BOOST_AUTO_TEST_CASE_TEMPLATE(edges, T, types)
+BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 {
     std::vector<Aff_transformation_3> v;
 
@@ -460,10 +459,10 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(edges, T, types)
         v.push_back(TRANSLATION_3(0, 0, i));
     }
 
-    auto p = CONVERT_TO<T>(EXTRUSION(RECTANGLE(1, 1), std::move(v)));
-
-    evaluate_unit();
-    auto &P = *p->get_value();
+    const auto &result = evaluate(
+        CONVERT_TO<T>(EXTRUSION(RECTANGLE(1, 1), std::move(v))));
+    evaluate_operations();
+    auto &P = *result.value;
 
     // a: planes -1 < z < 1 (not including edges on the planes)
 
@@ -511,14 +510,15 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(edges, T, types)
     BOOST_TEST(COMPLEMENT(b)->apply(P) == ev);
 }
 
+// ### Selection Conversion (Vertices in Selected Faces, etc.)
+
 BOOST_AUTO_TEST_CASE_TEMPLATE(conversion, T, types)
 {
     std::vector<Aff_transformation_3> v;
 
-    auto p = CONVERT_TO<T>(CUBOID(2, 2, 2));
-
-    evaluate_unit();
-    auto &P = *p->get_value();
+    const auto &result = evaluate(CONVERT_TO<T>(CUBOID(2, 2, 2)));
+    evaluate_operations();
+    auto &P = *result.value;
 
     // From vertices
 
@@ -591,32 +591,65 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(conversion, T, types)
     BOOST_TEST(INTERSECTION({i, j})->apply(P).size() == 0);
 }
 
+// ### Bounding Volume Flush Operations Tests
+
+// We transform and then flush various shapes, then apply a matching
+// transformation and flush to the corresponding bounding shape and
+// use it to select vertices.  The result should be that all vertices
+// get selected.  To make sure that the bounding volume exactly
+// matches the shape, we then slightly dilate the latter and reapply
+// the selection.  The result should be now that no vertices get
+// selected as the bounding volume is now slightly smaller than the
+// shape.
+
+// We necessarily apply a simple 90 degree rotation instead of
+// something more arbitrary, because otherwise the flushed geometry
+// and volume would not match.  (Consider a sphere for instance, which
+// is not really a sphere, but a polyhedral approxiamation.  Imagine
+// it's rotated in such a way, that one of its facets happens to be
+// parallel to the XY plane, so that flushing the sphere onto the
+// plane, results in the fact resting on it.)
+
 #define DEFINE_FLUSH_TEST_CASE(NAME, OP, VOLUME, N)                     \
 BOOST_DATA_TEST_CASE(flush_bounding_## NAME,                            \
-                     (boost::unit_test::data::make({-1, 1})             \
+                     (boost::unit_test::data::make({false, true})       \
+                      * boost::unit_test::data::make({-1, 1})           \
                       * boost::unit_test::data::make({-1, 1})           \
                       * boost::unit_test::data::make({-1, 1})),         \
-                     lambda, mu, nu)                                    \
+                     p, lambda, mu, nu)                                 \
 {                                                                       \
-    Tolerances::projection = FT::ET(1, 1'000'000);                      \
+    /* This gets popped back on fixture destructon. */                  \
+                                                                        \
     Tolerances::curve = FT::ET(1, 9);                                   \
                                                                         \
     const FT c = FT::ET(12345, 6789);                                   \
-    const auto T =                                                      \
-        SCALING_3(c, c, c) * basic_rotation(90, 0) * TRANSLATION_3(6, 7, 8); \
-    auto a = FLUSH(TRANSFORM(OP, T), lambda, mu, nu);                   \
-    auto b = CONVERT_TO<Polyhedron>(                                    \
-        MINKOWSKI_SUM(a, OCTAHEDRON(FT::ET(2, 1000),                    \
-                                    FT::ET(2, 1000),                    \
-                                    FT::ET(1, 1000))));                 \
+    const auto T = (                                                    \
+        SCALING_3(c, c, c)                                              \
+        * basic_rotation(90, 0)                                         \
+        * TRANSLATION_3(1, 2, 3));                                      \
                                                                         \
-    evaluate_unit();                                                    \
+    const auto &result = evaluate(                                      \
+        p                                                               \
+        ? CONVERT_TO<Polyhedron>(                                       \
+            MINKOWSKI_SUM(                                              \
+                FLUSH(TRANSFORM(OP, T), lambda, mu, nu),                \
+                OCTAHEDRON(FT::ET(2, 1000),                             \
+                           FT::ET(2, 1000),                             \
+                           FT::ET(1, 1000))))                           \
+        : FLUSH(TRANSFORM(OP, T), lambda, mu, nu));                     \
                                                                         \
-    const auto v = VERTICES_IN((VOLUME)->transform(T)->flush(lambda, mu, nu)); \
+    evaluate_operations();                                              \
                                                                         \
-    const int n = N > 0 ? N : a->get_value()->size_of_vertices();       \
-    BOOST_TEST(v->apply(*a->get_value()).size() == n);                  \
-    BOOST_TEST(v->apply(*b->get_value()).size() == 0);                  \
+    auto &P = *result.value;                                            \
+    const auto v = VERTICES_IN(                                         \
+        (VOLUME)->transform(T)->flush(lambda, mu, nu));                 \
+                                                                        \
+    if (p) {                                                            \
+        BOOST_TEST(v->apply(P).size() == 0);                            \
+    } else {                                                            \
+        const int n = N > 0 ? N : P.size_of_vertices();                 \
+        BOOST_TEST(v->apply(P).size() == n);                            \
+    }                                                                   \
 }
 
 DEFINE_FLUSH_TEST_CASE(box, CUBOID(1, 2, 3), BOUNDING_BOX(1, 2, 3), 0)

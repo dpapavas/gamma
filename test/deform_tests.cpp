@@ -34,26 +34,27 @@
 #include <CGAL/draw_polyhedron.h>
 #include <CGAL/draw_surface_mesh.h>
 
-BOOST_FIXTURE_TEST_SUITE(deform, Reset_operations)
+BOOST_FIXTURE_TEST_SUITE(deform, Evaluation_fixture)
 
 BOOST_AUTO_TEST_CASE(fair)
 {
-    auto p = FAIR(
-        REMESH(
-            CUBOID(2, 2, 2),
-            nullptr, EDGES_IN(BOUNDING_HALFSPACE(0, 0, 1, -1)),
-            FT(FT::ET(1, 3)), 1),
-        VERTICES_IN(BOUNDING_HALFSPACE(0, 0, -1, 0)), 1);
+    const auto &result = evaluate(
+        FAIR(
+            REMESH(
+                CUBOID(2, 2, 2),
+                nullptr, EDGES_IN(BOUNDING_HALFSPACE(0, 0, 1, -1)),
+                FT(FT::ET(1, 3)), 1),
+            VERTICES_IN(BOUNDING_HALFSPACE(0, 0, -1, 0)), 1));
+
+    evaluate_operations();
 
     BOOST_TEST(
-        p->describe() == (
+        result.tag == (
             "fair(remesh(cuboid(2,2,2),"
             "edges_in(bounding_halfspace(plane(0,0,1,-1))),1/3,1),"
             "vertices_in(bounding_halfspace(plane(0,0,-1,0))),1)"));
 
-    evaluate_unit();
-
-    const auto &P = *p->get_value();
+    const auto &P = *result.value;
 
     test_polyhedron(P);
 
@@ -77,12 +78,14 @@ BOOST_AUTO_TEST_CASE(fair)
 
 BOOST_DATA_TEST_CASE(smooth_shape, boost::unit_test::data::xrange(4), i)
 {
-    auto v = VERTICES_IN(BOUNDING_HALFSPACE(0, 0, 1, 0));
-    auto f = FACES_IN(BOUNDING_HALFSPACE(0, 1, 0, 0));
-    auto p = SMOOTH_SHAPE(
-        REMESH(CUBOID(2, 2, 2), nullptr, nullptr, FT::ET(1, 10), 1),
-        i & 1 ? f : nullptr, i & 2 ? v : nullptr,
-        FT::ET(1, 100), 1);
+    const auto &result = evaluate(
+        SMOOTH_SHAPE(
+            REMESH(CUBOID(2, 2, 2), nullptr, nullptr, FT::ET(1, 10), 1),
+            i & 1 ? FACES_IN(BOUNDING_HALFSPACE(0, 1, 0, 0)) : nullptr,
+            i & 2 ? VERTICES_IN(BOUNDING_HALFSPACE(0, 0, 1, 0)) : nullptr,
+            FT::ET(1, 100), 1));
+
+    evaluate_operations();
 
     std::stringstream s;
 
@@ -98,79 +101,81 @@ BOOST_DATA_TEST_CASE(smooth_shape, boost::unit_test::data::xrange(4), i)
 
     s << "1/100,1)";
 
-    BOOST_TEST(p->describe() == s.str());
+    BOOST_TEST(result.tag == s.str());
 
-    evaluate_unit();
-
-    const FT V = polyhedron_volume(*p->get_value());
+    const FT V = polyhedron_volume(*result.value);
     BOOST_TEST((V > FT(FT::ET(15, 2)) && V < 8));
 }
 
 BOOST_AUTO_TEST_CASE(deform)
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
     Tolerances::curve = FT::ET(1, 100);
 
-    auto b = BOUNDING_HALFSPACE(0, 0, 1, -3);
-    auto c = BOUNDING_HALFSPACE(0, 0, 1, 5);
-    auto h = std::make_shared<Polyhedron_hull_operation>();
-    h->push_back(TRANSFORM(SPHERE(1), TRANSLATION_3(0, 0, -5)));
-    h->push_back(TRANSFORM(SPHERE(1), TRANSLATION_3(0, 0, 5)));
-    auto a = HULL(h);
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYHEDRON_HULL_OPEN();
+            h->push_back(
+                TRANSFORM(SPHERE(FT::ET(3, 4)), TRANSLATION_3(0, 0, -5)));
+            h->push_back(
+                TRANSFORM(SPHERE(FT::ET(3, 4)), TRANSLATION_3(0, 0, 5)));
 
-    auto p = DEFORM(
-        REMESH(a, FACES_PARTIALLY_IN(b), nullptr, FT(FT::ET(1, 2)), 1),
-        VERTICES_IN(b),
-        {std::pair(VERTICES_IN(c), basic_rotation(90, 1))},
-        FT::ET(1, 100), 1000);
+            return DEFORM(
+                REMESH(
+                    std::static_pointer_cast<Polyhedron_operation<Polyhedron>>(
+                        POLYHEDRON_HULL_CLOSE(h)),
+                    nullptr, nullptr, FT(FT::ET(1, 2)), 1),
+                VERTICES_IN(BOUNDING_HALFSPACE(0, 0, 1, -3)),
+                {std::pair(
+                        VERTICES_IN(BOUNDING_HALFSPACE(0, 0, 1, 5)),
+                        basic_rotation(90, 1))},
+                FT::ET(1, 100), 1000);
+        });
+
+    evaluate_operations();
 
     BOOST_TEST(
-        p->describe() == ("deform(remesh(hull("
-                          "transform(sphere(1,1/100,1/1000000),translation(0,0,-5)),"
-                          "transform(sphere(1,1/100,1/1000000),translation(0,0,5))),"
-                          "faces_partially_in("
-                          "bounding_halfspace(plane(0,0,1,-3))),1/2,1),"
-                          "vertices_in(bounding_halfspace(plane(0,0,1,-3))),"
-                          "vertices_in(bounding_halfspace(plane(0,0,1,5))),"
-                          "rotation(0,0,1,0,1,0,-1,0,0),1/100,1000)"));
-
-    evaluate_unit();
+        result.tag == (
+            "deform(remesh(hull("
+            "transform(sphere(3/4,1/100,1/1000000),translation(0,0,-5)),"
+            "transform(sphere(3/4,1/100,1/1000000),translation(0,0,5))),1/2,1),"
+            "vertices_in(bounding_halfspace(plane(0,0,1,-3))),"
+            "vertices_in(bounding_halfspace(plane(0,0,1,5))),"
+            "rotation(0,0,1,0,1,0,-1,0,0),1/100,1000)"));
 
 #if 0
-    CGAL::draw(*p->get_value());
+    CGAL::draw(*result.value);
 #endif
 }
 
 BOOST_AUTO_TEST_CASE(deform_whole)
 {
-    Tolerances::curve = FT::ET(1, 100);
-
     auto b = TRANSFORM(BOUNDING_HALFSPACE(1, 0, 0, 0),
                        TRANSLATION_3(-2, 0, 0));
-    auto p = DEFORM(
-        REMESH(
-            CUBOID(5, 1, 1),
-            nullptr, EDGES_IN(BOUNDING_HALFSPACE(0, 0, 1, -1)),
-            FT(FT::ET(1, 4)), 1),
-        {std::pair(VERTICES_IN(b), basic_rotation(90, 0)),
-         std::pair(VERTICES_IN(TRANSFORM(b, basic_rotation(180, 1))),
-                   basic_rotation(-90, 0))},
-        FT::ET(1, 100), 1000);
+    const auto &result = evaluate(
+        DEFORM(
+            REMESH(
+                CUBOID(5, 1, 1),
+                nullptr, EDGES_IN(BOUNDING_HALFSPACE(0, 0, 1, -1)),
+                FT(FT::ET(1, 4)), 1),
+            {std::pair(VERTICES_IN(b), basic_rotation(90, 0)),
+             std::pair(VERTICES_IN(TRANSFORM(b, basic_rotation(180, 1))),
+                       basic_rotation(-90, 0))},
+            FT::ET(1, 100), 1000));
+
+    evaluate_operations();
 
     BOOST_TEST(
-        p->describe() == ("deform(remesh("
-                          "cuboid(5,1,1),"
-                          "edges_in(bounding_halfspace(plane(0,0,1,-1))),"
-                          "1/4,1),"
-                          "vertices_in(bounding_halfspace(plane(1,0,0,2))),"
-                          "rotation(1,0,0,0,0,-1,0,1,0),"
-                          "vertices_in(bounding_halfspace(plane(-1,0,0,2))),"
-                          "rotation(1,0,0,0,0,1,0,-1,0),1/100,1000)"));
-
-    evaluate_unit();
+        result.tag == ("deform(remesh("
+                       "cuboid(5,1,1),"
+                       "edges_in(bounding_halfspace(plane(0,0,1,-1))),"
+                       "1/4,1),"
+                       "vertices_in(bounding_halfspace(plane(1,0,0,2))),"
+                       "rotation(1,0,0,0,0,-1,0,1,0),"
+                       "vertices_in(bounding_halfspace(plane(-1,0,0,2))),"
+                       "rotation(1,0,0,0,0,1,0,-1,0),1/100,1000)"));
 
 #if 0
-    CGAL::draw(*p->get_value());
+    CGAL::draw(*result.value);
 #endif
 }
 

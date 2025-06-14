@@ -75,10 +75,12 @@ namespace Flags {
 
     // Evaluation
 
+    extern int dry_run;
     extern int evaluate;
     extern int fold_transformations;
     extern int fold_booleans;
     extern int fold_flushes;
+    extern int fold_offsets;
     extern int eliminate_dead_operations;
     extern int store_operations;
     extern int load_operations;
@@ -92,14 +94,14 @@ namespace Flags {
 
     // Scheme backend
 
-    extern int eliminate_tail_calls;
+    extern int print_scheme_warnings;
 }
 
 namespace Options {
     // Debugging
 
     extern const char *dump_graph;
-    extern const char *dump_operations;
+    extern const char *dump_list;
     extern const char *dump_log;
     extern int dump_short_tags;
     extern int diagnostics_shorten_tags;
@@ -128,7 +130,7 @@ namespace Options {
     // Backend
 
     extern std::forward_list<std::pair<std::string, std::string>> definitions;
-    extern std::forward_list<std::string> include_directories;
+    extern std::forward_list<std::string> library_directories;
 
 #ifdef HAVE_SCHEME
     extern std::forward_list<std::string> scheme_features;

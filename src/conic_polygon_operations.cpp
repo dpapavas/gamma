@@ -338,23 +338,21 @@ static Conic_polygon convert_circle_polygon(const Circle_polygon &P)
 
 void Polygon_convert_operation<Conic_polygon_set, Polygon_set>::evaluate()
 {
-    assert(!this->polygon);
+    assert(!polygon);
 
-    this->polygon = std::make_shared<Conic_polygon_set>();
+    polygon = std::make_shared<Conic_polygon_set>();
 
-    transform_polygon_set(
-        *this->operand->get_value(), *this->polygon, convert_polygon);
+    transform_polygon_set(*operand->get_value(), *polygon, convert_polygon);
 }
 
 void Polygon_convert_operation<Conic_polygon_set,
                                Circle_polygon_set>::evaluate()
 {
-    assert(!this->polygon);
+    assert(!polygon);
 
-    this->polygon = std::make_shared<Conic_polygon_set>();
-
+    polygon = std::make_shared<Conic_polygon_set>();
     transform_polygon_set(
-        *this->operand->get_value(), *this->polygon, convert_circle_polygon);
+        *operand->get_value(), *polygon, convert_circle_polygon);
 }
 
 // Piecewise-linear approximation
@@ -505,7 +503,6 @@ void Polygon_convert_operation<Polygon_set, Conic_polygon_set>::evaluate()
     assert(!polygon);
 
     polygon = std::make_shared<Polygon_set>();
-
-    convert_conic_polygon_set(*operand->get_value(), *polygon,
-                              CGAL::to_double(tolerance));
+    convert_conic_polygon_set(
+        *operand->get_value(), *polygon, CGAL::to_double(tolerance));
 }

@@ -38,7 +38,7 @@ public:
     void evaluate() override;
 
     std::string describe() const override {
-        return compose_tag("circles", this->operand);
+        return compose_tag("circles", operand);
     }
 };
 
@@ -59,7 +59,7 @@ public:
     void evaluate() override;
 
     std::string describe() const override {
-        return compose_tag("segments", this->operand, tolerances);
+        return compose_tag("segments", operand, tolerances);
     }
 };
 

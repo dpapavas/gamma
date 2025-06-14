@@ -281,6 +281,9 @@ void Extrusion_operation::evaluate()
                         break;
                     }
 
+                    CGAL::Polygon_mesh_processing::merge_duplicate_points_in_polygon_soup(
+                        points, polygons);
+
                     CGAL::Polygon_mesh_processing::polygon_soup_to_polygon_mesh(
                         points, polygons, P);
 

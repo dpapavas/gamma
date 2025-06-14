@@ -191,7 +191,7 @@ bool Polyhedron_operation<Surface_mesh>::dispatch()
 }
 
 template<>
-bool Polyhedron_operation<Nef_polyhedron>::store()
+bool Polyhedron_operation<Nef_polyhedron>::store() const
 {
     assert(Flags::store_operations);
     assert(polyhedron);
@@ -254,7 +254,7 @@ bool Polyhedron_operation<Nef_polyhedron>::load()
 }
 
 template<typename T>
-bool Polyhedron_operation<T>::store()
+bool Polyhedron_operation<T>::store() const
 {
     using traits = typename boost::graph_traits<T>;
 
@@ -420,8 +420,8 @@ error:
 
 template bool Polyhedron_operation<Polyhedron>::load();
 template bool Polyhedron_operation<Surface_mesh>::load();
-template bool Polyhedron_operation<Polyhedron>::store();
-template bool Polyhedron_operation<Surface_mesh>::store();
+template bool Polyhedron_operation<Polyhedron>::store() const;
+template bool Polyhedron_operation<Surface_mesh>::store() const;
 
 ///////////////////////////
 // Conversion operations //
@@ -619,39 +619,6 @@ DEFINE_MESH_FLUSH_OPERATION(Surface_mesh)
 #undef DEFINE_MESH_FLUSH_OPERATION
 #undef DEFINE_FLUSH_OPERATION
 
-template<typename T>
-bool Polyhedron_flush_operation<T>::fold_operand(
-    const Polyhedron_operation<T> *p)
-{
-    const Polyhedron_flush_operation<T> *f =
-        dynamic_cast<const Polyhedron_flush_operation<T> *>(p);
-
-    if (!f) {
-        return false;
-    }
-
-    const FT (*b)[2] = this->coefficients, (*a)[2] = f->coefficients;
-
-    // This computation can be done in place, since only one of
-    // a[i][0], a[i][1] is non-zero at any given time.
-
-    for (int i = 0; i < 3; i++) {
-        this->coefficients[i][0] = (a[i][0] * (1 - b[i][1])
-                                    + b[i][0] * (1 + a[i][0]));
-        this->coefficients[i][1] = (a[i][1] * (1 + b[i][0])
-                                    + b[i][1] * (1 - a[i][1]));
-    }
-
-    return true;
-}
-
-template bool Polyhedron_flush_operation<Polyhedron>::fold_operand(
-    const Polyhedron_operation<Polyhedron> *p);
-template bool Polyhedron_flush_operation<Nef_polyhedron>::fold_operand(
-    const Polyhedron_operation<Nef_polyhedron> *p);
-template bool Polyhedron_flush_operation<Surface_mesh>::fold_operand(
-    const Polyhedron_operation<Surface_mesh> *p);
-
 ////////////////////////////
 // Boolean set operations //
 ////////////////////////////
@@ -679,11 +646,11 @@ template bool Polyhedron_flush_operation<Surface_mesh>::fold_operand(
 template<>                                                              \
 void Polyhedron_## OP ##_operation<Nef_polyhedron>::evaluate()          \
 {                                                                       \
-    assert(!this->polyhedron);                                          \
+    assert(!polyhedron);                                                \
                                                                         \
     bool input_corefinable = true;                                      \
-    const Nef_polyhedron &N = *this->first->get_value();                \
-    const Nef_polyhedron &M = *this->second->get_value();               \
+    const Nef_polyhedron &N = *first->get_value();                      \
+    const Nef_polyhedron &M = *second->get_value();                     \
                                                                         \
     if (Flags::warn_nef) {                                              \
         for (const Nef_polyhedron &X: {N, M}) {                         \
@@ -698,7 +665,7 @@ void Polyhedron_## OP ##_operation<Nef_polyhedron>::evaluate()          \
         }                                                               \
     }                                                                   \
                                                                         \
-    this->polyhedron = std::make_shared<Nef_polyhedron>(N.OP(M));       \
+    polyhedron = std::make_shared<Nef_polyhedron>(N.OP(M));             \
                                                                         \
     WARN_NEF(this, input_corefinable);                                  \
 }                                                                       \
@@ -732,11 +699,11 @@ DEFINE_SET_OPERATION(intersection, CGAL::Polygon_mesh_processing::corefine_and_c
 
 void Polyhedron_symmetric_difference_operation::evaluate()
 {
-    assert(!this->polyhedron);
+    assert(!polyhedron);
 
-    this->polyhedron = std::make_shared<Nef_polyhedron>(
-        this->first->get_value()->symmetric_difference(
-            *this->second->get_value()));
+    polyhedron = std::make_shared<Nef_polyhedron>(
+        first->get_value()->symmetric_difference(
+            *second->get_value()));
 }
 
 template<>
@@ -969,10 +936,10 @@ void Polyhedron_minkowski_sum_operation::evaluate()
 template<>
 void Polyhedron_clip_operation<Nef_polyhedron>::evaluate()
 {
-    assert(!this->polyhedron);
+    assert(!polyhedron);
 
     bool input_corefinable = true;
-    const Nef_polyhedron &N = *this->operand->get_value();
+    const Nef_polyhedron &N = *operand->get_value();
 
     if (Flags::warn_nef) {
         Surface_mesh S;
@@ -983,7 +950,7 @@ void Polyhedron_clip_operation<Nef_polyhedron>::evaluate()
         }
     }
 
-    this->polyhedron = std::make_shared<Nef_polyhedron>(
+    polyhedron = std::make_shared<Nef_polyhedron>(
         N.intersection(
             plane, Nef_polyhedron::Intersection_mode::CLOSED_HALFSPACE));
 

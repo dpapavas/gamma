@@ -1,4 +1,4 @@
-// Copyright 2022 Dimitris Papavasiliou
+// Copyright 2025 Dimitris Papavasiliou
 
 // This file is part of Gamma.
 
@@ -15,10 +15,20 @@
 // You should have received a copy of the GNU General Public License along with
 // this program. If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef SCHEME_FRONTEND_H
-#define SCHEME_FRONTEND_H
+#ifndef REWRITES_H
+#define REWRITES_H
 
-int run_scheme(const char *input, char **first, char **last);
-void close_scheme(void);
+#include <unordered_map>
+#include <typeindex>
+
+#include "operation.h"
+
+class Operation_rewriter:
+    std::unordered_map<std::type_index, bool (*) (Operation *)> {
+
+public:
+    Operation_rewriter();
+    bool try_rewrite(Operation *op) const;
+};
 
 #endif

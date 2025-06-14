@@ -37,17 +37,16 @@ struct Global_fixture {
         CGAL::set_error_behaviour(CGAL::THROW_EXCEPTION);
         CGAL::set_warning_behaviour(CGAL::THROW_EXCEPTION);
 
-        Flags::eliminate_dead_operations = 0;
         Flags::store_operations = 0;
         Flags::load_operations = 0;
 
 #ifdef HAVE_SCHEME
-        Options::include_directories.push_front(SOURCE_DIR "/scheme");
-        Options::include_directories.push_front(CHIBI_LIB_DIR);
+        Options::library_directories.push_front(SOURCE_DIR "/scheme");
+        setenv("GUILE_AUTO_COMPILE", "fresh", 1);
 #endif
 
 #ifdef HAVE_LUA
-        Options::include_directories.push_front(SOURCE_DIR "/lua");
+        Options::library_directories.push_front(SOURCE_DIR "/lua");
 #endif
 
         parse_options(
@@ -74,34 +73,34 @@ BOOST_TEST_DONT_PRINT_LOG_VALUE(Polyhedron_booleans_mode)
 BOOST_TEST_DONT_PRINT_LOG_VALUE(Diagnostics_color_mode)
 BOOST_TEST_DONT_PRINT_LOG_VALUE(Language)
 
-BOOST_AUTO_TEST_SUITE(options)
+BOOST_FIXTURE_TEST_SUITE(options, Main_fixture)
 
 BOOST_AUTO_TEST_CASE(dump)
 {
-    const char *s = Options::dump_operations, *t = Options::dump_graph;
+    push(Options::dump_list, static_cast<const char *>(nullptr));
+    push(Options::dump_graph, static_cast<const char *>(nullptr));
 
     BOOST_TEST(
-        test_options({"test", "--dump-operations", "--dump-graph"}) == 3);
+        test_options({"test", "--dump-list", "--dump-graph"}) == 3);
 
-    BOOST_TEST(Options::dump_operations);
+    BOOST_TEST(Options::dump_list);
     BOOST_TEST(Options::dump_graph);
 
     BOOST_TEST(
-        test_options({"test", "--no-dump-operations", "--no-dump-graph"}) == 3);
+        test_options({"test", "--no-dump-list", "--no-dump-graph"}) == 3);
 
-    BOOST_TEST(!Options::dump_operations);
+    BOOST_TEST(!Options::dump_list);
     BOOST_TEST(!Options::dump_graph);
 
-    Options::dump_operations = s;
-    Options::dump_graph = t;
+    pop(Options::dump_list);
+    pop(Options::dump_graph);
 }
 
 BOOST_AUTO_TEST_CASE(dump_short_tags)
 {
-    int i = Options::dump_short_tags;
+    push(Options::dump_short_tags, 0);
 
-    BOOST_TEST(
-        test_options({"test", "--dump-short-tags=100"}) == 2);
+    BOOST_TEST(test_options({"test", "--dump-short-tags=100"}) == 2);
 
     BOOST_TEST(Options::dump_short_tags == 100);
 
@@ -110,8 +109,7 @@ BOOST_AUTO_TEST_CASE(dump_short_tags)
 
     BOOST_TEST(Options::dump_short_tags == 50);
 
-    BOOST_TEST(
-        test_options({"test", "--no-dump-short-tags"}) == 2);
+    BOOST_TEST(test_options({"test", "--no-dump-short-tags"}) == 2);
 
     BOOST_TEST(Options::dump_short_tags == -1);
 
@@ -121,45 +119,42 @@ BOOST_AUTO_TEST_CASE(dump_short_tags)
     BOOST_TEST(
         test_options({"test", "--dump-short-tags=-1"}) == -EXIT_FAILURE);
 
-    Options::dump_short_tags = i;
+    pop(Options::dump_short_tags);
 }
 
 BOOST_AUTO_TEST_CASE(polyhedron_booleans)
 {
-    Polyhedron_booleans_mode m = Options::polyhedron_booleans;
+    push(Options::polyhedron_booleans, Polyhedron_booleans_mode::AUTO);
 
     BOOST_TEST(test_options({"test", "--polyhedron-booleans=nef"}) == 2);
     BOOST_TEST(Options::polyhedron_booleans == Polyhedron_booleans_mode::NEF);
 
     BOOST_TEST(test_options({"test", "--polyhedron-booleans=corefine"}) == 2);
-    BOOST_TEST(Options::polyhedron_booleans == Polyhedron_booleans_mode::COREFINE);
+    BOOST_TEST(
+        Options::polyhedron_booleans == Polyhedron_booleans_mode::COREFINE);
 
     BOOST_TEST(test_options({"test", "--polyhedron-booleans=auto"}) == 2);
     BOOST_TEST(Options::polyhedron_booleans == Polyhedron_booleans_mode::AUTO);
 
-    BOOST_TEST(test_options({"test", "--polyhedron-booleans=foo"}) == -EXIT_FAILURE);
-    BOOST_TEST(test_options({"test", "--polyhedron-booleans"}) == -EXIT_FAILURE);
+    BOOST_TEST(
+        test_options({"test", "--polyhedron-booleans=foo"}) == -EXIT_FAILURE);
+    BOOST_TEST(
+        test_options({"test", "--polyhedron-booleans"}) == -EXIT_FAILURE);
 
-    Options::polyhedron_booleans = m;
+    pop(Options::polyhedron_booleans);
 }
 
 BOOST_AUTO_TEST_CASE(store_compression)
 {
-    int i = Options::store_compression;
+    push(Options::store_compression, 0);
 
-    BOOST_TEST(
-        test_options({"test", "--store-compression=9"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--store-compression=9"}) == 2);
     BOOST_TEST(Options::store_compression == 9);
 
-    BOOST_TEST(
-        test_options({"test", "--no-store-compression"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--no-store-compression"}) == 2);
     BOOST_TEST(Options::store_compression == -1);
 
-    BOOST_TEST(
-        test_options({"test", "--store-compression"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--store-compression"}) == 2);
     BOOST_TEST(Options::store_compression == 6);
 
     BOOST_TEST(
@@ -171,21 +166,17 @@ BOOST_AUTO_TEST_CASE(store_compression)
     BOOST_TEST(
         test_options({"test", "--store-compression=10"}) == -EXIT_FAILURE);
 
-    Options::store_compression = i;
+    pop(Options::store_compression);
 }
 
 BOOST_AUTO_TEST_CASE(store_threshold)
 {
-    int i = Options::store_threshold;
+    push(Options::store_threshold, 0);
 
-    BOOST_TEST(
-        test_options({"test", "--store-threshold=42"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--store-threshold=42"}) == 2);
     BOOST_TEST(Options::store_threshold == 42);
 
-    BOOST_TEST(
-        test_options({"test", "--no-store-threshold"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--no-store-threshold"}) == 2);
     BOOST_TEST(Options::store_threshold == 0);
 
     BOOST_TEST(
@@ -197,21 +188,17 @@ BOOST_AUTO_TEST_CASE(store_threshold)
     BOOST_TEST(
         test_options({"test", "--store-threshold=-1"}) == -EXIT_FAILURE);
 
-    Options::store_threshold = i;
+    pop(Options::store_threshold);
 }
 
 BOOST_AUTO_TEST_CASE(rewrite_pass_limit)
 {
-    int i = Options::rewrite_pass_limit;
+    push(Options::rewrite_pass_limit, 0);
 
-    BOOST_TEST(
-        test_options({"test", "--rewrite-pass-limit=10"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--rewrite-pass-limit=10"}) == 2);
     BOOST_TEST(Options::rewrite_pass_limit == 10);
 
-    BOOST_TEST(
-        test_options({"test", "--no-rewrite-pass-limit"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--no-rewrite-pass-limit"}) == 2);
     BOOST_TEST(Options::rewrite_pass_limit == -1);
 
     BOOST_TEST(
@@ -223,12 +210,12 @@ BOOST_AUTO_TEST_CASE(rewrite_pass_limit)
     BOOST_TEST(
         test_options({"test", "--rewrite-pass-limit"}) == -EXIT_FAILURE);
 
-    Options::rewrite_pass_limit = i;
+    pop(Options::rewrite_pass_limit);
 }
 
 BOOST_AUTO_TEST_CASE(diagnostics_color)
 {
-    Diagnostics_color_mode m = Options::diagnostics_color;
+    push(Options::diagnostics_color, Diagnostics_color_mode::AUTO);
 
     BOOST_TEST(test_options({"test", "--diagnostics-color"}) == 2);
     BOOST_TEST(Options::diagnostics_color == Diagnostics_color_mode::ALWAYS);
@@ -242,42 +229,38 @@ BOOST_AUTO_TEST_CASE(diagnostics_color)
     BOOST_TEST(test_options({"test", "--diagnostics-color=auto"}) == 2);
     BOOST_TEST(Options::diagnostics_color == Diagnostics_color_mode::AUTO);
 
-    BOOST_TEST(test_options({"test", "--diagnostics-color=foo"}) == -EXIT_FAILURE);
+    BOOST_TEST(
+        test_options({"test", "--diagnostics-color=foo"}) == -EXIT_FAILURE);
 
-    Options::diagnostics_color = m;
+    pop(Options::diagnostics_color);
 }
 
 BOOST_AUTO_TEST_CASE(diagnostics_elide_tags)
 {
-    int i = Options::diagnostics_elide_tags;
+    push(Options::diagnostics_elide_tags, 0);
 
-    BOOST_TEST(
-        test_options({"test", "--diagnostics-elide-tags=5"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--diagnostics-elide-tags=5"}) == 2);
     BOOST_TEST(Options::diagnostics_elide_tags == 5);
 
-    BOOST_TEST(
-        test_options({"test", "--no-diagnostics-elide-tags"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--no-diagnostics-elide-tags"}) == 2);
     BOOST_TEST(Options::diagnostics_elide_tags == -1);
 
-    BOOST_TEST(
-        test_options({"test", "--diagnostics-elide-tags"}) == 2);
-
+    BOOST_TEST(test_options({"test", "--diagnostics-elide-tags"}) == 2);
     BOOST_TEST(Options::diagnostics_elide_tags == 1);
 
     BOOST_TEST(
-        test_options({"test", "--no-diagnostics-elide-tags=1"}) == -EXIT_FAILURE);
+        test_options({"test", "--no-diagnostics-elide-tags=1"})
+        == -EXIT_FAILURE);
 
     BOOST_TEST(
         test_options({"test", "--diagnostics-elide-tags=-1"}) == -EXIT_FAILURE);
 
-    Options::diagnostics_elide_tags = i;
+    pop(Options::diagnostics_elide_tags);
 }
 
 BOOST_AUTO_TEST_CASE(language)
 {
-    Language l = Options::language;
+    push(Options::language, Language::AUTO);
 
 #ifdef HAVE_LUA
     BOOST_TEST(test_options({"test", "-x", "lua"}) == 3);
@@ -294,20 +277,14 @@ BOOST_AUTO_TEST_CASE(language)
 
     BOOST_TEST(test_options({"test", "-x", "foo"}) == -EXIT_FAILURE);
 
-    Options::language = l;
+    pop(Options::language);
 }
 
 BOOST_AUTO_TEST_CASE(backend)
 {
-#ifdef HAVE_SCHEME
-    BOOST_TEST(test_options({"test", "-F", "./foo"}) == 3);
-    BOOST_TEST(Options::scheme_features.front() == "./foo");
-    Options::scheme_features.pop_front();
-#endif
-
-    BOOST_TEST(test_options({"test", "-I", "./foo"}) == 3);
-    BOOST_TEST(Options::include_directories.front() == "./foo");
-    Options::include_directories.pop_front();
+    BOOST_TEST(test_options({"test", "-L", "./foo"}) == 3);
+    BOOST_TEST(Options::library_directories.front() == "./foo");
+    Options::library_directories.pop_front();
 
     BOOST_TEST(test_options({"test", "-D", "foo"}) == 3);
     BOOST_TEST(test_options({"test", "-D", "bar=hello"}) == 3);
@@ -323,34 +300,30 @@ BOOST_AUTO_TEST_CASE(backend)
 
 BOOST_AUTO_TEST_CASE(threads)
 {
-    const int n = Options::threads;
+    push(Options::threads, 0);
 
     BOOST_TEST(test_options({"test", "--threads=100"}) == 2);
-
     BOOST_TEST(Options::threads == 100);
 
     BOOST_TEST(test_options({"test", "--no-threads"}) == 2);
-
     BOOST_TEST(Options::threads == 0);
 
-    BOOST_TEST(
-        test_options({"test", "-t", std::to_string(n).c_str()}) == 3);
-
-    BOOST_TEST(Options::threads == n);
+    BOOST_TEST(test_options({"test", "-t", "10"}) == 3);
+    BOOST_TEST(Options::threads == 10);
 
     BOOST_TEST(test_options({"test", "--threads=-1"}) == -EXIT_FAILURE);
     BOOST_TEST(test_options({"test", "-t"}) == -EXIT_FAILURE);
     BOOST_TEST(test_options({"test", "--no-threads=1"}) == -EXIT_FAILURE);
+
+    pop(Options::threads);
 }
 
 BOOST_AUTO_TEST_CASE(output)
 {
     BOOST_TEST(test_options({"test", "-o", "foo", "--output", "bar:qux"}) == 5);
-
     BOOST_TEST(Options::outputs.front() == "bar:qux");
 
     BOOST_TEST(test_options({"test", "--no-output", "bar:qux"}) == 3);
-
     BOOST_TEST(Options::outputs.front() == "foo");
 
     Options::outputs.clear();
@@ -359,13 +332,12 @@ BOOST_AUTO_TEST_CASE(output)
 BOOST_AUTO_TEST_CASE(flags)
 {
 #define TEST_FLAG(OPTION, VAR) {                                     \
-        int i = Flags::VAR;                                          \
-        Flags::VAR = 0;                                              \
+        push(Flags::VAR, 0);                                         \
         BOOST_TEST(test_options({"test", "--" #OPTION}) == 2);       \
         BOOST_TEST(Flags::VAR == 1);                                 \
         BOOST_TEST(test_options({"test", "--no-" #OPTION}) == 2);    \
         BOOST_TEST(Flags::VAR == 0);                                 \
-        Flags::VAR = i;                                              \
+        pop(Flags::VAR);                                             \
     }
 
     TEST_FLAG(dump-abridged-tags, dump_abridged_tags);
@@ -373,6 +345,7 @@ BOOST_AUTO_TEST_CASE(flags)
     TEST_FLAG(fold-transformations, fold_transformations);
     TEST_FLAG(fold-booleans, fold_booleans);
     TEST_FLAG(fold-flushes, fold_flushes);
+    TEST_FLAG(fold-offsets, fold_offsets);
     TEST_FLAG(eliminate-dead-operations, eliminate_dead_operations);
     TEST_FLAG(store-operations, store_operations);
     TEST_FLAG(load-operations, load_operations);
@@ -384,20 +357,19 @@ BOOST_AUTO_TEST_CASE(flags)
     TEST_FLAG(output-wrl, output_wrl);
 
 #ifdef HAVE_SCHEME
-    TEST_FLAG(eliminate-tail-calls, eliminate_tail_calls);
+    TEST_FLAG(print-scheme-warnings, print_scheme_warnings);
 #endif
 }
 
 BOOST_AUTO_TEST_CASE(warnings)
 {
 #define TEST_WARNING_S(X, S) {                                  \
-        int i = Flags::warn_## X;                               \
-        Flags::warn_## X = 0;                                   \
+        push(Flags::warn_## X, 0);                              \
         BOOST_TEST(test_options({"test", "-W" S}) == 2);        \
         BOOST_TEST(Flags::warn_## X == 1);                      \
         BOOST_TEST(test_options({"test", "-Wno-" S}) == 2);     \
         BOOST_TEST(Flags::warn_## X == 0);                      \
-        Flags::warn_## X = i;                                   \
+        pop(Flags::warn_## X);                                  \
     }
 
 #define TEST_GROUPED_WARNING(G, X)              \
@@ -432,11 +404,11 @@ BOOST_AUTO_TEST_CASE(warnings)
 
 BOOST_AUTO_TEST_SUITE_END()
 
-//////////////////////////
-// Operation evaluation //
-//////////////////////////
+/////////////////
+// Miscellanea //
+/////////////////
 
-BOOST_FIXTURE_TEST_SUITE(operations, Reset_operations)
+BOOST_AUTO_TEST_SUITE(misc)
 
 BOOST_AUTO_TEST_CASE(messages)
 {
@@ -447,82 +419,11 @@ BOOST_AUTO_TEST_CASE(messages)
     p->message(Operation::NOTE, "hello world");
 }
 
- //////////////////////////////////////////////////////////////
- // Sort and evaluate a set of operations.                   //
- //                                                          //
- // +-----------+   +-------+                   +---------+  //
- // |tetrahedron|---|to_mesh|-------------------|write_off|  //
- // +-----------+   +-------+                   +---------+  //
- //                                                  /       //
- //                 +---------+   +-------+         /        //
- //                -|extrude 1|---|to_mesh|---------         //
- // +---------+   / +---------+   +-------+                  //
- // |rectangle|---                                           //
- // +---------+   \ +---------+                              //
- //                -|extrude 2|                              //
- //                 +---------+                              //
- //////////////////////////////////////////////////////////////
-
-BOOST_AUTO_TEST_CASE(evaluation)
-{
-    std::vector<Aff_transformation_3> v({
-            TRANSLATION_3(0, 0, 0),
-            TRANSLATION_3(0, 0, 1),
-            TRANSLATION_3(0, 0, 2)});
-
-    std::vector<Aff_transformation_3> u({
-            TRANSLATION_3(0, 0, 0),
-            TRANSLATION_3(0, 0, 1)});
-
-    WRITE_OFF(
-        "test.out",
-        {CONVERT_TO<Surface_mesh>(TETRAHEDRON(1, 1, 1)),
-         CONVERT_TO<Surface_mesh>(EXTRUSION(RECTANGLE(2, 3), std::move(v)))});
-
-    EXTRUSION(RECTANGLE(2, 3), std::move(u));
-
-    evaluate_unit();
-}
-
-// Test evaluation failure.  With -Wfatal-errors and a single
-// evaluation thread, b should never be evaluated and this should
-// fail.
-
-BOOST_AUTO_TEST_CASE(error, * boost::unit_test::disabled())
-{
-    auto b = JOIN(
-        JOIN(TETRAHEDRON(1, 1, 1),
-             TETRAHEDRON(1, 1, -1)),
-        JOIN(TETRAHEDRON(-1, -1, 1),
-             TETRAHEDRON(-1, -1, -1)));
-
-    auto a = JOIN(TETRAHEDRON(1, 1, 1),
-                  TETRAHEDRON(1, -1, -1));
-
-
-    evaluate_unit();
-
-    bool failed = a->annotations.find("failure") != a->annotations.end();
-    BOOST_TEST(failed);
-    BOOST_TEST(b->get_value());
-}
-
-BOOST_AUTO_TEST_SUITE_END()
-
-/////////////////
-// Miscellanea //
-/////////////////
-
-BOOST_AUTO_TEST_SUITE(misc)
-
 BOOST_AUTO_TEST_CASE(simple_duplicate)
 {
-    auto p = TETRAHEDRON(1, 1, 1);
-    std::shared_ptr<Operation> q =
-        add_operation<Tetrahedron_operation>(1, 1, 1);
-
-    std::shared_ptr<Operation> r =
-        add_operation<Tetrahedron_operation>(2, 2, 2);
+    auto p = TETRAHEDRON(1, 1, 1),
+        q = TETRAHEDRON(1, 1, 1),
+        r = TETRAHEDRON(2, 2, 2);
 
     BOOST_TEST(p == q);
     BOOST_TEST(q != r);

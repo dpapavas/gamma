@@ -20,6 +20,9 @@
 
 #include <cassert>
 
+/* This macro ensures that the assrted expression does get executed,
+ * no matter the build type, along with any side-effects. */
+
 #ifdef NDEBUG
 #define safely_assert(...) (void)(__VA_ARGS__)
 #else

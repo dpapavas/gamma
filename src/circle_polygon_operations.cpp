@@ -123,8 +123,13 @@ void Circular_segment_operation::evaluate()
     const Point_2 A(chord / -2, 0), B(chord / 2, 0), H(0, sagitta);
     Circle_polygon P;
 
-    P.push_back(X_monotone_curve(A, B));
-    subdivide_curve(Curve_2(B, H, A), P);
+    if (sagitta > 0) {
+        P.push_back(X_monotone_curve(A, B));
+        subdivide_curve(Curve_2(B, H, A), P);
+    } else {
+        P.push_back(X_monotone_curve(B, A));
+        subdivide_curve(Curve_2(A, H, B), P);
+    }
 
     polygon = std::make_shared<Circle_polygon_set>(P);
 }

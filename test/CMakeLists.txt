@@ -20,9 +20,14 @@ if (NOT CGAL_Qt6_FOUND)
   message(STATUS "Qt6 CGAL component not found.")
 endif ()
 
-if (USE_CHIBI)
-  target_compile_definitions(test PRIVATE "CHIBI_LIB_DIR=\"${CHIBI_LIB_DIR}\"")
-endif ()
+# The following allows access to private members (for printf - or
+# rather std::cout - debugging.)
+
+set_source_files_properties(sandbox.cpp PROPERTIES COMPILE_FLAGS -fno-access-control)
+
+target_compile_definitions(test PRIVATE
+  $<$<CONFIG:Debug>:CGAL_DISABLE_ROUNDING_MATH_CHECK>
+)
 
 target_compile_definitions(test PRIVATE "SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\"")
 target_include_directories(test PRIVATE ../src)

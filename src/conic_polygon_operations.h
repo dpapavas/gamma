@@ -77,7 +77,7 @@ public:
     void evaluate() override;
 
     std::string describe() const override {
-        return compose_tag("segments", this->operand, tolerance);
+        return compose_tag("segments", operand, tolerance);
     }
 };
 

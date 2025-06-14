@@ -22,7 +22,7 @@
 #include "polyhedron_operations.h"
 
 class Write_operation:
-    public Nary_operation<Polyhedron_operation<Surface_mesh>, Sink_operation> {
+    public Nary_operation<Polyhedron_operation<Surface_mesh>, Operation> {
 
 protected:
     const std::string filename;
@@ -31,7 +31,7 @@ public:
     Write_operation(
         const char *s,
         std::vector<std::shared_ptr<Polyhedron_operation<Surface_mesh>>> &&v):
-        Nary_operation<Polyhedron_operation<Surface_mesh>, Sink_operation>(
+        Nary_operation<Polyhedron_operation<Surface_mesh>, Operation>(
             std::move(v)), filename(s) {}
 };
 

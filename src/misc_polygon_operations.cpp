@@ -81,7 +81,7 @@ static void store_polygon(std::ostream &s, const T &P)
 }
 
 template<typename T>
-bool Polygon_operation<T>::store()
+bool Polygon_operation<T>::store() const
 {
     // Conics aren't supported.  Storing point coordinates exactly is
     // not very straightforward.
@@ -149,9 +149,9 @@ error:
     return false;
 }
 
-template bool Polygon_operation<Polygon_set>::store();
-template bool Polygon_operation<Circle_polygon_set>::store();
-template bool Polygon_operation<Conic_polygon_set>::store();
+template bool Polygon_operation<Polygon_set>::store() const;
+template bool Polygon_operation<Circle_polygon_set>::store() const;
+template bool Polygon_operation<Conic_polygon_set>::store() const;
 
 // Load; see storing functions for commentary.
 

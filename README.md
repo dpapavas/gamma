@@ -4,7 +4,7 @@ Gamma can perhaps best be described as a compiler collection for computational
 geometry.  Although in terms of construction it is not really a compiler, its
 function nevertheless is to transform code, written in one of the supported
 languages, into geometry, which can be output in one of the supported formats.
-Currently, it supports two language frontends, Scheme (through
+Currently, it supports two language front ends, Scheme (through
 [Chibi-Scheme](https://github.com/ashinn/chibi-scheme)) and
 [Lua](https://www.lua.org/) and a rich set of operations on both polygons and
 polyhedra, including:
@@ -91,10 +91,10 @@ master branch.
 $ git clone --depth=1 https://github.com/CGAL/cgal.git
 ```
 
-Depending on the language frontends you want to enable, you'll also need
+Depending on the language front ends you want to enable, you'll also need
 [Chibi-Scheme](https://github.com/ashinn/chibi-scheme) and
 [Lua](https://www.lua.org/ftp/).  These are optional and if one is not
-available, the respective language frontend will be disabled.  Here too, we will
+available, the respective language front end will be disabled.  Here too, we will
 avoid system packages and instead build from source for static linking, as the
 system packages might not have been built with the appropriate configuration.
 

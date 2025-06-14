@@ -32,6 +32,17 @@ add_library(
 
 add_executable(gamma main.cpp)
 
+# Valgrind doesn't cooperate with CGAL's messing with the FPU's
+# rounding modes.  Setting this for debug builds
+
+target_compile_definitions(objects PRIVATE
+  $<$<CONFIG:Debug>:CGAL_DISABLE_ROUNDING_MATH_CHECK>
+)
+
+target_compile_options(objects PRIVATE
+    $<$<OR:$<CONFIG:Release>,$<CONFIG:Optimize>>:-Wno-maybe-uninitialized -Wno-array-bounds>
+)
+
 target_include_directories(
   objects PUBLIC ${ZLIB_INCLUDE_DIR})
 target_link_options(objects PUBLIC -pthread)
@@ -45,20 +56,26 @@ target_link_libraries(objects PUBLIC CGAL::CGAL CGAL::Eigen3_support
 
 # Scheme backend
 
-if (USE_CHIBI)
-  find_package(Chibi)
+if (USE_GUILE)
+   # Find Guile using pkg-config
+   find_package(PkgConfig REQUIRED)
+   pkg_check_modules(GUILE REQUIRED guile-3.0)
 
-  if (Chibi_FOUND)
+   message(STATUS "Guile include dirs: ${GUILE_INCLUDE_DIRS}")
+   message(STATUS "Guile libs: ${GUILE_LIBRARIES}")
+
+  if (GUILE_FOUND)
     target_sources(objects PRIVATE scheme_frontend.cpp)
-    target_include_directories(objects PUBLIC ${CHIBI_INCLUDE_DIR})
-    target_link_libraries(objects PUBLIC ${CHIBI_LIBRARIES} util)
+    target_include_directories(objects PUBLIC ${GUILE_INCLUDE_DIRS})
+    target_link_directories(objects PUBLIC ${GUILE_LIBRARY_DIRS})
+    target_link_libraries(objects PUBLIC ${GUILE_LIBRARIES})
     target_compile_definitions(objects PUBLIC HAVE_SCHEME)
     target_compile_definitions(gamma PUBLIC HAVE_SCHEME)
   else ()
     message(
       STATUS
-      "Chibi-Scheme was not found.  The Scheme language backend won't "
-      "be available.")
+      "Guile was not found.  The Scheme language backend won't be "
+      "available.")
   endif ()
 endif ()
 
@@ -83,18 +100,14 @@ endif ()
 # Create the main executable.
 
 target_compile_definitions(gamma PUBLIC "INSTALL_DATADIR=\"${CMAKE_INSTALL_FULL_DATADIR}\"")
+target_compile_definitions(gamma PUBLIC "INSTALL_PREFIX=\"${CMAKE_INSTALL_PREFIX}\"")
 target_link_libraries(gamma objects)
 
 add_to_cached_list(CGAL_EXECUTABLE_TARGETS gamma)
 
 install(TARGETS gamma)
 
-if (Chibi_FOUND)
-  install(
-    DIRECTORY "${CHIBI_LIB_DIR}/"
-    DESTINATION "${CMAKE_INSTALL_DATADIR}/gamma/scheme"
-    FILES_MATCHING PATTERN "*.scm" PATTERN "*.sld")
-
+if (GUILE_FOUND)
   install(
     DIRECTORY ../scheme/
     DESTINATION "${CMAKE_INSTALL_DATADIR}/gamma/scheme"

@@ -27,7 +27,14 @@
 
 #include "fixtures.h"
 #include "circle_polygon_tests.h"
-#include "polygon_tests.h"
+
+FT polygon_area(const Circle_polygon_set &S)
+{
+    Polygon_set T;
+
+    convert_circle_polygon_set(S, T, 0.001, FT::ET(1, 1000000));
+    return polygon_area(T);
+}
 
 bool test_polygon_without_holes(const Circle_polygon &P,
                                 const std::string_view &edges)
@@ -46,7 +53,7 @@ bool test_polygon_without_holes(const Circle_polygon &P,
             && (s + s).find(edges) != std::string::npos);
 }
 
-BOOST_FIXTURE_TEST_SUITE(circle_polygon, Reset_operations)
+BOOST_FIXTURE_TEST_SUITE(circle_polygon, Evaluation_fixture)
 
 ////////////////
 // Primitives //
@@ -54,13 +61,12 @@ BOOST_FIXTURE_TEST_SUITE(circle_polygon, Reset_operations)
 
 BOOST_AUTO_TEST_CASE(circle)
 {
-    auto p = CIRCLE(2);
+    const auto &result = evaluate(CIRCLE(2));
 
-    BOOST_TEST(p->describe() == "circle(2)");
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), "CC");
+    BOOST_TEST(result.tag == "circle(2)");
+    test_polygon(*result.value, "CC");
 }
 
 BOOST_DATA_TEST_CASE(segment,
@@ -68,15 +74,12 @@ BOOST_DATA_TEST_CASE(segment,
                       ^ boost::unit_test::data::make({"LC", "LCCC"})),
                      h, edges)
 {
-    std::stringstream s;
-    auto p = CIRCULAR_SEGMENT(2, FT::ET(h, 2));
+    const auto &result = evaluate(CIRCULAR_SEGMENT(2, FT::ET(h, 2)));
 
-    s << "segment(2," << h << "/2)";
-    BOOST_TEST(p->describe() == s.str());
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), edges);
+    BOOST_TEST(result.tag == tag("segment(2,", h, "/2)"));
+    test_polygon(*result.value, edges);
 }
 
 BOOST_DATA_TEST_CASE(sector,
@@ -84,15 +87,12 @@ BOOST_DATA_TEST_CASE(sector,
                       ^ boost::unit_test::data::make({"LLC", "LLCC"})),
                      theta, edges)
 {
-    std::stringstream s;
-    auto p = CIRCULAR_SECTOR(2, theta);
+    const auto &result = evaluate(CIRCULAR_SECTOR(2, theta));
 
-    s << "sector(2," << theta << ")";
-    BOOST_TEST(p->describe() == s.str());
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), edges);
+    BOOST_TEST(result.tag == tag("sector(2,", theta, ")"));
+    test_polygon(*result.value, edges);
 }
 
 /////////////////////
@@ -106,44 +106,48 @@ BOOST_DATA_TEST_CASE(sector,
 
 BOOST_AUTO_TEST_CASE(transform_circle)
 {
-    auto p = DIFFERENCE(
-        TRANSFORM_CS(CIRCLE(2), basic_rotation(45)),
-        TRANSFORM_CS(CIRCLE(FT::ET(1, 5)), basic_rotation(-45)));
+    const auto &result = evaluate(
+        DIFFERENCE(
+            TRANSFORM_CS(CIRCLE(2), basic_rotation(45)),
+            TRANSFORM_CS(CIRCLE(FT::ET(1, 5)), basic_rotation(-45))));
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_polygon(*p->get_value(), "CC,CC");
+    test_polygon(*result.value, "CC,CC");
 }
 
 BOOST_AUTO_TEST_CASE(transform_circles)
 {
-    Aff_transformation_2 X(-1, 0, 0, 1);
-    Aff_transformation_2 Y(1, 0, 0, -1);
+    const auto &result = evaluate(
+        [] {
+            Aff_transformation_2 X(-1, 0, 0, 1);
+            Aff_transformation_2 Y(1, 0, 0, -1);
 
-    auto a = INTERSECTION(
-        TRANSFORM_CS(CIRCLE(2), TRANSLATION_2(-1, 0)),
-        TRANSFORM_CS(CIRCLE(2), TRANSLATION_2(1, 0)));
+            auto a = INTERSECTION(
+                TRANSFORM_CS(CIRCLE(2), TRANSLATION_2(-1, 0)),
+                TRANSFORM_CS(CIRCLE(2), TRANSLATION_2(1, 0)));
 
-    auto b = TRANSFORM_CS(
-        a, basic_rotation(-45) * TRANSLATION_2(0, 2));
-    auto c = JOIN(b, TRANSFORM_CS(b, X));
-    auto d = JOIN(c, TRANSFORM_CS(c, Y));
+            auto b = TRANSFORM_CS(
+                a, basic_rotation(-45) * TRANSLATION_2(0, 2));
+            auto c = JOIN(b, TRANSFORM_CS(b, X));
 
-    evaluate_unit();
+            return JOIN(c, TRANSFORM_CS(c, Y));
+        });
 
-    test_polygon(*d->get_value(), "CCCC", "CCCC", "CCCC", "CCCC");
+    evaluate_operations();
+
+    test_polygon(*result.value, "CCCC", "CCCC", "CCCC", "CCCC");
 }
 
 BOOST_AUTO_TEST_CASE(flush, * boost::unit_test::tolerance(0.0005))
 {
-    Tolerances::curve = FT::ET(1, 1000);
+    const auto &result = evaluate(
+        DIFFERENCE(FLUSH(CIRCLE(2), -1, 0),
+                   FLUSH(CIRCLE(1), -1, 0)));
 
-    auto p = DIFFERENCE(FLUSH(CIRCLE(2), -1, 0),
-                        FLUSH(CIRCLE(1), -1, 0));
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon_area(*p->get_value(), std::acos(-1) * 3);
+    test_polygon_area(*result.value, std::acos(-1) * 3);
 }
 
 /////////////////
@@ -152,78 +156,71 @@ BOOST_AUTO_TEST_CASE(flush, * boost::unit_test::tolerance(0.0005))
 
 BOOST_AUTO_TEST_CASE(convert_rectangle)
 {
-    auto p = CONVERT_TO<Circle_polygon_set>(RECTANGLE(3, 3));
-    BOOST_TEST(p->describe()
-               == ("circles(polygon(point(-3/2,-3/2),point(3/2,-3/2),"
-                   "point(3/2,3/2),point(-3/2,3/2)))"));
+    const auto &result = evaluate(
+        CONVERT_TO<Circle_polygon_set>(RECTANGLE(3, 3)));
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_polygon(*p->get_value(), "LLLL");
+    BOOST_TEST(
+        result.tag == ("circles(polygon(point(-3/2,-3/2),point(3/2,-3/2),"
+                       "point(3/2,3/2),point(-3/2,3/2)))"));
+    test_polygon(*result.value, "LLLL");
 }
 
 BOOST_AUTO_TEST_CASE(convert_segment, * boost::unit_test::tolerance(0.0025))
 {
-    Tolerances::projection = FT::ET(1, 1'000'000);
-    Tolerances::curve = FT::ET(1, 1000);
+    const auto &result = evaluate(
+        CONVERT_TO<Polygon_set>(CIRCULAR_SEGMENT(2, FT::ET(1, 2))));
 
-    auto a = CIRCULAR_SEGMENT(2, FT::ET(1, 2));
-    auto b = CONVERT_TO<Polygon_set>(a);
-    BOOST_TEST(b->describe() == "segments(segment(2,1/2),1/1000,1/1000000)");
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*a->get_value(), "LC");
-    test_polygon_area(*b->get_value(),
-                      1.5625 * std::acos(0.6) - 0.75);
+    BOOST_TEST(result.tag == "segments(segment(2,1/2),1/1000,1/1000000)");
+    test_polygon_area(*result.value, 1.5625 * std::acos(0.6) - 0.75);
 }
 
 BOOST_AUTO_TEST_CASE(convert_segments, * boost::unit_test::tolerance(0.001))
 {
-    Tolerances::curve = FT::ET(1, 1000);
+    const auto &result = evaluate(
+        CONVERT_TO<Polygon_set>(
+            DIFFERENCE(
+                CIRCULAR_SEGMENT(3, 2), CIRCULAR_SEGMENT(2, FT::ET(1, 2)))));
 
-    auto a = DIFFERENCE(CIRCULAR_SEGMENT(3, 2), CIRCULAR_SEGMENT(2, FT::ET(1, 2)));
-    auto b = CONVERT_TO<Polygon_set>(a);
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*a->get_value(), "LCLCCC");
     test_polygon_area(
-        *b->get_value(), ((1.5625 * 1.5625 * std::acos(-0.28) + 0.65625)
+        *result.value, ((1.5625 * 1.5625 * std::acos(-0.28) + 0.65625)
                           - (1.5625 * std::acos(0.6) - 0.75)));
 }
 
 BOOST_AUTO_TEST_CASE(convert_circles, * boost::unit_test::tolerance(0.001))
 {
-    Tolerances::curve = FT::ET(1, 1000);
+    const auto &result = evaluate(
+        CONVERT_TO<Polygon_set>(
+            JOIN(
+                CIRCLE(FT::ET(1, 2)),
+                DIFFERENCE(CONVERT_TO<Circle_polygon_set>(RECTANGLE(3, 3)),
+                           CIRCLE(1)))));
 
-    auto a = JOIN(
-        CIRCLE(FT::ET(1, 2)),
-        DIFFERENCE(CONVERT_TO<Circle_polygon_set>(RECTANGLE(3, 3)),
-                   CIRCLE(1)));
-    auto b = CONVERT_TO<Polygon_set>(a);
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*a->get_value(), "LLLL,CC", "CC");
-    test_polygon_area(*b->get_value(), 9 - 0.75 * std::acos(-1));
+    test_polygon_area(*result.value, 9 - 0.75 * std::acos(-1));
 }
 
 BOOST_AUTO_TEST_CASE(convert_sectors, * boost::unit_test::tolerance(0.001))
 {
-    Tolerances::curve = FT::ET(1, 1000);
+    const auto &result = evaluate(
+        CONVERT_TO<Polygon_set>(
+            JOIN(
+                TRANSFORM_CS(
+                    CIRCULAR_SECTOR(FT::ET(3, 2), 270),
+                    basic_rotation(90)),
+                TRANSFORM_CS(
+                    CIRCULAR_SECTOR(FT(FT::ET(3, 2) - FT::ET(1, 10)), 90),
+                    TRANSLATION_2(FT::ET(1, 10), FT::ET(1, 10))))));
 
-    auto a = JOIN(
-        TRANSFORM_CS(CIRCULAR_SECTOR(FT::ET(3, 2), 270),
-                     basic_rotation(90)),
-        TRANSFORM_CS(CIRCULAR_SECTOR(FT(FT::ET(3, 2) - FT::ET(1, 10)), 90),
-                     TRANSLATION_2(FT::ET(1, 10), FT::ET(1, 10))));
-    auto b = CONVERT_TO<Polygon_set>(a);
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*a->get_value(), "LLC", "LLCC");
-    test_polygon_area(*b->get_value(), std::atan(1) * 8.71);
+    test_polygon_area(*result.value, std::atan(1) * 8.71);
 }
 
 ////////////////////
@@ -232,103 +229,133 @@ BOOST_AUTO_TEST_CASE(convert_sectors, * boost::unit_test::tolerance(0.001))
 
 BOOST_AUTO_TEST_CASE(join)
 {
-    auto p = JOIN(CIRCLE(1),
-                  TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(-1, 0)));
+    const auto &result = evaluate(
+        JOIN(CIRCLE(1),
+             TRANSFORM(RECTANGLE(2, 2), TRANSLATION_2(-1, 0))));
 
-    BOOST_TEST(p->describe() ==
-               "join(circle(1),"
-               "circles(transform("
-               "polygon(point(-1,-1),point(1,-1),"
-               "point(1,1),point(-1,1)),"
-               "translation(-1,0))))");
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), "CCLLL");
+    BOOST_TEST(result.tag == ("join(circle(1),"
+                              "circles(transform("
+                              "polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1)),"
+                              "translation(-1,0))))"));
+    test_polygon(*result.value, "CCLLL");
 }
 
-BOOST_AUTO_TEST_CASE(joins)
+BOOST_AUTO_TEST_CASE(join_sectors)
 {
-    auto p = JOIN(
-        TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(0, 1)),
+    const auto &result = evaluate(
         JOIN(
-            TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(0, -1)),
-            CONVERT_TO<Circle_polygon_set>(RECTANGLE(2, 2))));
+            TRANSFORM_CS(CIRCULAR_SECTOR(FT::ET(3, 2), 270),
+                         basic_rotation(90)),
+            TRANSFORM_CS(CIRCULAR_SECTOR(FT(FT::ET(3, 2) - FT::ET(1, 10)), 90),
+                         TRANSLATION_2(FT::ET(1, 10), FT::ET(1, 10)))));
 
-    evaluate_unit();
+    evaluate_operations();
 
-    test_polygon(*p->get_value(), "CLCL");
+    test_polygon(*result.value, "LLC", "LLCC");
+}
+
+BOOST_AUTO_TEST_CASE(join_mixed)
+{
+    const auto &result = evaluate(
+        JOIN(
+            TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(0, 1)),
+            JOIN(
+                TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(0, -1)),
+                CONVERT_TO<Circle_polygon_set>(RECTANGLE(2, 2)))));
+
+    evaluate_operations();
+
+    test_polygon(*result.value, "CLCL");
 }
 
 BOOST_AUTO_TEST_CASE(difference)
 {
-    auto p = DIFFERENCE(RECTANGLE(2, 2), CIRCLE(FT::ET(6, 5)));
+    const auto &result = evaluate(
+        DIFFERENCE(RECTANGLE(2, 2), CIRCLE(FT::ET(6, 5))));
 
-    BOOST_TEST(p->describe() ==
-               "difference("
-               "circles(polygon(point(-1,-1),point(1,-1),"
-               "point(1,1),point(-1,1))),"
-               "circle(6/5))");
+    evaluate_operations();
 
-    evaluate_unit();
+    BOOST_TEST(result.tag == ("difference("
+                              "circles(polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1))),"
+                              "circle(6/5))"));
+    test_polygon(*result.value, "LLC", "LLC", "LLC", "LLC");
+}
 
-    test_polygon(*p->get_value(), "LLC", "LLC", "LLC", "LLC");
+BOOST_AUTO_TEST_CASE(difference_segments)
+{
+    const auto &result = evaluate(
+        DIFFERENCE(
+            CIRCULAR_SEGMENT(3, 2), CIRCULAR_SEGMENT(2, FT::ET(1, 2))));
+
+    evaluate_operations();
+
+    test_polygon(*result.value, "LCLCCC");
 }
 
 BOOST_AUTO_TEST_CASE(intersection)
 {
-    auto p = INTERSECTION(RECTANGLE(2, 2), CIRCLE(FT::ET(6, 5)));
+    const auto &result = evaluate(
+        INTERSECTION(RECTANGLE(2, 2), CIRCLE(FT::ET(6, 5))));
 
-    BOOST_TEST(p->describe() ==
-               "intersection("
-               "circles(polygon(point(-1,-1),point(1,-1),"
-               "point(1,1),point(-1,1))),"
-               "circle(6/5))");
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), "LCLCLCLC");
+    BOOST_TEST(result.tag == ("intersection("
+                              "circles(polygon(point(-1,-1),point(1,-1),"
+                              "point(1,1),point(-1,1))),"
+                              "circle(6/5))"));
+    test_polygon(*result.value, "LCLCLCLC");
 }
 
 BOOST_AUTO_TEST_CASE(symmetric_difference)
 {
-    auto p = SYMMETRIC_DIFFERENCE(
-        TRANSFORM_CS(CIRCLE(2), TRANSLATION_2(1, 0)),
-        TRANSFORM_CS(CIRCLE(2), TRANSLATION_2(-1, 0)));
+    const auto &result = evaluate(
+        SYMMETRIC_DIFFERENCE(
+            TRANSFORM_CS(CIRCLE(2), TRANSLATION_2(1, 0)),
+            TRANSFORM_CS(CIRCLE(2), TRANSLATION_2(-1, 0))));
 
-    BOOST_TEST(p->describe() ==
-               "symmetric_difference("
-               "transform(circle(2),translation(1,0)),"
-               "transform(circle(2),translation(-1,0)))");
+    evaluate_operations();
 
-    evaluate_unit();
-
-    test_polygon(*p->get_value(), "CCCC,CCCC");
+    BOOST_TEST(result.tag == ("symmetric_difference("
+                              "transform(circle(2),translation(1,0)),"
+                              "transform(circle(2),translation(-1,0)))"));
+    test_polygon(*result.value, "CCCC,CCCC");
 }
 
 BOOST_AUTO_TEST_CASE(
     symmetric_differences, * boost::unit_test::tolerance(0.001))
 {
-    Tolerances::curve = FT::ET(1, 1000);
-
-    auto a = SYMMETRIC_DIFFERENCE(
+    const auto &result = evaluate(
         SYMMETRIC_DIFFERENCE(
-            TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(-1, 0)),
-            TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(1, 0))),
-        SYMMETRIC_DIFFERENCE(
-            TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(0, -1)),
-            TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(0, 1))));
+            SYMMETRIC_DIFFERENCE(
+                    TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(-1, 0)),
+                    TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(1, 0))),
+                SYMMETRIC_DIFFERENCE(
+                    TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(0, -1)),
+                    TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(0, 1)))));
 
-    BOOST_REQUIRE(a);
-
-    auto b = CONVERT_TO<Polygon_set>(a);
-
-    evaluate_unit();
+    evaluate_operations();
 
     // The total area of the holes is 2 * (pi - 2), so each of the
     // four parts has area 2.
 
-    test_polygon_area(*b->get_value(), 8);
+    test_polygon_area(*result.value, 8);
+}
+
+BOOST_AUTO_TEST_CASE(mixed_operations)
+{
+    const auto &result = evaluate(
+        JOIN(
+            CIRCLE(FT::ET(1, 2)),
+            DIFFERENCE(CONVERT_TO<Circle_polygon_set>(RECTANGLE(3, 3)),
+                       CIRCLE(1))));
+
+    evaluate_operations();
+
+    test_polygon(*result.value, "LLLL,CC", "CC");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
