@@ -2211,6 +2211,36 @@ struct context {
     int result;
 };
 
+// It is often useful to quickly and temporarily create an output from
+// intermediae results of a computation in order to inspect them while
+// debugging.  While one could simply wrap the relevant expression
+// inside a call to `output`, the following function implements a
+// reader extension that allows us to achieve this by simply
+// prepending `#>` to it.  Alternatively, using `#>foo` will result in
+// the equivalent of `(output "foo" ...)`.
+
+static SCM read_hash_greater(SCM chr, SCM port)
+{
+    const SCM s = scm_read(port);
+
+    if (scm_is_true(scm_eof_object_p(s))) {
+        return s;
+    }
+
+    if (scm_is_symbol(s)) {
+        const SCM t = scm_read(port);
+
+        if (scm_is_true(scm_eof_object_p(t))) {
+            return t;
+        }
+
+        return scm_list_3(
+            scm_from_latin1_symbol("output"), scm_symbol_to_string(s), t);
+    }
+
+    return scm_list_2(scm_from_latin1_symbol("output"), s);
+}
+
 static void *run_scheme_with_guile(void *data)
 {
     // We may be called upon to evaluate user programs more than once
@@ -2246,6 +2276,11 @@ static void *run_scheme_with_guile(void *data)
     // only need to do this once.
 
     if (!initialized) {
+        scm_read_hash_extend(
+            scm_integer_to_char(scm_from_char('>')),
+            scm_c_make_gsubr(
+                "read-hash-greater", 2, 0, 0,
+                reinterpret_cast<scm_t_subr>(read_hash_greater)));
         s = scm_cons(scm_list_1(scm_from_latin1_symbol("install-r7rs!")), s);
     }
 

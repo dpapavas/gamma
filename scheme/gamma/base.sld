@@ -1,7 +1,7 @@
 ;; -*- mode:scheme; coding: utf-8 -*-
 
 (define-library (gamma base)
-  (export define-option define-output output ?
+  (export define-option define-output output
           set-projection-tolerance! set-curve-tolerance! set-sine-tolerance!
           point plane
 
@@ -26,12 +26,6 @@
     (define-syntax define-output
       (syntax-rules ()
         ((_ sym exp) (define sym (output (symbol->string (quote sym)) exp)))))
-
-    (define-syntax ?
-      (syntax-rules ()
-        ((_ exp ...) (let ((s (exp ...)))
-                       (output s)
-                       s))))
 
     (define-syntax λ (alias-syntax lambda))
     (define-syntax case-λ (alias-syntax case-lambda))
