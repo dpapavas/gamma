@@ -50,7 +50,7 @@ class Polygon_convert_operation<Polygon_set, Circle_polygon_set>:
     FT tolerances[2];
 
 public:
-    Polygon_convert_operation<Polygon_set, Circle_polygon_set>(
+    Polygon_convert_operation(
         const std::shared_ptr<Polygon_operation<Circle_polygon_set>> &x):
         Unary_operation<Polygon_operation<Circle_polygon_set>,
                         Polygon_operation<Polygon_set>>(x),

@@ -69,7 +69,7 @@ class Polygon_convert_operation<Polygon_set, Conic_polygon_set>:
     FT tolerance;
 
 public:
-    Polygon_convert_operation<Polygon_set, Conic_polygon_set>(
+    Polygon_convert_operation(
         const std::shared_ptr<Polygon_operation<Conic_polygon_set>> &x):
         Unary_operation<Polygon_operation<Conic_polygon_set>,
                         Polygon_operation<Polygon_set>>(x), tolerance(Tolerances::curve) {}
