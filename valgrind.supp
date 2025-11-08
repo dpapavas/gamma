@@ -61,3 +61,19 @@
 #    ...
 #    fun:__gmpn_copyi
 # }
+
+{
+   libgallium
+   Memcheck:Leak
+   match-leak-kinds: possible
+   ...
+   obj:*libgallium*.so
+}
+
+{
+   libGLX_mesa
+   Memcheck:Leak
+   match-leak-kinds: possible
+   ...
+   obj:*libGLX_mesa.so*
+}

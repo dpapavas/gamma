@@ -1,0 +1,1471 @@
+#define _GNU_SOURCE
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "common.h"
+
+
+// ---
+
+// # Commands
+
+// Here we deal with parsing and executing commands.  These can arrive
+// from another process through an IPC channel, or from the terminal.
+// But first we need to get out of the way some supporting routines
+// for the most important command, which is that of loading geometry.
+
+// ## Triangulating polygons
+
+// The GL only operates on triangles, so we need a way to triangulate
+// arbitrary polygons.  We use a simple implementation of ear clipping
+// that should be sufficient (even efficient) for small polygons.
+
+// In the course of triangulation, we'll need to determine whether a
+// point is inside a triangle.
+
+static bool point_in_triangle(
+    const float *p, const float *a, const float *b, const float *c)
+{
+    // We accomplish that by first calculating $p$'s barycentric
+    // coordinates $u$ and $v$.
+
+    const float v_0[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+    const float v_1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    const float v_2[3] = {p[0] - a[0], p[1] - a[1], p[1] - a[2]};
+
+    const float vv_00 = v_0[0] * v_0[0] + v_0[1] * v_0[1] + v_0[2] * v_0[2];
+    const float vv_01 = v_0[0] * v_1[0] + v_0[1] * v_1[1] + v_0[2] * v_1[2];
+    const float vv_02 = v_0[0] * v_2[0] + v_0[1] * v_2[1] + v_0[2] * v_2[2];
+    const float vv_11 = v_1[0] * v_1[0] + v_1[1] * v_1[1] + v_1[2] * v_1[2];
+    const float vv_12 = v_1[0] * v_2[0] + v_1[1] * v_2[1] + v_1[2] * v_2[2];
+
+    const float d = 1.0f / (vv_00 * vv_11 - vv_01 * vv_01);
+    const float u = (vv_11 * vv_02 - vv_01 * vv_12) * d;
+    const float v = (vv_00 * vv_12 - vv_01 * vv_02) * d;
+
+    // "Point $p$ is inside triangle $abc$" then is equivalent to:
+
+    return (u >= 0.0f) && (v >= 0.0f) && (u + v < 1.0f);
+}
+
+// This is the triangulation routine.  It accepts a polygon of `n`
+// vertices, indexed by `s` and outputs new indices for each triangle
+// in the triangulation of the polygon in `t`.
+
+static void triangulate(
+    size_t n, unsigned int *s, float *vertices, unsigned int *t)
+{
+    assert(n >= 3);
+
+    // In the general case we iterate the vertices looking for an ear
+    // tip.  Vertex $b$ is an ear tip if the segment $ac$ formed by
+    // connecting its neighbor vertices intersects the polygon only at
+    // $a$ and $c$ and if the $\angle abc$ is less than $\pi$.
+
+    // We proceed by:
+
+    for (size_t i = 0; i < n; i++) {
+        //   1. First handling some trivial cases: We just copy a
+        //   triangle and make a fan of two triangles out of a quad,
+        //   which is always convex.
+
+        if (n == 3) {
+            memcpy(t, s, 3 * sizeof(unsigned int));
+            return;
+        }
+
+        if (n == 4) {
+            memcpy(t, s, 3 * sizeof(unsigned int));
+            t[3] = s[0];
+            t[4] = s[2];
+            t[5] = s[3];
+            return;
+        }
+
+        //   2. looking up the vertex indices and vertices,
+        //   for the candidate tip and its neighbors,
+
+        const unsigned int k = s[(i + n - 1) % n];
+        const unsigned int l = s[i];
+        const unsigned int m = s[(i + n + 1) % n];
+
+        const float *a = &vertices[7 * k];
+        const float *b = &vertices[7 * l];
+        const float *c = &vertices[7 * m];
+
+        //   3. calculating the vectors forming the angle $\angle
+        //   abc$,
+
+        const float u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const float v[3] = {c[0] - b[0], c[1] - b[1], c[2] - b[2]};
+
+        //   4. calculating the angle as $atan2((u \times v) \cdot n,
+        //   u \cdot v)$, where $n$ is the normal of the plane on
+        //   which the vectors lie, i.e. $n = \frac{u \times v}{\|u
+        //   \times v\|}$,
+
+        const float uxv[3] = {
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0]
+        };
+
+        const float uxvuxv[3] =
+            {uxv[0] * uxv[0], uxv[1] * uxv[1], uxv[2] * uxv[2]};
+
+        const float mm = sqrtf(uxvuxv[0] + uxvuxv[1] + uxvuxv[2]);
+
+        const float phi = atan2f(
+            uxv[0] * uxvuxv[0] / mm
+            + uxv[1] * uxvuxv[1] / mm
+            + uxv[2] * uxvuxv[2] / mm,
+            u[0] * v[0] + u[1] * v[1] + u[2] * v[2]);
+
+        //   5. skipping over mouths, ie. vertices where the angle is
+        //   larger than $\pi$, which is returned as a negative angle
+        //   by $atan2$ above,
+
+        if (phi < 0) {
+            continue;
+        }
+
+        //   6. skipping over vertices, which aren't principal
+        //   vertices to begin with,
+
+        for (size_t j = 0; j < n - 3 ; j++) {
+            if (point_in_triangle(
+                    &vertices[7 * s[(i + j + n + 2) % n]], a, b, c)) {
+                goto next;
+            }
+        }
+
+        //   7. at which point we have an ear tip.  We output the
+        //   corresponding triangle,
+
+        t[0] = k;
+        t[1] = l;
+        t[2] = m;
+
+        t += 3;
+
+        //   8. then clip the tip vertex by removing it from the list
+        //   of vertices, after we can finally,
+
+        for (size_t j = i; j < n - 1 ; s[j] = s[j + 1], j++);
+
+        n -= 1;
+
+        //   9. start anew with the reduced polygon, unless it's
+        //   already down to a triangle, which we output immediately.
+
+        i = 0;
+      next:
+    }
+}
+
+// ## Extracting Edges
+
+// We want to be able to draw the edges of the object as it is
+// received, not those of its triangulation.  Here we extract them as
+// line segmenets, by going over the vertices in pairs.  The order of
+// the vertices making up each edge is immaterial, so we're free to
+// output them in order of increasing index.  This facilitates sorting
+// and deduplication of the edges later on.
+
+static void extract_edges(size_t n, const unsigned int *s, unsigned int *t)
+{
+
+    for (size_t i = 0; i < n; i++) {
+        const unsigned int a = s[i], b = s[(i + 1) % n];
+
+        t[2 * i + (a > b)] = a;
+        t[2 * i + (a <= b)] = b;
+    }
+}
+
+// This is the comparison function for edge sorting.
+
+static int compare_edges(const void *a, const void *b)
+{
+    const unsigned int *p = a, *q = b;
+
+    if (p[0] == q[0]) {
+        return p[1] - q[1];
+    }
+
+    return p[0] - q[0];
+}
+
+// ## Settings
+
+// Settings are constants, that affect various aspects of operation,
+// such as drawing of objects, execution of the "inferior", etc.  They
+// can be changed with the `set` command and their current value can
+// be displayed with the `show` command.
+
+// Below, we define the structure for global settings and set default
+// values.
+
+struct settings settings = {
+    .default_color = {1, 1, 1, 1},
+    .mouse_sensitivity = 0.01
+};
+
+// ## Parsing Commands
+
+// We read commands from a `FILE *`, although it's not a real file in
+// most cases.
+
+// We use the following function to skip whitespace, except newline
+// characters^[With the exception of some commands that can be spread
+// out on multiple lines, for which we skip newlines as well.].  It
+// also skips comments, which start with `#` and continue to the end
+// of the line and returns the newlines it consumed as whitespace.
+
+static int skip(FILE *fp)
+{
+    bool p = false;
+    for (char c = fgetc(fp); c != EOF; c = fgetc(fp)) {
+        if (c == '\n') {
+            return 1;
+        } else if (c == '#') {
+            p = true;
+        } else if (!(p || isspace(c))) {
+            ungetc(c, fp);
+            break;
+        }
+    }
+
+    return 0;
+}
+
+// This function scans tokens that are not required to be on the same
+// line.  This is generally the first token, i.e. the command, or
+// required tokens of multi-line commands, such as `load`. We skip any
+// whitespace (possibly spanning multiple lines) before the token.
+
+static int do_scan(FILE *fp, const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    while(skip(fp));
+    const int n = vfscanf(fp, fmt, ap);
+    va_end(ap);
+
+    return n;
+}
+
+// When reading the last argument of a command, or optional arguments,
+// we want to look for them in the current line.  We therefore skip
+// whitespace and if we cross into the next line, we return instead of
+// attempting to read a token, as we would have read the next
+// command's token.
+
+static int try_scan(FILE *fp, const char *fmt, ...)
+{
+    va_list ap;
+
+    // In that case we also put back the newline character.  This
+    // allows us to check that there weren't any extraneous, or
+    // otherwise invalid arguments at the end (see below).
+
+    if (skip(fp) == 1) {
+        ungetc('\n', fp);
+        return 0;
+    }
+
+    va_start(ap, fmt);
+    const int n = vfscanf(fp, fmt, ap);
+    va_end(ap);
+
+    return n;
+}
+
+// When we're done parsing arguments, we should normally be at the end
+// of the line (potentially after white space, or a comment).  If the
+// call to `skip` below returns zero and we're not at EOF, then we're
+// at the beginning of invalid input that hasn't been consumed yet, so
+// we compain about it.
+
+// This may happen when there are extraneous arguments or with
+// commands that accept optional arguments, where the argument is not
+// of the correct type, so that it wasn't scanned.
+
+#define PARSING_FINISHED                                \
+    do {                                                \
+        if (skip(fp) < 1 && !feof(fp)) {                \
+            fprintf(stderr, "error: invalid syntax");   \
+                                                        \
+            if (try_scan(fp, "%63[^\n]", s) == 1) {     \
+                fprintf(stderr, ", near \"%s\"\n", s);  \
+            } else {                                    \
+                fprintf(stderr, "\n");                  \
+            }                                           \
+                                                        \
+            goto error;                                 \
+        }                                               \
+    } while(false)
+
+// Many commands require a current window to have been selected.  We
+// handle error checking with a macro.
+
+#define NEEDS_WINDOW                                                    \
+    do {                                                                \
+        if (!w) {                                                       \
+            fprintf(stderr, "error: no window selected\n");             \
+            goto error;                                                 \
+        }                                                               \
+    } while(false)
+
+// The macros below implement exponentially growing buffers, with a
+// base of $1.5$ (i.e. the buffer grows by 50% each time).
+
+#define BUFFER_TYPE(T)  struct {T *p; size_t n_0, n;}
+
+#define START_WITH(B, N_0)                              \
+    {                                                   \
+        B.n_0 = N_0;                                    \
+        B.n = 0;                                        \
+        B.p = realloc(B.p, B.n_0 * sizeof(B.p[0]));     \
+    }
+
+#define MAYBE_GROW_TO(B, N)                                     \
+    {                                                           \
+        size_t n_ = N;                                          \
+        while (B.n_0 + B.n < n_) {                              \
+            if (B.n > 0) {                                      \
+                B.n += B.n / 2;                                 \
+            } else {                                            \
+                B.n = 64;                                       \
+            }                                                   \
+                                                                \
+            B.p = realloc(B.p, (B.n_0 + B.n) * sizeof(B.p[0])); \
+            assert(B.p);                                        \
+        }                                                       \
+    }
+
+int read_commands(FILE *fp)
+{
+    // We keep reading commands as long as there are non-whitespace
+    // characters to read, then branch accordingly.
+
+    char s[64];
+    for (int n = 0; ; n++) {
+        if (do_scan(fp, "%63s", s) < 1) {
+            return n;
+        }
+
+        static struct window *w;
+
+        if (!strcmp(s, "quit") || !strcmp(s, "exit")) {
+            PARSING_FINISHED;
+            raise(SIGUSR1);
+        }
+
+        // ### Window Commands
+
+
+
+        //   `window name` := Create or select a window with the given
+        //   name.  The new window is initially hidden, until it
+        //   receives geometry for one of its viewports, or unitl it's
+        //   explicitly shown.
+
+        else if (!strcmp(s, "window")) {
+
+            // We read in the name and look through the window list.
+
+            if (try_scan(fp, "%63s", s) != 1) {
+                fprintf(stderr, "error: no window name specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+
+            w = find_window(s);
+        }
+
+        //   `hide` := Hide the currently selected window.
+
+        else if (!strcmp(s, "hide")) {
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            glfwHideWindow(w->window);
+        }
+
+        //   `present` := Present, that is unhide if hidden and focus
+        //   the window.
+
+        else if (!strcmp(s, "present")) {
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            glfwShowWindow(w->window);
+            glfwFocusWindow(w->window);
+        }
+
+        //   `resize width height` := Resize the currently selected
+        //   window.  Viewport sizes are adjusted accordingly.
+
+        else if (!strcmp(s, "resize")) {
+            int a, b;
+
+            if (try_scan(fp, "%d", &a) != 1 || try_scan(fp, "%d", &b) != 1) {
+                fprintf(stderr, "error: new size not specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            resize_window(w, a, b);
+        }
+
+        //   `focus index` := Focus the viewport with the given index.
+        //   Further operations of viewport-related commands will
+        //   affect this viewport, until another is focused, either by
+        //   a command or with the mouse.
+
+        else if (!strcmp(s, "focus")) {
+            size_t i;
+
+            if (try_scan(fp, "%zu", &i) != 1) {
+                fprintf(stderr, "error: no viewport index specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            struct viewport *v = w->viewports;
+            while (v && --i > 0) {
+                v = v->next;
+            }
+
+            if (v) {
+                w->focus = v;
+                glfwPostEmptyEvent();
+            }
+        }
+
+        // ### Viewport Commands
+
+        //   `split [direction] [parts] [splits]` := Split the focused
+        //   viewport horizontally or vertically in equal parts.
+
+        //   The direction may be either `horizontally` or `vertically`.
+        //   The horizontal direction is assumed if none is explictly
+        //   specified.
+
+        //   If the number of parts is not specified the viewport is
+        //   split along its middle into two equal parts.
+
+        //   If a number of splits is specified, no more than the
+        //   specified number of splits will be carried out.  For
+        //   instance if `parts` is 3 and `splits` is 1, the viewport
+        //   will be split in two, with 1/3 of the width (or height)
+        //   allocated to one viewport and 2/3 to the other.
+
+        else if (!strcmp(s, "split")) {
+            enum direction dir = HORIZONTALLY;
+            unsigned int q = 2;
+            size_t n = 0;
+
+            if (try_scan(fp, "%63[a-z]", s) == 1) {
+                if (!strcmp(s, "horizontally")) {
+                    dir = HORIZONTALLY;
+                } else if (!strcmp(s, "vertically")) {
+                    dir = VERTICALLY;
+                } else {
+                    fprintf(stderr, "error: invalid split direction specified\n");
+                    goto error;
+                }
+
+                size_t m;
+                if (try_scan(fp, "%u", &q) == 1
+                    && try_scan(fp, "%zu", &m) == 1
+                    && m < q) {
+                    n = q - m - 1;
+                }
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            struct viewport *v = w->focus;
+            for (size_t j = q; j > n + 1; j--) {
+                v = split_viewport(v, dir, j);
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        //   `target name` := Set or change the target of the focused
+        //   viewport.  After this all loaded geometry with the same
+        //   name as the the one specified, will be displayed in the
+        //   viewport.
+
+        else if (!strcmp(s, "target")) {
+            if (try_scan(fp, "%63s", s) != 1) {
+                s[0] = '\0';
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            free((char *)w->focus->name);
+            w->focus->name = strdup(s);
+        }
+
+        //   `rotate [alpha] [beta] [gamma]` := Rotate the focused
+        //   viewport by the given euler angles, in degrees.  If no
+        //   angles are given, reset the orientation.  If the first
+        //   angle is given, but the second or third angles are not
+        //   specified, they are assumed to be zero.
+
+        //   The current rotation, in Euler angles, can be shown with
+        //   the `info viewports` command.
+
+        else if (!strcmp(s, "rotate")) {
+            float v[3] = {};
+            size_t i;
+
+            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            if (i == 0) {
+                rotate_viewport(w->focus, NAN, NAN, NAN);
+            } else {
+                rotate_viewport(
+                    w->focus,
+                    v[0] / 180.0f * M_PI,
+                    v[1] / 180.0f * M_PI,
+                    v[2] / 180.0f * M_PI);
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        //   `translate x [y] [z]` := Translate the focused viewport
+        //   by the given displacements.  If no displacements are
+        //   given, reset the translation.  If the first displacement
+        //   is given, but the second, or third displacements are not
+        //   specified, they are assumed to be zero.
+
+        //   The current translation can be shown with the `info
+        //   viewports` command.
+
+        else if (!strcmp(s, "translate")) {
+            float v[3] = {};
+            size_t i;
+
+            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            if (i == 0) {
+                translate_viewport(w->focus, NAN, NAN, NAN);
+            } else {
+                translate_viewport(w->focus, v[0], v[1], v[2]);
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        //   `pan x [y]` := Pan the focused viewport by the given
+        //   displacements in the horizontal and vertical direction.
+        //   If no displacements are given, reset the viewport's
+        //   translation.  If a horizontal displacement is given, but
+        //   the vertical displacement is not specified, it is assumed
+        //   to be zero.
+
+        else if (!strcmp(s, "pan")) {
+            float v[2] = {};
+            size_t i;
+
+            for (i = 0; i < 2 && try_scan(fp, "%f", &v[i]) == 1; i++);
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            if (i == 0) {
+                translate_viewport(w->focus, NAN, NAN, NAN);
+            } else {
+                pan_viewport(w->focus, v[0], v[1]);
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        //   `zoom [incr]` := Adjust the focused viewport's zoom by
+        //   the given increment.  If no increment is specified, reset
+        //   the zoom.
+
+        else if (!strcmp(s, "zoom")) {
+            float zeta = NAN;
+
+            try_scan(fp, "%f", &zeta);
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            zoom_viewport(w->focus, zeta);
+
+            glfwPostEmptyEvent();
+        }
+
+        //   `view proj` := Change the projection of the focused
+        //   viewport.  The argument can be either `orthographic`,
+        //   `perspective` or a field of view angle in degrees.  In
+        //   the first case orthographic projection is selected.  In
+        //   the latter two cases, perspecitve projection is selected,
+        //   either retaining the current, or updating the field of
+        //   view angle.
+
+        else if (!strcmp(s, "view")) {
+            float f = NAN;
+            enum projection mode;
+
+            if (try_scan(fp, "%f", &f) == 1) {
+                mode = PERSPECTIVE;
+            } else if (try_scan(fp, "%63[a-z]", s) == 1) {
+                if (!strcmp(s, "orthographic")) {
+                    mode = ORTHOGRAPHIC;
+                } else if (!strcmp(s, "perspective")) {
+                    mode = PERSPECTIVE;
+                } else {
+                    fprintf(stderr, "error: invalid projection specified\n");
+                    goto error;
+                }
+            } else {
+                fprintf(stderr, "error: no projection specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            struct viewport *v = w->focus;
+
+            v->stale = true;
+            v->projection = mode;
+
+            if (!isnan(f)) {
+                v->angle = f / 2.0f / 180.0f * M_PI;
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        // ### Loading Object Geometry
+
+        //   `load [name] [< file]` := Load geometry for an object.
+        //   The geometry can either follow the command or be loaded
+        //   from a local file.
+
+        //   If no name is specified the dafault target is loaded.
+
+        else if (!strcmp(s, "load")) {
+
+            FILE *old_fp = nullptr;
+
+            {
+                s[0] = '\0';
+
+                bool p = true;
+
+                while (true) {
+                    // Look for the "redirection" character `<`.  If
+                    // one is found, no name has been specified, so we
+                    // leave `s` at its default value.
+
+                    char c;
+                    if (try_scan(fp, "%1[<]", &c) == 1) {
+                        char *t;
+
+                        // Scan the file name, open it swap it with
+                        // the file we're currently reading from.
+
+                        if (try_scan(fp, "%ms", &t) != 1) {
+                            fprintf(stderr, "error: no file name specified\n");
+                            goto error;
+                        }
+
+                        PARSING_FINISHED;
+
+                        old_fp = fp;
+                        fp = fopen(t, "r");
+                        free(t);
+
+                        if (!fp) {
+                            perror("Could not open file");
+                            goto done;
+                        }
+
+                    } else if (p) {
+                        // If we haven't already scanned the name, do
+                        // so now and loop to read a potential input
+                        // file.
+
+                        try_scan(fp, "%63s", s);
+                        p = false;
+
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+
+            // Here, we read geometry in the OFF format.  We start
+            // with an optional header.
+
+            {
+                char t[4] = "OFF";
+
+                if (do_scan(fp, "%4[STCN4nOF]", t) < 0
+                    || (strcmp(t, "OFF") && strcmp(t, "COFF"))) {
+                    fprintf(stderr, "error: found unsupported or invalid data\n");
+                    goto error;
+                }
+
+                // Next come three integer counts of vertices, faces
+                // and edges respectively.
+
+                uint32_t a = 0, b = 0, c = 0;
+
+                if (do_scan(fp, "%u", &a) != 1
+                    || do_scan(fp, "%u", &b) != 1
+                    || do_scan(fp, "%u", &c) != 1) {
+                    fprintf(
+                        stderr,
+                        "could not read vertex, face, or edge counts\n");
+
+                    goto error;
+                }
+
+                // We allocate a suitable buffer and read in all
+                // vertices.
+
+                static BUFFER_TYPE(float) vertices;
+                START_WITH(vertices, 7 * a);
+
+                for (size_t i = 0; i < a; i++) {
+                    float * const p = &vertices.p[7 * i];
+
+                    // Each vertex is made up of:
+
+                    //   1. 3 spatial coordinates, which are always required,
+
+                    for (size_t j = 0; j < 3; j++) {
+                        if (do_scan(fp, "%f", &p[j]) != 1) {
+                            fprintf(
+                                stderr,
+                                "could not read coordinate %zu of vertex %zu\n",
+                                j, i);
+
+                            goto error;
+                        }
+                    }
+
+                    //   2. plus 4 required color coordinates if we're
+                    //   reading the COFF variant.  If not, we still
+                    //   set the vertex to the default color.
+
+
+                    if (t[0] == 'C') {
+                        for (size_t j = 3; j < 7; j++) {
+                            if (do_scan(fp, "%f", &p[j]) != 1) {
+                                fprintf(
+                                    stderr,
+                                    "could not read coordinate %zu or vertex %zu\n",
+                                    j, i);
+
+                                goto error;
+                            }
+                        }
+                    } else {
+                        p[3] = (float)settings.default_color[0];
+                        p[4] = (float)settings.default_color[1];
+                        p[5] = (float)settings.default_color[2];
+                        p[6] = (float)settings.default_color[3];
+                    }
+                }
+
+                // Indices are more involved.  For one we don't know
+                // how many we'll end up with as it depends, not only
+                // on the number of faces `b`, but also on what kind
+                // of polygon each face is.
+
+                // We also need to triangulate the polygons before
+                // passing them to the GL.  We also need to extract
+                // edges, as we want to be able to draw those too.
+
+                // We allocate growing buffers for the purpose.
+
+                static BUFFER_TYPE(unsigned int) triangles;
+                static BUFFER_TYPE(unsigned int) edges;
+
+                // We keep track of the elements written to the
+                // triangle and edge indices buffers with `n` and `m`
+                // respectively.
+
+                size_t n = 0, m = 0;
+
+                // Now for each face we:
+
+                for (size_t i = 0; i < b; i++) {
+                    size_t l;
+
+                    //   1. read the number of vertices into `l`,
+
+                    if (do_scan(fp, "%zu", &l) != 1) {
+                        fprintf(
+                            stderr,
+                            "could not read number of vertices for face %zu\n", i);
+
+                        goto error;
+                    }
+
+                    //   2. read the face polygon indices indices into `s`,
+
+                    unsigned int s[l];
+                    for (size_t j = 0; j < l; j++) {
+                        if (do_scan(fp, "%u", &s[j]) != 1) {
+                            fprintf(
+                                stderr,
+                                "could not read index %zu for face %zu\n", j, i);
+
+                            goto error;
+                        }
+                    }
+
+                    //   3. write $l$ edges, corresponding to the $l$
+                    //   vertices in our buffer^[We do it at this
+                    //   point when the vertices are still the
+                    //   original vertices loaded from file, not
+                    //   potentially duplicated vertices created when
+                    //   reading face colors below.  This allows
+                    //   duplicate edges to be reliably detected and
+                    //   discarded, since otherwise the same edge
+                    //   could have shown up with different indices,
+                    //   corresponding to vertices with the same
+                    //   position but different colors.], potentially
+                    //   growing it to make space if needed,
+
+                    MAYBE_GROW_TO(edges, m += 2 * l);
+                    extract_edges(l, s, &edges.p[m - 2 * l]);
+
+                    //   4. read the face color if present.  This is a
+                    //   bit complicated.
+
+                    {
+                        float v[4] = {};
+                        size_t j;
+                        bool p = false;
+
+                        //   We assume a color is either 3 (RGB), or 4
+                        //   (RGBA) values.  If less are available, we
+                        //   ignore them.
+
+                        for (j = 0; j < 4; j++) {
+                            const int k = try_scan(fp, "%f", &v[j]);
+
+                            if (k <= 0) {
+                                break;
+                            }
+
+                            //   Values can be given either as
+                            //   integers in [0, 255] or floats in [0,
+                            //   1].  If we find any number higher
+                            //   than 1, we assume the former.
+
+                            if (v[j] > 1.0f) {
+                                p = true;
+                            }
+                        }
+
+                        if (j >= 3) {
+                            //   We normalize to [0, 1] if integers were
+                            //   given.
+
+                            if (p) {
+                                for (size_t k = 0; k < j; k++) {
+                                    v[k] /= 255.0f;
+                                }
+                            }
+
+                            //   We also fill in a default alpha value
+                            //   if necessary.
+
+                            if (j == 3) {
+                                v[3] = 1.0f;
+                            }
+
+                            //   The real problem is that the GL
+                            //   doesn't know anything about "per-face
+                            //   attributes".  All attributes are
+                            //   per-vertex, so we need to duplicate
+                            //   the vertices of the face and replace
+                            //   their original vertex colors with the
+                            //   constant face color.
+
+                            MAYBE_GROW_TO(vertices, 7 * (a += l));
+
+                            for (size_t k = 0; k < l; k++) {
+                                const size_t alk = a - l + k;
+
+                                memcpy(
+                                    &vertices.p[7 * alk], &vertices.p[7 * s[k]],
+                                    3 * sizeof(float));
+
+                                memcpy(
+                                    &vertices.p[7 * alk + 3], v,
+                                    4 * sizeof(float));
+
+                                s[k] = alk;
+                            }
+                        }
+                    }
+
+                    //   5. write the $l - 2$ triangles resulting from
+                    //   the triangulation of the face polygon into
+                    //   our buffer and finally
+
+                    MAYBE_GROW_TO(triangles, n += 3 * (l - 2));
+                    triangulate(l, s, vertices.p, &triangles.p[n - 3 * (l - 2)]);
+                }
+
+                //   For closed, manifold meshes, each edge will be
+                //   shared by two faces and hence will show up twice
+                //   in our buffer.  For non-manifold meshes there
+                //   might be even more repetitions of the same edge.
+
+                //   We don't want to draw the same edge multiple
+                //   times, so we sort and deduplicate the edges
+                //   before copying them to the GL buffers.
+
+                assert(m >= 6);
+                qsort(edges.p, m / 2, 2 * sizeof(edges.p[0]), compare_edges);
+
+                for (unsigned int *p = edges.p,
+                         *q = edges.p + 2,
+                         *end = edges.p + m; q < end; q += 2) {
+                    if (!memcmp(p, q, 2 * sizeof(unsigned int))) {
+                        m -= 2;
+                        continue;
+                    }
+
+                    if ((p += 2) != q) {
+                        assert((q - p) % 2 == 0 && q - p >= 2);
+                        memcpy(p, q, 2 * sizeof(unsigned int));
+                    }
+                }
+
+                //   6. load the resulting triangles and edges to the
+                //   specified object.
+
+                refresh_object(s, a, vertices.p, n, triangles.p, m, edges.p);
+            }
+
+            // We also remember to undo the file "redirection", if
+            // there was one.
+
+          done:
+            if (old_fp) {
+                if (fp) {
+                    fclose(fp);
+                }
+
+                fp = old_fp;
+            }
+        }
+
+        // ## The Run Command
+
+        //   `run [mode]` := Run the "inferior" process to update the
+        //   contents of the viewports.  The program specified by the
+        //   `program` setting is run in a shell, with the arguments
+        //   specified in the `args` setting, augmented with arguments
+        //   to enable outputs bound to viewports in the current
+        //   window.
+
+        //   The mode can be either `all`, in which case all viewports
+        //   in the current window will be updated, or `single`, where
+        //   only the focused viewport will be updated.
+
+        else if (!strcmp(s, "run")) {
+            static BUFFER_TYPE(char) buffer;
+            char *p;
+
+            enum {
+                SINGLE, ALL
+            } mode = ALL;
+
+            // First, we try to scan the mode and assume `ALL` if we
+            // can't.
+
+            if (try_scan(fp, "%63[a-z]", s) == 1) {
+                if (!strcmp(s, "single")) {
+                    mode = SINGLE;
+                } else if (!strcmp(s, "all")) {
+                    mode = ALL;
+                } else {
+                    fprintf(stderr, "error: invalid mode specified\n");
+                    goto error;
+                }
+            }
+
+            PARSING_FINISHED;
+
+            // Now we need to compose the command line, from:
+
+            size_t n = 0;
+
+            //   1. the executable, followed by
+
+            if (settings.program) {
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.program)) + 1);
+                p = stpcpy(buffer.p, settings.program);
+            } else {
+                MAYBE_GROW_TO(buffer, (n += strlen("gamma")) + 1);
+                p = stpcpy(buffer.p, "gamma");
+            }
+
+            //   2. the output, which needs to precede other
+            //   options^[Order is important since the output selected
+            //   by an option only affects the sources following it.]
+            //   and finally
+
+            if (w) {
+                for (struct viewport *v = w->viewports; v; v = v->next) {
+                    if (mode == SINGLE && v != w->focus) {
+                        continue;
+                    }
+
+                    const size_t n_0 = n;
+
+                    MAYBE_GROW_TO(buffer, ((n += 2 * strlen(v->name) + 5) + 1));
+                    p = stpcpy(buffer.p + n_0, " -o ");
+                    p = stpcpy(p, v->name);
+                    p = stpcpy(p, ":");
+                    p = stpcpy(p, v->name);
+                }
+            }
+
+            //   3. any arguments specified by the user.
+
+            if (settings.args) {
+                const size_t n_0 = n;
+
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.args)) + 2);
+                p = stpcpy(buffer.p + n_0, " ");
+                p = stpcpy(p, settings.args);
+            }
+
+            system(buffer.p);
+        }
+
+        // ### The Information Command
+
+        // The information displayed with the `info` command below is
+        // often laid out in a tabular format, so we need a way to
+        // print neatly aligned columns of data.  We handle this with
+        // the following macros.
+
+#define COLUMN(FMT, ...)                                                \
+        do {                                                            \
+            if (phase_ == 0) {                                          \
+                if (i_ < n_ - 1) {                                      \
+                    const int m_ = snprintf(nullptr, 0, FMT, __VA_ARGS__); \
+                                                                        \
+                    if (m_ > widths_[i_]) {                             \
+                        widths_[i_] = m_;                               \
+                    }                                                   \
+                }                                                       \
+            } else {                                                    \
+                const int m_ = printf(FMT, __VA_ARGS__);                \
+                if (i_ < n_ - 1) {                                      \
+                    for (int j_ = 0;                                    \
+                         j_ < widths_[i_] - m_ + 2;                     \
+                         putchar(' '), j_++);                           \
+                } else {                                                \
+                    putchar('\n');                                      \
+                }                                                       \
+            }                                                           \
+                                                                        \
+            i_ = (i_ + 1) % n_;                                         \
+        } while (false)
+
+#define PRINT_TABLE(N, ...)                                             \
+        {                                                               \
+            const size_t n_ = N;                                        \
+            int widths_[n_ - 1] = {};                                   \
+            for (size_t phase_ = 0, i_ = 0; phase_ < 2; i_ = 0, phase_++) \
+                __VA_ARGS__                                             \
+        }
+
+        //   `info subject` := Display information on a particular
+        //   subject.  The subject can be any of the following:
+
+        else if (!strcmp(s, "info")) {
+            if (try_scan(fp, "%63s", s) != 1) {
+                fprintf(stderr, "error: no subject specified\n");
+                goto error;
+            }
+
+            //   `windows` := Describe existing windows.
+
+            if (!strcmp(s, "windows")) {
+                PARSING_FINISHED;
+
+                if (!windows) {
+                    puts("No existing windows.");
+                } else {
+                    PRINT_TABLE(
+                        4, {
+                            COLUMN("%s", "#");
+                            COLUMN("%s", "Size");
+                            COLUMN("%s", "Vis.");
+                            COLUMN("%s", "Name");
+
+                            size_t i = 0;
+                            for (struct window *w = windows; w; w = w->next) {
+                                int a, b;
+
+                                glfwGetFramebufferSize(w->window, &a, &b);
+
+                                COLUMN("%zu", ++i);
+                                COLUMN("%d, %d", a, b);
+                                COLUMN("%s", (glfwGetWindowAttrib(w->window, GLFW_VISIBLE)
+                                              == GL_TRUE ? "Yes" : "No"));
+                                COLUMN("%s", w->name);
+                            }
+                        });
+                }
+            }
+
+            //   `viewports` := Describe viewports in the current
+            //   window.
+
+            else if (!strcmp(s, "viewports")) {
+                PARSING_FINISHED;
+                NEEDS_WINDOW;
+
+                PRINT_TABLE(
+                    9, {
+                        COLUMN("%s", "#");
+                        COLUMN("%s", "Orig.");
+                        COLUMN("%s", "Size");
+                        COLUMN("%s", "Trans.");
+                        COLUMN("%s", "Rotation");
+                        COLUMN("%s", "Zoom");
+                        COLUMN("%s", "Pr.");
+                        COLUMN("%s", "Name");
+                        COLUMN("%s", "");
+
+                        size_t i = 0;
+                        for (struct viewport *v = w->viewports; v; v = v->next) {
+                            const GLfloat *R = v->rotation;
+
+                            // The rotation of the viewport is given
+                            // in y-x-z Tait-Bryan angles.  We need to
+                            // extract those from its matrix.
+
+                            float alpha, beta, gamma;
+
+                            if (R[6] < 1.0f) {
+                                if (R[6] > -1.0f) {
+                                    // If $\alpha \in (-{\pi\over
+                                    // 2},{\pi\over 2})$, i.e. if $R_6
+                                    // = -sin(\alpha) \in (-1, 1)$,
+                                    // then $cos(\alpha) \neq 0$, so:
+
+                                    alpha = atan2f(R[2], R[10]);
+                                    beta = asinf(-R[6]);
+                                    gamma = atan2f(R[4], R[5]);
+                                } else {
+                                    // If $\alpha = {\pi\over 2}$,
+                                    // i.e. $R_6 = -1$, then
+                                    // $cos(\alpha) = 0$, then only
+                                    // $\gamma - \alpha$ is uniquely
+                                    // defined.  We choose:
+
+                                    alpha = -atan2f(R[1], R[0]);
+                                    beta = M_PI_2;
+                                    gamma = 0.0f;
+                                }
+                            } else {
+                                // If $\alpha = -{\pi\over 2}$,
+                                // i.e. $R_6 = 1$, then similarly only
+                                // $\gamma + \alpha$ is uniquely
+                                // defined.  We choose:
+
+                                alpha = atan2f(R[1], R[0]);
+                                beta = -M_PI_2;
+                                gamma = 0.0f;
+                            }
+
+                            // We also show the field of view angle
+                            // and projection mode in one column.
+
+                            char s[] = "Or.";
+
+                            if (v->projection) {
+                                snprintf(
+                                    s, 4, "%d",
+                                    (int)roundf(v->angle / M_PI * 180.0f * 2.0f));
+                            }
+
+                            // The `%g` format switches to scientific
+                            // notation for numbers smaller than 1e-4.
+                            // We don't want that, so we truncate to 5
+                            // decimal places.
+
+                            // The reason we use the tertiary operator
+                            // below, instead of just dividing the
+                            // constants below by `1e4` straight away,
+                            // is to avoid having small negative
+                            // number rounded to negative zero and
+                            // showing up as `-0`.
+
+                            const float x = roundf(v->translation[0] * 1e4);
+                            const float y = roundf(v->translation[1] * 1e4);
+                            const float z = roundf(v->translation[2] * 1e4);
+
+                            // The rest of the columns are taken
+                            // straight from the viewport.
+
+                            COLUMN("%zu", ++i);
+                            COLUMN("%d, %d", v->left, v->bottom);
+                            COLUMN("%d, %d", (v->right - v->left), (v->top - v->bottom));
+                            COLUMN(
+                                "%.4g, %.4g, %.4g",
+                                x == 0.0f ? 0.0f : x / 1e4,
+                                y == 0.0f ? 0.0f : y / 1e4,
+                                z == 0.0f ? 0.0f : z / 1e4);
+                            COLUMN(
+                                "%d, %d, %d",
+                                (int)roundf(alpha / M_PI * 180.0f),
+                                (int)roundf(beta / M_PI * 180.0f),
+                                (int)roundf(gamma / M_PI * 180.0f));
+                            COLUMN("%g", v->zoom);
+                            COLUMN("%s", s);
+                            COLUMN("%s", v->name);
+                            COLUMN("%s", v == w->focus ? "*" : "");
+                        }
+                    });
+            }
+
+            //   `objects` := Describe loaded objects.  All loaded
+            //   objects are listed, including currently or previously
+            //   displayed in any window.
+
+            else if (!strcmp(s, "objects")) {
+                PARSING_FINISHED;
+
+                PRINT_TABLE(
+                    6, {
+                        COLUMN("%s", "#");
+                        COLUMN("%s", "Vert.");
+                        COLUMN("%s", "Tri.");
+                        COLUMN("%s", "Edges");
+                        COLUMN("%s", "AABB");
+                        COLUMN("%s", "Name");
+
+                        size_t i = 0;
+                        for (struct object *o = objects; o; o = o->next) {
+
+                            COLUMN("%zu", ++i);
+                            COLUMN("%d", o->counts[0]);
+                            COLUMN("%d", o->counts[1] / 3);
+                            COLUMN("%d", o->counts[2] / 2);
+                            COLUMN(
+                                "%g, %g, %g, %g, %g, %g",
+                                o->bounds[0], o->bounds[1],
+                                o->bounds[2], o->bounds[3],
+                                o->bounds[4], o->bounds[5]);
+                            COLUMN("%s", o->name);
+                        }
+                    });
+            }
+
+            else {
+                PARSING_FINISHED;
+
+                fprintf(stderr, "error: no such subject\n");
+                goto error;
+            }
+        }
+
+#undef COLUMN
+#undef PRINT_TABLE
+
+        // ### Setting Commands
+
+        // We handle changing and showing settings with the following
+        // macros.
+
+        // Here we set a string setting whose value is the portion of
+        // the `set` command line after from the first non-whitespace
+        // character after the name of the setting is scanned and up
+        // to the newline character, exactly as typed, including
+        // whitespace.
+
+#define SET_LINE(FP, SETTING)                   \
+        do {                                    \
+            if (SETTING) {                      \
+                free((char *)SETTING);          \
+                SETTING = nullptr;              \
+            }                                   \
+                                                \
+            try_scan(fp, " %m[^\n]", &SETTING); \
+                                                \
+            PARSING_FINISHED;                   \
+        } while(false);                         \
+
+        // Here we set up to `N` values of the type specified by the
+        // `scanf` specifer `SPEC`.
+
+#define SET_VALUES(FP, SETTING, SPEC, N)                        \
+        do {                                                    \
+            size_t i_, n_ = N;                                  \
+            double d_[N];                                       \
+                                                                \
+            for (i_ = 0;                                        \
+                 i_ < n_ && try_scan(fp, SPEC, &d_[i_]) == 1;   \
+                 i_++);                                         \
+                                                                \
+            PARSING_FINISHED;                                   \
+            while (i_-- > 0) {                                  \
+                SETTING[i_] = d_[i_];                           \
+            }                                                   \
+        } while(false);
+
+        // The show macros, are analogous to the set macros above.
+
+#define SHOW_STRING(SETTING)                    \
+        do {                                    \
+            PARSING_FINISHED;                   \
+                                                \
+            if (SETTING) {                      \
+                puts(SETTING);                  \
+            }                                   \
+        } while(false);
+
+#define SHOW_VALUES(SETTING, SPEC, N)                   \
+        do {                                            \
+            PARSING_FINISHED;                           \
+                                                        \
+            size_t n_ = N;                              \
+            for (size_t i = 0; i < n_ - 1; i++) {       \
+                printf(SPEC " ", SETTING[i]);           \
+            }                                           \
+                                                        \
+            printf(SPEC "\n", SETTING[n_ - 1]);         \
+        } while(false);
+
+        // `set setting value`
+
+        // Change the value of a setting.  The available settings are:
+
+        else if (!strcmp(s, "set")) {
+            if (try_scan(fp, "%63s", s) != 1) {
+                fprintf(stderr, "error: no setting specified\n");
+                goto error;
+            }
+
+            //   `program` := The executable that should be run in
+            //   order to refresh the displayed geometry.
+
+            if (!strcmp(s, "program")) {
+                SET_LINE(fp, settings.program);
+            }
+
+            //   `args` := The command line arguments to pass to the
+            //   program.
+
+            else if (!strcmp(s, "args")) {
+                SET_LINE(fp, settings.args);
+            }
+
+            //   `default-color` := The color assigned to vertices
+            //   that do not have a color associated with them.  It is
+            //   given as four RGBA floating point values.
+
+            else if (!strcmp(s, "default-color")) {
+                SET_VALUES(fp, settings.default_color, "%lf", 4);
+            }
+
+            //   `mouse-sensitivity` := A number that controls how fast
+            //   the viewport is rotated, zoomed, etc. with the mouse.
+
+            else if (!strcmp(s, "mouse-sensitivity")) {
+                SET_VALUES(fp, (&settings.mouse_sensitivity), "%lf", 1);
+            }
+
+            else {
+                fprintf(stderr, "error: no such setting\n");
+                goto error;
+            }
+        }
+
+        // `show setting`
+
+        // Show the value of a setting.  See the `set` command for
+        // possible settings to show.
+
+        else if (!strcmp(s, "show")) {
+            if (try_scan(fp, "%63s", s) != 1) {
+                fprintf(stderr, "error: no setting specified\n");
+                goto error;
+            }
+
+            if (!strcmp(s, "program")) {
+                SHOW_STRING(settings.program);
+            } else if (!strcmp(s, "args")) {
+                SHOW_STRING(settings.args);
+            } else if (!strcmp(s, "default-color")) {
+                SHOW_VALUES(settings.default_color, "%lg", 4);
+            } else if (!strcmp(s, "mouse-sensitivity")) {
+                SHOW_VALUES((&settings.mouse_sensitivity), "%lg", 1);
+            } else {
+                fprintf(stderr, "error: no such setting\n");
+                goto error;
+            }
+
+#undef SET_LINE
+#undef SET_VALUES
+#undef SHOW_STRING
+#undef SHOW_VALUES
+        }
+
+        else {
+            fprintf(stderr, "error: invalid command \"%s\"\n", s);
+            goto error;
+        }
+
+        continue;
+
+      error:
+        // If we found an error while parsing, we need to discard the
+        // rest of the input.
+
+        return -1;
+    }
+}
+
+#undef SCAN_VIEWPORT

@@ -49,11 +49,11 @@ function substitue_directive(from, to, pre, post)
   }
 }
 
-function substitute_weight(from, to)
+function substitute_weight(from, to, inside)
 {
   while(1) {
     if (in_weight) {
-      a = gensub("([^[:space:]])" from "([[:space:].,)]|$)", "\\1}\\2", 1)
+      a = gensub("(" inside ")" from "([[:space:].,\"')]|$)", "\\1}\\2", 1)
       if ($0 != a) {
         in_weight = 0
         $0 = a
@@ -63,7 +63,7 @@ function substitute_weight(from, to)
     }
 
     if (!in_weight) {
-      a = gensub("(^|[[:space:].,(])" from "([^[:space:]])", "\\1" to "{\\2", 1)
+      a = gensub("(^|[[:space:].,\"'(])" from "(" inside ")", "\\1" to "{\\2", 1)
       if ($0 != a) {
         in_weight = 1
         $0 = a
@@ -100,6 +100,9 @@ function close_list()
     } else if (in_quotation) {
       text = text "@end quotation\n"
       in_quotation = 0
+    } else if (in_indentedblock) {
+      text = text "@end indentedblock\n"
+      in_indentedblock = 0
     }
 }
 
@@ -143,8 +146,8 @@ function close_list()
         text = text "\n@table @code"
       }
 
-      text = text "\n@item " v[1] "\n"
-      $0 = v[2]
+      text = text "\n@item "
+      $0 = v[1] "\n" v[2]
     } else if (match($0, /^[[:digit:]]+\. /)) {
       if (!in_enumerate) {
         in_enumerate = 1
@@ -170,6 +173,13 @@ function close_list()
       }
 
       sub(/^> /, "")
+    } else if (!in_table \
+               && !in_enumerate \
+               && !in_itemize \
+               && !in_quotation \
+               && !in_indentedblock) {
+        in_indentedblock = 1
+        text = text "\n@indentedblock\n"
     }
   } else {
     in_indent = 0
@@ -255,9 +265,9 @@ function close_list()
 
     # **strong** and *emphasized* text
 
-    substitute_weight("\\*\\*", "@strong")
-    substitute_weight("\\*", "@emph")
-    substitute_weight("\\$", "@math")
+    substitute_weight("\\*\\*", "@strong", "[[:alnum:]]")
+    substitute_weight("\\*", "@emph", "[[:alnum:]]")
+    substitute_weight("\\$", "@math", "[[:graph:]]")
 
     if (in_directive && sub("[" in_directive_post "]", "}" in_directive_post)) {
       in_directive = 0

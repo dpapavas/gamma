@@ -72,5 +72,10 @@ radius 10.
 @include ./src/frontend.h.texi
 @include ./src/boxed_operations.h.texi
 
+@part Part IV:@* The Debugger
+@include ./db/main.c.texi
+@include ./db/windows.c.texi
+@include ./db/viewports.c.texi
+@include ./db/commands.c.texi
 
 @bye

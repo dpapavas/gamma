@@ -1,0 +1,70 @@
+#!/bin/bash
+
+rungamma() { $GAMMADB --no-init --batch "$@" 2>&1; }
+
+match() {
+    IFS='' read -r line;
+    if [[ "$line" != $(echo -n $1; shift; printf "%s" "${@/#/+( )}") ]]; then
+        echo "Unexpected line: " "$line" > /dev/stderr
+        exit 1
+    fi
+}
+
+error() { match "error: $1"; }
+syntax_error() { error 'invalid syntax, near "bogus"'; }
+ok() { match ""; }
+
+IFS='/' read -ra selected <<< "$1"
+failures=0
+
+if [ ${#selected[@]} -eq 0 ]; then
+    # If no specific suite or test has been selected, we recurse
+    # running all suites in a separate shell, which ensures that tests
+    # from one suite can't affect another.
+
+    for x in $(dirname $0)/*.sh; do
+        bash $0 $(basename $x .sh)
+        failures=$(( failures + $?))
+    done
+
+    # Summary
+
+    if [ $failures -eq 0 ]; then
+        exit 0
+    fi
+
+    echo "$failures test(s) failed."
+    echo
+
+    exit 1
+else
+    # If we're running a specific suite, we source it and then go
+    # through all test functions it declared, executing them if they
+    # match the selected pattern, or executing all of them if no
+    # pattern was specified.
+
+    if ! source "$(dirname $0)/${selected[0]}.sh"; then
+        exit 1
+    fi
+
+    echo "${selected[0]}/:"
+
+    for x in $(declare -F | cut -d' ' -f 3 | grep "^test_" | sed "s/^test_//"); do
+        if [[ ${#selected[@]} -gt 1 && "$x" != ${selected[1]} ]]; then
+            continue
+        fi
+
+        echo -n "${selected[0]}/$x: "
+
+        if test_$x; then
+            echo "passed"
+        else
+            echo "failed"
+            failures=$((failures + 1))
+        fi
+    done
+
+    echo
+
+    exit $failures
+fi

@@ -57,7 +57,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 option(USE_GUILE "Try to build the Scheme backend" TRUE)
 option(USE_LUA "Try to build the Lua backend" TRUE)
 
-cmake_minimum_required(VERSION 3.18...3.29)
+cmake_minimum_required(VERSION 3.21...3.29)
 project(main)
 
 if (POLICY CMP0074)
@@ -77,4 +77,5 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 
 add_subdirectory(src)
+add_subdirectory(db)
 add_subdirectory(doc)
