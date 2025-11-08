@@ -1,7 +1,7 @@
 ;; -*- mode:scheme; coding: utf-8 -*-
 
 (define-library (gamma base)
-  (export define-option define-output output
+  (export define-option define-parameter define-output output
           set-projection-tolerance! set-curve-tolerance! set-sine-tolerance!
           point plane
 
@@ -22,6 +22,8 @@
     (define-syntax define-option
       (syntax-rules ()
         ((_ sym exp) (%define-option (quote sym) exp))))
+
+    (define-syntax define-parameter (alias-syntax define-option))
 
     (define-syntax define-output
       (syntax-rules ()
