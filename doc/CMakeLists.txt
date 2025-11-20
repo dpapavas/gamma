@@ -3,7 +3,7 @@ set(PATCH_SOURCES src/operation.h src/operation.cpp src/evaluation.cpp src/basic
 
   src/boxed_operations.h src/frontend.h src/frontend.cpp src/scheme_frontend.cpp
 
-  test/fixtures.h test/rewrites.cpp)
+  src/test/fixtures.h src/test/rewrites.cpp)
 
 foreach(X ${PATCH_SOURCES})
   add_custom_command(

@@ -7,7 +7,7 @@ endif ()
 find_package(CGAL OPTIONAL_COMPONENTS Qt6)
 
 add_executable(
-  test
+  gamma-driver
 
   main.cpp sandbox.cpp
 
@@ -15,6 +15,9 @@ add_executable(
   conic_polygon_tests.cpp store.cpp mesh_tests.cpp deform_tests.cpp
 
   frontend.cpp rewrites.cpp selection.cpp)
+
+
+set_target_properties(gamma-driver PROPERTIES OUTPUT_NAME driver)
 
 if (NOT CGAL_Qt6_FOUND)
   message(STATUS "Qt6 CGAL component not found.")
@@ -25,11 +28,11 @@ endif ()
 
 set_source_files_properties(sandbox.cpp PROPERTIES COMPILE_FLAGS -fno-access-control)
 
-target_compile_definitions(test PRIVATE
+target_compile_definitions(gamma-driver PRIVATE
   $<$<CONFIG:Debug>:CGAL_DISABLE_ROUNDING_MATH_CHECK>
 )
 
-target_compile_definitions(test PRIVATE "SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\"")
-target_include_directories(test PRIVATE ../src)
-target_link_libraries(test ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} objects
+target_compile_definitions(gamma-driver PRIVATE "SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\"")
+target_include_directories(gamma-driver PRIVATE ..)
+target_link_libraries(gamma-driver ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} objects
   CGAL::CGAL_Basic_viewer stdc++fs)

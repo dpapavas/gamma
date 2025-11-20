@@ -59,8 +59,8 @@ radius 10.
 @include ./src/scheme_frontend.cpp.texi
 
 @part Part III:@* The Tests
-@include ./test/fixtures.h.texi @c 
-@include ./test/rewrites.cpp.texi @c 
+@include ./src/test/fixtures.h.texi
+@include ./src/test/rewrites.cpp.texi
 
 @appendix Operations
 @include ./src/operation.cpp.texi

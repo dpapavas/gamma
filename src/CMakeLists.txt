@@ -15,6 +15,8 @@ if (NOT TARGET CGAL::TBB_support)
   message(STATUS "Intel TBB was not found.")
 endif ()
 
+add_definitions(-DCGAL_HAS_THREADS)
+
 # Build a set of object files, which can be used for both the main and
 # test binaries.
 
@@ -103,8 +105,6 @@ target_compile_definitions(gamma PUBLIC "INSTALL_DATADIR=\"${CMAKE_INSTALL_FULL_
 target_compile_definitions(gamma PUBLIC "INSTALL_PREFIX=\"${CMAKE_INSTALL_PREFIX}\"")
 target_link_libraries(gamma objects)
 
-add_to_cached_list(CGAL_EXECUTABLE_TARGETS gamma)
-
 install(TARGETS gamma)
 
 if (GUILE_FOUND)
@@ -120,3 +120,7 @@ if (Lua_FOUND)
     DESTINATION "${CMAKE_INSTALL_DATADIR}/gamma"
     FILES_MATCHING PATTERN "*.lua")
 endif ()
+
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_BUILD_TYPE STREQUAL "Optimize")
+    add_subdirectory(test)
+endif()
