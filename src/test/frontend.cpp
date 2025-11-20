@@ -1869,9 +1869,9 @@ EXPECTING("tetrahedron(1,1,1)",
           "write_off(\"foo.off\",mesh(tetrahedron(1,1,1)))",
           "write_stl(\"foo.stl\",mesh(tetrahedron(1,1,1)))",
           "write_wrl(\"bar.wrl\",mesh(tetrahedron(1,1,1)))",
-          "pipe(\"qux\",mesh(tetrahedron(1,1,1)))",
-          "pipe(mesh(tetrahedron(1,1,1)))",
-          "pipe(mesh(tetrahedron(1,1,1)),mesh(tetrahedron(-1,1,1)))")
+          "inspect(\"qux\",mesh(tetrahedron(1,1,1)))",
+          "inspect(mesh(tetrahedron(1,1,1)))",
+          "inspect(mesh(tetrahedron(1,1,1)),mesh(tetrahedron(-1,1,1)))")
 
 #undef DEFINE_TEST_CASE
 #undef RECTANGLE_TAG

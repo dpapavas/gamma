@@ -246,35 +246,38 @@ void Write_OFF_operation::evaluate()
 
 #if defined(__unix__) && defined(__GNUG__)
 #include <ext/stdio_filebuf.h>
-#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
-void Pipe_to_geomview_operation::evaluate()
+void Inspect_operation::evaluate()
 {
-    int fd = open(
-        ("/tmp/geomview/" + (filename.empty() ? "output" : filename)).c_str(),
-        O_WRONLY | O_NONBLOCK);
+    const int fd = socket(AF_UNIX, SOCK_STREAM, 0);
 
-    if (fd < 0) {
-        message(Operation::WARNING, "could not open pipe");
+    if (fd == -1) {
+        message(Operation::WARNING, "could not open socket");
         return;
     }
 
-    // We only want non-blocking mode when opening the pipe, to
-    // prevent the process from hanging until the other side opens it.
-    // After that, that is, during transmission, non-blocking mode
-    // will only cause trouble.
+    struct sockaddr_un addr;
 
-    if (int f; ((f = fcntl(fd, F_GETFL)) < 0
-                || fcntl(fd, F_SETFL, f & ~O_NONBLOCK) < 0)) {
-        message(Operation::WARNING, "could not set pipe flags");
+#define NAME "inspector"
+    memset(&addr, 0, sizeof(struct sockaddr_un));
+    addr.sun_family = AF_UNIX;
+    strcpy(addr.sun_path + 1, NAME);
+
+    if (connect(fd,
+                (const struct sockaddr *)&addr,
+                offsetof(struct sockaddr_un, sun_path) + sizeof(NAME)) == -1) {
+        message(Operation::WARNING, "could not connect socket");
         return;
     }
+#undef NAME
 
     __gnu_cxx::stdio_filebuf<char> buf(fd, std::ios::out);
     std::ostream s(&buf);
 
     if (!s) {
-        message(Operation::WARNING, "could not open pipe");
+        message(Operation::WARNING, "could not create buffer");
         return;
     }
 
@@ -302,19 +305,14 @@ void Pipe_to_geomview_operation::evaluate()
         M += *p->get_value();
     }
 
-    s << "(geometry " << (filename.empty() ? "output" : filename) << " {\n";
-
+    s << "load " << filename << "\n";
     write_off(s, M);
-
-    s << "appearance {+concave}\n"
-      << "})\n"
-      << "(camera Camera {})\n"
-      << std::endl;
+    s.flush();
 
     close(fd);
 }
 #else
-void Pipe_to_geomview_operation::evaluate()
+void Inspect_operation::evaluate()
 {
     message(
         Operation::ERROR, "this operation is not available on your platform");

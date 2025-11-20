@@ -68,15 +68,15 @@ public:
     void evaluate() override;
 };
 
-class Pipe_to_geomview_operation: public Write_operation {
+class Inspect_operation: public Write_operation {
 public:
     using Write_operation::Write_operation;
 
     std::string describe() const override {
         if (filename.empty()) {
-            return compose_tag("pipe", operands);
+            return compose_tag("inspect", operands);
         } else {
-            return compose_tag("pipe", filename.c_str(), operands);
+            return compose_tag("inspect", filename.c_str(), operands);
         }
     }
 

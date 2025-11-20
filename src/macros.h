@@ -933,11 +933,11 @@ DEFINE_WRITE_OPERATION(STL)
 DEFINE_WRITE_OPERATION(WRL)
 
 template<typename R = Operation>
-inline std::shared_ptr<R> PIPE(
-    const char *geom_name,
+inline std::shared_ptr<R> INSPECT(
+    const char *name,
     std::vector<std::shared_ptr<Polyhedron_operation<Surface_mesh>>> &&v)
 {
-    return make_and_map<Pipe_to_geomview_operation, R>(geom_name, std::move(v));
+    return make_and_map<Inspect_operation, R>(name, std::move(v));
 }
 
 #undef DEFINE_WRITE_OPERATION

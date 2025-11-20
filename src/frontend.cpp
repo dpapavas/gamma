@@ -215,7 +215,7 @@ void insert_output_operations(
     for (const auto &[s, i]: outputs) {
         switch (i) {
             case -1:
-            sink_operation(PIPE(s.c_str(), std::vector(w)));
+            sink_operation(INSPECT(s.c_str(), std::vector(w)));
             break;
 
             case 0:
