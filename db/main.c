@@ -101,17 +101,13 @@ static struct option options[] = {
     {nullptr, 0, nullptr, 0}
 };
 
+volatile bool running = true;
+
 // ## Input on the Terminal
 
-// We want to allow the user to enter commands on the terminal.  This
-// is simple enough, using GNU Readline to provide all the requisite
-// comforts, except for one point: Since we need the main thread for
-// graphical interaction (GLFW doesn't allow calling most of its
-// functions from other threads), we need to handle terminal input in
-// another thread.  This is straightforward, until it's time to quit.
-// See ref: The Main Function, below for how this is handled.
-
-volatile bool running = true;
+// When evaluating commands from strings (from the terminal or command
+// line switches), we wrap them in `FILE *`.  This allows us to use
+// our existing parsing machinery without change.
 
 static int evaluate(char *s)
 {
@@ -121,6 +117,8 @@ static int evaluate(char *s)
 
     return n;
 }
+
+// Executing commands from files is more straightforward.
 
 static int execute(char *name)
 {
@@ -139,8 +137,139 @@ static int execute(char *name)
     return -1;
 }
 
+// ### Completion
+
+// The functions below implement completion via GNU Readline.  Below,
+// we provide completion candidates given a set of keywords that are
+// relevant in the current context.
+
+static char **completion_candidates;
+
+static char *completion_generator(const char *text, int state)
+{
+    static int i, n;
+
+    if (!state) {
+        i = 0;
+        n = strlen(text);
+    }
+
+    for(char *s; (s = completion_candidates[i++]);) {
+        if (!strncmp(s, text, n)) {
+            return strdup(s);
+        }
+    }
+
+    return nullptr;
+}
+
+// These macros facilitate choosing a set of completion candidates
+// given the input so far.  (They only allow completing a keyword
+// argument when it is the first argument of the command, but that's
+// all we need.)
+
+#define TRY_COMPLETION(CMD, ...)                                        \
+    {                                                                   \
+        int i_;                                                         \
+                                                                        \
+        for (i_ = 0; isspace(rl_line_buffer[i_]) && i_ < start; i_++);  \
+                                                                        \
+        const size_t n_ = start - i_, m_ = strlen(CMD);                 \
+        if ((m_ == 0 && n_ == 0)                                        \
+            || (n_ > 0 && m_ > 0                                        \
+                && !strncmp(                                            \
+                    rl_line_buffer + i_,                                \
+                    CMD,                                                \
+                    n_ > m_ ? m_ : n_)))                                \
+            __VA_ARGS__                                                 \
+    }                                                                   \
+
+#define TRY_ARG_COMPLETION(CMD, ...)                                    \
+    TRY_COMPLETION(                                                     \
+        CMD, {                                                          \
+            for (i_ += m_;                                              \
+                 isspace(rl_line_buffer[i_]) && i_ < start;             \
+                 i_++);                                                 \
+                                                                        \
+            if (i_ == start) {                                          \
+                completion_candidates = __VA_ARGS__;                    \
+                return rl_completion_matches(                           \
+                    text, completion_generator);                        \
+            } else {                                                    \
+                return nullptr;                                         \
+            }                                                           \
+        })
+
+// Completions can be carried out in various contexts:
+
+static char **completion_function(const char *text, int start, int end)
+{
+    rl_attempted_completion_over = 1;
+
+    //   1. When at the beginning of the line (ignoring potential
+    //   whitespace), when we complete the command, or
+
+    TRY_ARG_COMPLETION(
+        "", (char *[]) {
+            "quit", "exit", "window", "hide", "present", "resize", "focus",
+            "split", "target", "rotate", "translate", "pan", "zoom", "view",
+            "load", "run", "info", "set", "show", nullptr});
+
+    //   2. when completing keyword arguments for certain commands, or
+
+    TRY_ARG_COMPLETION(
+        "split", (char *[]) {"horizontally", "vertically", nullptr});
+    TRY_ARG_COMPLETION(
+        "view", (char *[]) {"orthographic", "perspective", nullptr});
+    TRY_ARG_COMPLETION("run", (char *[]) {"single", "all", nullptr});
+
+    TRY_ARG_COMPLETION(
+        "info", (char *[]) {"windows", "viewports", "objects", nullptr});
+
+    char *v[] = {
+        "program", "args", "default-color", "mouse-sensitivity", nullptr};
+
+    TRY_ARG_COMPLETION("set", v);
+    TRY_ARG_COMPLETION("show", v);
+
+    //   3. when specifying files to read from,
+
+    TRY_COMPLETION(
+        "load", {
+            for(int i = start - 1; i > 0; i--) {
+                if (isspace(rl_line_buffer[i])) {
+                    continue;
+                }
+
+                if (rl_line_buffer[i] == '<') {
+                    return rl_completion_matches(text, rl_filename_completion_function);
+                } else {
+                    return nullptr;
+                }
+            }
+        });
+
+    return nullptr;
+}
+
+#undef TRY_COMPLETION
+#undef TRY_ARG_COMPLETION
+
+// ### Reading Terminal Input
+
+// We want to allow the user to enter commands on the terminal.  This
+// is simple enough when using GNU Readline to provide all the
+// requisite comforts, except for one point: Since we need the main
+// thread for graphical interaction (GLFW doesn't allow calling most
+// of its functions from other threads), we need to handle terminal
+// input in another thread.  This is straightforward, until it's time
+// to quit.  See ref: The Main Function, below for how this is
+// handled.
+
 static void *do_input(void *arg)
 {
+    rl_attempted_completion_function = completion_function;
+
     char *s = nullptr;
     while (running && (s = readline("# "))) {
         if (s[0] != '\0') {
