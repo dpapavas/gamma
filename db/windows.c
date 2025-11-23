@@ -38,6 +38,15 @@ static enum: int {
 static void key_callback(
     GLFWwindow *window, int key, int scancode, int action, int mods)
 {
+    if (action == GLFW_PRESS) {
+        const struct key_binding *p = find_key_binding(mods, key);
+
+        if (p) {
+            FILE *fp = fmemopen((char *)p->command, strlen(p->command), "r");
+            read_commands(fp);
+            fclose(fp);
+        }
+    }
 }
 
 // The following callback handles mouse motion.  Modes such as
@@ -187,6 +196,47 @@ struct {
 
     GLuint matrix, intensity;
 } flat;
+
+// The following functions compile and link shaders and programs.
+
+static GLuint compile_shader(GLenum type, const char *source)
+{
+    const GLuint i = glCreateShader(type);
+
+    glShaderSource(i, 1, &source, nullptr);
+    glCompileShader(i);
+
+    GLint p;
+    glGetShaderiv(i, GL_COMPILE_STATUS, &p);
+
+    if (!p) {
+        GLchar s[512];
+        glGetShaderInfoLog(i, 512, nullptr, s);
+        fprintf(stderr, "Shader compilation error:\n%s\n", s);
+    }
+
+    return i;
+}
+
+static GLuint create_program(GLuint vertex, GLuint fragment)
+{
+    GLuint i = glCreateProgram();
+
+    glAttachShader(i, vertex);
+    glAttachShader(i, fragment);
+    glLinkProgram(i);
+
+    GLint p;
+    glGetProgramiv(i, GL_LINK_STATUS, &p);
+
+    if (!p) {
+        GLchar s[512];
+        glGetProgramInfoLog(i, 512, nullptr, s);
+        fprintf(stderr, "Program linking error:\n%s\n", s);
+    }
+
+    return i;
+}
 
 // ## Protecting Access to Window Contexts
 

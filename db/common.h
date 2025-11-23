@@ -14,6 +14,15 @@
 
 #define DEBUG
 
+// ---
+
+// The following definitions are used through the sources and are
+// thefore bunched together in this single header.
+
+// ## Settings Definitions
+
+// Ref: Settings.
+
 struct settings {
     const char *args;
     const char *program;
@@ -21,6 +30,28 @@ struct settings {
     double default_color[4];
     double mouse_sensitivity;
 };
+
+extern struct settings settings;
+
+// ## Key Bindings Definitions
+
+// Ref: Key Bindings.
+
+struct key_binding {
+    int key, mods;
+    const char *command;
+};
+
+struct key_name {
+    int i;
+    char *name;
+};
+
+struct key_binding *find_key_binding(int mods, int key);
+
+// ## Objects Definitions
+
+// Ref: Refreshing Object Geometry.
 
 struct object {
     const char *name;
@@ -31,6 +62,18 @@ struct object {
 
     struct object *next;
 };
+
+extern struct object *objects;
+
+void refresh_object(
+    const char *name,
+    size_t n, float *vertices,
+    size_t m, unsigned int *triangles,
+    size_t l, unsigned int *edges);
+
+// ## Viewports Definitions
+
+// Ref: Viewports.
 
 #define DEFAULT_VIEWPORT_NAME ""
 #define DEFAULT_VIEWPORT_ANGLE 90.0f
@@ -56,6 +99,19 @@ struct viewport {
     struct viewport *next;
 };
 
+enum direction {HORIZONTALLY, VERTICALLY};
+struct viewport *split_viewport(
+    struct viewport *v, enum direction direction, unsigned int parts);
+void pan_viewport(struct viewport *v, float x, float y);
+void translate_viewport(struct viewport *v, float x, float y, float z);
+void rotate_viewport(struct viewport *v, float alpha, float beta, float gamma);
+void zoom_viewport(struct viewport *v, float zeta);
+void refresh_viewport(struct viewport *v);
+
+// ## Windows Definitions
+
+// Ref: Windows.
+
 struct window {
     const char *name;
 
@@ -69,30 +125,12 @@ struct window {
 };
 
 extern struct window *windows;
-extern struct settings settings;
-extern struct object *objects;
-
-void refresh_object(
-    const char *name,
-    size_t n, float *vertices,
-    size_t m, unsigned int *triangles,
-    size_t l, unsigned int *edges);
 
 struct window *find_window(const char *name);
 void resize_window(struct window *w, int width, int height);
 bool refresh_windows(void);
 
-enum direction {HORIZONTALLY, VERTICALLY};
-struct viewport *split_viewport(
-    struct viewport *v, enum direction direction, unsigned int parts);
-void pan_viewport(struct viewport *v, float x, float y);
-void translate_viewport(struct viewport *v, float x, float y, float z);
-void rotate_viewport(struct viewport *v, float alpha, float beta, float gamma);
-void zoom_viewport(struct viewport *v, float zeta);
-void refresh_viewport(struct viewport *v);
-
-GLuint compile_shader(GLenum type, const char *source);
-GLuint create_program(GLuint vertex, GLuint fragment);
+// ---
 
 int read_commands(FILE *fp);
 

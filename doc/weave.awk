@@ -41,7 +41,7 @@ function substitue_directive(from, to, pre, post)
   a = "[" pre "][[:space:]]*" from ":[[:space:]]*"
   b = pre to "{"
 
-  $0 = gensub(a "([^.]*)[" post "]", b "\\1}" post, "g")
+  $0 = gensub(a "([^" post "]+)[" post "]", b "\\1}" post, "g")
 
   if (sub(a, b)) {
     in_directive = 1
@@ -281,7 +281,7 @@ function close_list()
 
     # Whole sentence cross-references
 
-    substitue_directive("Ref", "  @xref", ".", ".")
+    substitue_directive("Ref", "  @xref", "", ".")
 
     # End of sentence or parenthesized cross-references
 

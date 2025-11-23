@@ -5,7 +5,7 @@ set(PATCH_SOURCES src/operation.h src/operation.cpp src/evaluation.cpp src/basic
 
   src/test/fixtures.h src/test/rewrites.cpp
 
-  db/main.c db/windows.c db/viewports.c db/commands.c)
+  db/common.h db/main.c db/windows.c db/viewports.c db/commands.c)
 
 foreach(X ${PATCH_SOURCES})
   add_custom_command(

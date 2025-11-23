@@ -20,7 +20,36 @@
 // Here we deal with parsing and executing commands.  These can arrive
 // from another process through an IPC channel, or from the terminal.
 // But first we need to get out of the way some supporting routines
-// for the most important command, which is that of loading geometry.
+// and definitions.
+
+// ## Growing Buffers
+
+// The macros below implement exponentially growing buffers, with a
+// base of $1.5$ (i.e. the buffer grows by 50% each time).
+
+#define BUFFER_TYPE(T)  struct {T *p; size_t n_0, n;}
+
+#define START_WITH(B, N_0)                              \
+    {                                                   \
+        B.n_0 = N_0;                                    \
+        B.n = 0;                                        \
+        B.p = realloc(B.p, B.n_0 * sizeof(B.p[0]));     \
+    }
+
+#define MAYBE_GROW_TO(B, N)                                     \
+    {                                                           \
+        size_t n_ = N;                                          \
+        while (B.n_0 + B.n < n_) {                              \
+            if (B.n > 0) {                                      \
+                B.n += B.n / 2;                                 \
+            } else {                                            \
+                B.n = 64;                                       \
+            }                                                   \
+                                                                \
+            B.p = realloc(B.p, (B.n_0 + B.n) * sizeof(B.p[0])); \
+            assert(B.p);                                        \
+        }                                                       \
+    }
 
 // ## Triangulating polygons
 
@@ -219,6 +248,35 @@ struct settings settings = {
     .mouse_sensitivity = 0.01
 };
 
+// ## Key Bindings
+
+// Key bindings map keystrokes in any of the windows to commands,
+// which are executed as if entered in the terminal.
+
+// The tables included below list the names that can be used to bind
+// function keys, i.e. keys that don't simply enter a character and
+// specify modifiers.
+
+#include "keys.h"
+
+static struct {
+    BUFFER_TYPE(struct key_binding) buffer;
+    size_t count;
+} key_bindings;
+
+struct key_binding *find_key_binding(int mods, int key)
+{
+    for (size_t i = 0; i < key_bindings.count; i++) {
+        struct key_binding *p = key_bindings.buffer.p + i;
+        if (p->mods == mods && p->key == key) {
+            return p;
+        }
+    }
+
+    return nullptr;
+}
+
+
 // ## Parsing Commands
 
 // We read commands from a `FILE *`, although it's not a real file in
@@ -326,33 +384,6 @@ static int try_scan(FILE *fp, const char *fmt, ...)
         }                                                               \
     } while(false)
 
-// The macros below implement exponentially growing buffers, with a
-// base of $1.5$ (i.e. the buffer grows by 50% each time).
-
-#define BUFFER_TYPE(T)  struct {T *p; size_t n_0, n;}
-
-#define START_WITH(B, N_0)                              \
-    {                                                   \
-        B.n_0 = N_0;                                    \
-        B.n = 0;                                        \
-        B.p = realloc(B.p, B.n_0 * sizeof(B.p[0]));     \
-    }
-
-#define MAYBE_GROW_TO(B, N)                                     \
-    {                                                           \
-        size_t n_ = N;                                          \
-        while (B.n_0 + B.n < n_) {                              \
-            if (B.n > 0) {                                      \
-                B.n += B.n / 2;                                 \
-            } else {                                            \
-                B.n = 64;                                       \
-            }                                                   \
-                                                                \
-            B.p = realloc(B.p, (B.n_0 + B.n) * sizeof(B.p[0])); \
-            assert(B.p);                                        \
-        }                                                       \
-    }
-
 int read_commands(FILE *fp)
 {
     // We keep reading commands as long as there are non-whitespace
@@ -371,9 +402,171 @@ int read_commands(FILE *fp)
             raise(SIGUSR1);
         }
 
+        // ## Binding Commands
+
+        //   `bind key command` := Bind the action of pressing a key
+        //   inside one of the windows to a command.  The key can be
+        //   any printable character, or the name of a function key,
+        //   potentially prefixed by one or more of `C-`, `M-`, `S-`,
+        //   or `s-` to specify that the Control, Meta (Alt), Shift,
+        //   or Super modifiers should by present.  Use the completion
+        //   feature when entering this command in the terminal for a
+        //   list of function key names.
+
+        //   The command is entered exactly as it would be entered in
+        //   the terminal.
+
+        //   A list of established bindings can be displayed with the
+        //   `info bindings` command.
+
+        //   `unbind key` := Delete the binding previously established
+        //   for the key.  A list of established bindings can be
+        //   displayed with the `info bindings` command.
+
+        else if (!strcmp(s, "bind") || !strcmp(s, "unbind")) {
+            // First we make a note of whether we're binding or
+            // unbinding, then scan the key, which consists of:
+
+            const bool q = (s[0] == 'b');
+
+            if (try_scan(fp, "%63s", s) != 1) {
+                fprintf(stderr, "error: no key specified\n");
+                goto error;
+            }
+
+            int k = 0, m = 0;
+
+            for (char *c = s; c;) {
+                size_t i;
+
+                //   1. one or more potential modifiers, followed by
+                //   the key, which can be
+
+                if (c[1] == '-') {
+                    for (i = 0;
+                         i < sizeof(modifier_keys) / sizeof(modifier_keys[0]);
+                         i++) {
+                        if (!strncmp(modifier_keys[i].name, c, 2)) {
+                            m |= modifier_keys[i].i;
+                            break;
+                        }
+                    }
+
+                    if (i == sizeof(modifier_keys) / sizeof(modifier_keys[0])) {
+                        fprintf(
+                            stderr,
+                            "error: invalid modifier '%c' specified\n", c[0]);
+                        goto error;
+                    }
+
+                    c += 2;
+                    continue;
+                }
+
+                //   2. an ordinary key, i.e. one that corresponds to
+                //   a character, which GLFW conveniently represents
+                //   with their ASCII codes^[The capitalized version
+                //   is used for characters of the alphabet.], or
+
+                if (c[1] == '\0') {
+                    if (!isgraph(c[0])) {
+                        fprintf(stderr, "error: invalid key specified\n");
+                        goto error;
+                    }
+
+                    if (islower(c[0])) {
+                        k = toupper(c[0]);
+                    } else {
+                        k = c[0];
+                        m |= GLFW_MOD_SHIFT;
+                    }
+
+                    break;
+                }
+
+                //   3. a function key, which can be referred to by
+                //   its name, as listed in the table defined in ref:
+                //   Key Bindings.
+
+                for (i = 0;
+                     i < sizeof(function_keys) / sizeof(function_keys[0]);
+                     i++) {
+                    if (!strcmp(function_keys[i].name, c)) {
+                        k = function_keys[i].i;
+                        break;
+                    }
+                }
+
+                if (i == sizeof(function_keys) / sizeof(function_keys[0])) {
+                    fprintf(
+                        stderr,
+                        "error: invalid key '%s' specified\n", c);
+                    goto error;
+                }
+
+                break;
+            }
+
+            if (q) {
+                // We're binding, so we need to scan the command to
+                // bind to.  We skip any initial whitespace and scan
+                // to the end of the line.
+
+                char *t;
+
+                if (try_scan(fp, " %m[^\n]", &t) != 1) {
+                    fprintf(stderr, "error: no command specified\n");
+                    goto error;
+                }
+
+                PARSING_FINISHED;
+
+                struct key_binding *p;
+
+                // To establish the binding, we either:
+
+                if ((p = find_key_binding(m, k))) {
+                    //   1. look for a pre-existing binding to update,
+                    //   or
+
+                    free((char *)p->command);
+                    p->command = t;
+                } else if ((p = find_key_binding(0, 0))) {
+                    //   2. look for a previously unbound binding to
+                    //   reuse, or
+
+                    p->mods = m;
+                    p->key = k;
+                    p->command = t;
+                } else {
+                    //   3. add a new biding.
+
+                    MAYBE_GROW_TO(key_bindings.buffer, ++key_bindings.count);
+
+                    p = key_bindings.buffer.p + key_bindings.count - 1;
+                    p->mods = m;
+                    p->key = k;
+                    p->command = t;
+                }
+            } else {
+                // Here we're unbindind; we just need to look up the
+                // binding and mark it as deleted.
+
+                PARSING_FINISHED;
+
+                struct key_binding *p = find_key_binding(m, k);
+
+                if (!p) {
+                    fprintf(stderr, "error: no such binding\n");
+                    goto error;
+                }
+
+                p->mods = p->key = 0;
+                free((char *)p->command);
+            }
+        }
+
         // ### Window Commands
-
-
 
         //   `window name` := Create or select a window with the given
         //   name.  The new window is initially hidden, until it
@@ -1301,6 +1494,84 @@ int read_commands(FILE *fp)
                             COLUMN("%s", o->name);
                         }
                     });
+            }
+
+            //   `bindings` := Describe existing bindings.
+
+            else if (!strcmp(s, "bindings")) {
+                PARSING_FINISHED;
+
+                if (key_bindings.count == 0) {
+                    puts("No existing bindings.");
+                } else {
+                    PRINT_TABLE(
+                        2, {
+                            COLUMN("%s", "Key");
+                            COLUMN("%s", "Command");
+
+                            // For each binding we need to:
+
+                            for (size_t i = 0; i < key_bindings.count; i++) {
+                                struct key_binding *p
+                                    = key_bindings.buffer.p + i;
+
+                                //   1. Skip it if it is deleted, otherwise
+
+                                if (!p->mods && !p->key) {
+                                    continue;
+                                }
+
+                                //   2. Synthesize the key name, which
+                                //   is basically the reverse of
+                                //   parsing it, then
+
+                                char s[32] = {}, *q = s;
+
+                                for (size_t j = 0;
+                                     j < sizeof(modifier_keys)
+                                         / sizeof(modifier_keys[0]);
+                                     j++) {
+                                    if (modifier_keys[j].i == GLFW_MOD_SHIFT
+                                        && isupper(p->key)) {
+                                        continue;
+                                    }
+
+                                    if (p->mods & modifier_keys[j].i) {
+                                        assert(
+                                            q - s
+                                            + strlen(modifier_keys[j].name) < 32);
+                                        q = stpcpy(q, modifier_keys[j].name);
+                                    }
+                                }
+
+                                if (isgraph(p->key)) {
+                                    if (isupper(p->key)
+                                        && !(p->mods & GLFW_MOD_SHIFT)) {
+                                        *q++ = tolower(p->key);
+                                    } else {
+                                        *q++ = p->key;
+                                    }
+
+                                    *q = '\0';
+                                } else {
+                                    for (size_t j = 0;
+                                         j < sizeof(function_keys)
+                                             / sizeof(function_keys[0]);
+                                         j++) {
+                                        if (p->key == function_keys[j].i) {
+                                            q = stpcpy(q, function_keys[j].name);
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                //   3. print the key along with the command.
+
+                                COLUMN("%s", s);
+                                COLUMN("%s", p->command);
+                            }
+                        });
+                }
             }
 
             else {

@@ -78,4 +78,7 @@ radius 10.
 @include ./db/viewports.c.texi
 @include ./db/commands.c.texi
 
+@appendix Debugger Definitions
+@include ./db/common.h.texi
+
 @bye

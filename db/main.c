@@ -34,45 +34,6 @@
 // disk or from the compiler via IPC channels, such as UNIX domain
 // sockets.
 
-GLuint compile_shader(GLenum type, const char *source)
-{
-    const GLuint i = glCreateShader(type);
-
-    glShaderSource(i, 1, &source, nullptr);
-    glCompileShader(i);
-
-    GLint p;
-    glGetShaderiv(i, GL_COMPILE_STATUS, &p);
-
-    if (!p) {
-        GLchar s[512];
-        glGetShaderInfoLog(i, 512, nullptr, s);
-        fprintf(stderr, "Shader compilation error:\n%s\n", s);
-    }
-
-    return i;
-}
-
-GLuint create_program(GLuint vertex, GLuint fragment)
-{
-    GLuint i = glCreateProgram();
-
-    glAttachShader(i, vertex);
-    glAttachShader(i, fragment);
-    glLinkProgram(i);
-
-    GLint p;
-    glGetProgramiv(i, GL_LINK_STATUS, &p);
-
-    if (!p) {
-        GLchar s[512];
-        glGetProgramInfoLog(i, 512, nullptr, s);
-        fprintf(stderr, "Program linking error:\n%s\n", s);
-    }
-
-    return i;
-}
-
 static void error_callback(int error, const char *description)
 {
     fprintf(stderr, "GLFW error: %s\n", description);
@@ -143,7 +104,7 @@ static int execute(char *name)
 // we provide completion candidates given a set of keywords that are
 // relevant in the current context.
 
-static char **completion_candidates;
+static char **completion_candidates, *suppression_characters;
 
 static char *completion_generator(const char *text, int state)
 {
@@ -156,6 +117,11 @@ static char *completion_generator(const char *text, int state)
 
     for(char *s; (s = completion_candidates[i++]);) {
         if (!strncmp(s, text, n)) {
+            rl_completion_suppress_append = (
+                state == 0
+                && suppression_characters
+                && strchr(suppression_characters, s[strlen(s) - 1]));
+
             return strdup(s);
         }
     }
@@ -168,92 +134,182 @@ static char *completion_generator(const char *text, int state)
 // argument when it is the first argument of the command, but that's
 // all we need.)
 
-#define TRY_COMPLETION(CMD, ...)                                        \
-    {                                                                   \
-        int i_;                                                         \
+#define WHEN_IN(CMD, ...)                                               \
+    do {                                                                \
+        int i_, j_;                                                     \
                                                                         \
-        for (i_ = 0; isspace(rl_line_buffer[i_]) && i_ < start; i_++);  \
+        /* Find the beginning of the last word `j_`. */                 \
                                                                         \
-        const size_t n_ = start - i_, m_ = strlen(CMD);                 \
+        for (j_ = rl_point;                                             \
+             j_ > 0 && !strchr(                                         \
+                 rl_completer_word_break_characters,                    \
+                 rl_line_buffer[j_ - 1]);                               \
+             j_--);                                                     \
+                                                                        \
+        /* Find the beginning of the first word `j_`. */                \
+                                                                        \
+        for (i_ = 0; i_ < j_ && strchr(                                 \
+                 rl_completer_word_break_characters,                    \
+                 rl_line_buffer[i_]);                                   \
+             i_++);                                                     \
+                                                                        \
+        /* Test whether the first word is exactly `CMD` and if */       \
+        /* there'sonly space from there to the last word, i.e. if */    \
+        /* the last word is the first argument of CMD. */               \
+                                                                        \
+        const size_t n_ = j_ - i_, m_ = strlen(CMD);                    \
         if ((m_ == 0 && n_ == 0)                                        \
-            || (n_ > 0 && m_ > 0                                        \
+            || (m_ > 0 && n_ > m_                                       \
                 && !strncmp(                                            \
                     rl_line_buffer + i_,                                \
                     CMD,                                                \
                     n_ > m_ ? m_ : n_)))                                \
             __VA_ARGS__                                                 \
-    }                                                                   \
+    } while(false)
 
-#define TRY_ARG_COMPLETION(CMD, ...)                                    \
-    TRY_COMPLETION(                                                     \
-        CMD, {                                                          \
-            for (i_ += m_;                                              \
-                 isspace(rl_line_buffer[i_]) && i_ < start;             \
-                 i_++);                                                 \
-                                                                        \
-            if (i_ == start) {                                          \
-                completion_candidates = __VA_ARGS__;                    \
-                return rl_completion_matches(                           \
-                    text, completion_generator);                        \
-            } else {                                                    \
-                return nullptr;                                         \
-            }                                                           \
-        })
+#define WHEN_IN_1(CMD, ...) WHEN_IN(CMD, {              \
+    for (i_ += m_;                                      \
+         i_ < j_ && strchr(                             \
+             rl_completer_word_break_characters,        \
+             rl_line_buffer[i_]) ;                      \
+         i_++);                                         \
+                                                        \
+    if (i_ == j_) {                                     \
+        __VA_ARGS__                                     \
+    } else {                                            \
+        return nullptr;                                 \
+    }                                                   \
+})
+
+#define MATCHES(SUPP, ...)                                      \
+    (suppression_characters = SUPP,                             \
+        completion_candidates = __VA_ARGS__,                    \
+        rl_completion_matches(text, completion_generator))
+
+#define WORD_BREAK_CHARACTERS " \t<"
+
+// We need to change the word break characters when completing key
+// names, because we want to be able to complete modifers and keys
+// separately.  We therefore add the separating `-` to the break
+// characters.
+
+static char *word_break_hook(void)
+{
+    WHEN_IN_1(
+        "bind", {
+            return WORD_BREAK_CHARACTERS "-";
+        });
+
+    return nullptr;
+}
 
 // Completions can be carried out in various contexts:
 
 static char **completion_function(const char *text, int start, int end)
 {
     rl_attempted_completion_over = 1;
+    suppression_characters = nullptr;
 
     //   1. When at the beginning of the line (ignoring potential
     //   whitespace), when we complete the command, or
 
-    TRY_ARG_COMPLETION(
-        "", (char *[]) {
-            "quit", "exit", "window", "hide", "present", "resize", "focus",
-            "split", "target", "rotate", "translate", "pan", "zoom", "view",
-            "load", "run", "info", "set", "show", nullptr});
+    WHEN_IN_1("", {
+        return MATCHES(
+            nullptr,
+            (char *[]) {
+                "quit", "exit", "window", "hide", "present", "resize", "focus",
+                "split", "target", "rotate", "translate", "pan", "zoom", "view",
+                "load", "run", "info", "set", "show", "bind", "unbind",
+                nullptr});
+    });
 
     //   2. when completing keyword arguments for certain commands, or
 
-    TRY_ARG_COMPLETION(
-        "split", (char *[]) {"horizontally", "vertically", nullptr});
-    TRY_ARG_COMPLETION(
-        "view", (char *[]) {"orthographic", "perspective", nullptr});
-    TRY_ARG_COMPLETION("run", (char *[]) {"single", "all", nullptr});
+    WHEN_IN_1("split", {
+        return MATCHES(
+            nullptr,
+            (char *[]) {"horizontally", "vertically", nullptr});
+    });
+    WHEN_IN_1("view", {
+        return MATCHES(
+            nullptr,
+            (char *[]) {"orthographic", "perspective", nullptr});
+    });
+    WHEN_IN_1("run", {
+        return MATCHES(nullptr, (char *[]) {"single", "all", nullptr});
+    });
 
-    TRY_ARG_COMPLETION(
-        "info", (char *[]) {"windows", "viewports", "objects", nullptr});
+    WHEN_IN_1("info", {
+        return MATCHES(
+            nullptr,
+            (char *[]) {"windows", "viewports", "objects", "bindings", nullptr});
+    });
 
     char *v[] = {
         "program", "args", "default-color", "mouse-sensitivity", nullptr};
 
-    TRY_ARG_COMPLETION("set", v);
-    TRY_ARG_COMPLETION("show", v);
+    WHEN_IN_1("set", {
+        return MATCHES(nullptr, v);
+    });
 
-    //   3. when specifying files to read from,
+    WHEN_IN_1("show", {
+        return MATCHES(nullptr, v);
+    });
 
-    TRY_COMPLETION(
+    //   3. when specifying files to read from, or finally
+
+    WHEN_IN(
         "load", {
+            bool p = false;
             for(int i = start - 1; i > 0; i--) {
-                if (isspace(rl_line_buffer[i])) {
+                if (rl_line_buffer[i] == '<') {
+                    p = true;
                     continue;
                 }
 
-                if (rl_line_buffer[i] == '<') {
-                    return rl_completion_matches(text, rl_filename_completion_function);
-                } else {
-                    return nullptr;
+                if (strchr(
+                        rl_completer_word_break_characters,
+                        rl_line_buffer[i])) {
+                    if (p) {
+                        return rl_completion_matches(
+                            text, rl_filename_completion_function);
+                    }
+
+                    continue;
                 }
+
+                return nullptr;
             }
+        });
+
+    //   4. when entering the key in `bind` commands.
+
+    #include "keys.h"
+
+    char *u[sizeof(modifier_keys) / sizeof(modifier_keys[0])
+            + sizeof(function_keys) / sizeof(function_keys[0])
+            + 1], **p = u;
+
+    for (size_t i = 0; i < sizeof(modifier_keys) / sizeof(modifier_keys[0]); i++) {
+        *p++ = modifier_keys[i].name;
+    }
+
+    for (size_t i = 0; i < sizeof(function_keys) / sizeof(function_keys[0]); i++) {
+        *p++ = function_keys[i].name;
+    }
+
+    *p = nullptr;
+
+    WHEN_IN_1("bind", {
+            return MATCHES("-", u);
         });
 
     return nullptr;
 }
 
-#undef TRY_COMPLETION
-#undef TRY_ARG_COMPLETION
+#undef WHEN_IN_1
+#undef WHEN_IN
+#undef MATCHES
 
 // ### Reading Terminal Input
 
@@ -269,6 +325,8 @@ static char **completion_function(const char *text, int start, int end)
 static void *do_input(void *arg)
 {
     rl_attempted_completion_function = completion_function;
+    rl_basic_word_break_characters = WORD_BREAK_CHARACTERS;
+    rl_completion_word_break_hook = word_break_hook;
 
     char *s = nullptr;
     while (running && (s = readline("# "))) {
@@ -291,6 +349,8 @@ static void *do_input(void *arg)
 
     return nullptr;
 }
+
+#undef WORD_BREAK_CHARACTERS
 
 // ## IPC
 
