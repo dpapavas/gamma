@@ -233,7 +233,7 @@ static char **completion_function(const char *text, int start, int end)
     WHEN_IN_1("view", {
         return MATCHES(
             nullptr,
-            (char *[]) {"orthographic", "perspective", nullptr});
+            (char *[]) {"orthographic", "perspective", "toggle", nullptr});
     });
     WHEN_IN_1("run", {
         return MATCHES(nullptr, (char *[]) {"single", "all", nullptr});

@@ -831,6 +831,7 @@ int read_commands(FILE *fp)
         else if (!strcmp(s, "view")) {
             float f = NAN;
             enum projection mode;
+            bool p = false;
 
             if (try_scan(fp, "%f", &f) == 1) {
                 mode = PERSPECTIVE;
@@ -839,6 +840,8 @@ int read_commands(FILE *fp)
                     mode = ORTHOGRAPHIC;
                 } else if (!strcmp(s, "perspective")) {
                     mode = PERSPECTIVE;
+                } else if (!strcmp(s, "toggle")) {
+                    p = true;
                 } else {
                     fprintf(stderr, "error: invalid projection specified\n");
                     goto error;
@@ -854,7 +857,13 @@ int read_commands(FILE *fp)
             struct viewport *v = w->focus;
 
             v->stale = true;
-            v->projection = mode;
+
+            if (p) {
+                v->projection = (
+                    v->projection == ORTHOGRAPHIC ? PERSPECTIVE : ORTHOGRAPHIC);
+            } else {
+                v->projection = mode;
+            }
 
             if (!isnan(f)) {
                 v->angle = f / 2.0f / 180.0f * M_PI;
