@@ -223,7 +223,7 @@ static char **completion_function(const char *text, int start, int end)
                 nullptr});
     });
 
-    //   2. when completing keyword arguments for certain commands, or
+    //   2. completing keyword arguments for certain commands, or
 
     WHEN_IN_1("split", {
         return MATCHES(
@@ -245,18 +245,20 @@ static char **completion_function(const char *text, int start, int end)
             (char *[]) {"windows", "viewports", "objects", "bindings", nullptr});
     });
 
-    char *v[] = {
-        "program", "args", "default-color", "mouse-sensitivity", nullptr};
+    {
+        char *v[] = {
+            "program", "args", "default-color", "mouse-sensitivity", nullptr};
 
-    WHEN_IN_1("set", {
-        return MATCHES(nullptr, v);
-    });
+        WHEN_IN_1("set", {
+                return MATCHES(nullptr, v);
+            });
 
-    WHEN_IN_1("show", {
-        return MATCHES(nullptr, v);
-    });
+        WHEN_IN_1("show", {
+                return MATCHES(nullptr, v);
+            });
+    }
 
-    //   3. when specifying files to read from, or finally
+    //   3. files to read from, or
 
     WHEN_IN(
         "load", {
@@ -278,31 +280,94 @@ static char **completion_function(const char *text, int start, int end)
                     continue;
                 }
 
-                return nullptr;
+                break;
             }
         });
 
-    //   4. when entering the key in `bind` commands.
+    //   4. the key in `bind` commands,
 
-    #include "keys.h"
+#include "keys.h"
 
-    char *u[sizeof(modifier_keys) / sizeof(modifier_keys[0])
-            + sizeof(function_keys) / sizeof(function_keys[0])
-            + 1], **p = u;
+    WHEN_IN_1(
+        "bind", {
 
-    for (size_t i = 0; i < sizeof(modifier_keys) / sizeof(modifier_keys[0]); i++) {
-        *p++ = modifier_keys[i].name;
-    }
+            char *v[sizeof(modifier_keys) / sizeof(modifier_keys[0])
+                    + sizeof(function_keys) / sizeof(function_keys[0])
+                    + 1], **p = v;
 
-    for (size_t i = 0; i < sizeof(function_keys) / sizeof(function_keys[0]); i++) {
-        *p++ = function_keys[i].name;
-    }
+            for (size_t i = 0;
+                 i < sizeof(modifier_keys) / sizeof(modifier_keys[0]); i++) {
+                *p++ = modifier_keys[i].name;
+            }
 
-    *p = nullptr;
+            for (size_t i = 0;
+                 i < sizeof(function_keys) / sizeof(function_keys[0]); i++) {
+                *p++ = function_keys[i].name;
+            }
 
-    WHEN_IN_1("bind", {
-            return MATCHES("-", u);
+            *p = nullptr;
+
+            return MATCHES("-", v);
         });
+
+    //   5. the name in `window` commands,
+
+    WHEN_IN_1(
+        "window", {
+            size_t n = 0;
+            for (struct window *w = windows; w; w = w->next, n++);
+
+            char *v[n + 1], **p = v;
+
+            for (struct window *w = windows; w;
+                 *p++ = (char *)w->name,w = w->next);
+
+            *p = nullptr;
+
+            return MATCHES(nullptr, v);
+        });
+
+    //   6. the names in `target` and `load` commands.
+
+    {
+        size_t n = 0;
+
+        for (struct window *w = windows; w; w = w->next, n++) {
+            for (struct viewport *v = w->viewports; v; v = v->next) {
+                n += (v->name[0] != '\0');
+            }
+        }
+
+        for (struct object *o = objects; o; o = o->next) {
+            n += (o->name[0] != '\0');
+        }
+
+        char *v[n + 1], **p = v;
+
+        for (struct window *w = windows; w; w = w->next, n++) {
+            for (struct viewport *v = w->viewports; v; v = v->next) {
+                if (v->name[0] != '\0') {
+                    *p++ = (char *)v->name;
+                }
+            }
+        }
+
+        for (struct object *o = objects; o; o = o->next) {
+            if (o->name[0] != '\0') {
+                *p++ = (char *)o->name;
+            }
+        }
+
+        *p = nullptr;
+
+        WHEN_IN_1("target", {
+                return MATCHES(nullptr, v);
+            });
+
+        WHEN_IN_1("load", {
+                return MATCHES(nullptr, v);
+            });
+    }
 
     return nullptr;
 }
