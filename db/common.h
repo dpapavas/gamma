@@ -71,6 +71,34 @@ void refresh_object(
     size_t m, unsigned int *triangles,
     size_t l, unsigned int *edges);
 
+// ## Text Definitions
+
+// Ref: Text Rendering.
+
+// The dimensions of the texture tightly fit the rendered glyphs, but
+// the true origin of the text, the "pen position" at the start of the
+// initial glyph, is generally not at the lower left corner of the
+// texture, because:
+
+//   1. Some glyphs in the text (e.g. gs or ys) may have so-called
+//   descenders that descend below the baseline.  The largest such
+//   descent is recorded in the `descent` field below and is the
+//   vertical offset we need to apply to the texture when rendering
+//   it.
+
+//   2. Parts of the first glyph may extend to the left of its origin
+//   (i.e. the origin of its EM box), or the glyph may not extend to
+//   the origin at all.  This horizontal offset is recorded in the
+//   `offset` field below.
+
+struct text {
+    GLuint texture;
+    int width, height, descent, offset;
+};
+
+struct text *make_text(void);
+void printf_text(struct text *t, size_t size, const char *fmt, ...);
+
 // ## Viewports Definitions
 
 // Ref: Viewports.
@@ -84,7 +112,11 @@ enum projection {ORTHOGRAPHIC, PERSPECTIVE};
 struct viewport {
     size_t index;
     const char *name;
-    bool stale;
+
+    struct {
+        bool projection: 1;
+        bool annotation: 1;
+    } stale;
 
     int left, right, bottom, top;
 
@@ -95,13 +127,12 @@ struct viewport {
 
     GLuint vao;
 
+    struct text *annotation;
     struct object *object;
     struct viewport *next;
 };
 
 enum direction {HORIZONTALLY, VERTICALLY};
-struct viewport *split_viewport(
-    struct viewport *v, enum direction direction, unsigned int parts);
 void pan_viewport(struct viewport *v, float x, float y);
 void translate_viewport(struct viewport *v, float x, float y, float z);
 void rotate_viewport(struct viewport *v, float alpha, float beta, float gamma);

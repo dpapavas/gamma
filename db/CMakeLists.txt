@@ -1,5 +1,7 @@
 find_package(OpenGL REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
+find_package(Freetype REQUIRED)
+find_package(Fontconfig REQUIRED)
 
 find_path(Readline_INCLUDE_DIR readline/readline.h)
 find_library(Readline_LIBRARIES readline)
@@ -17,7 +19,7 @@ add_custom_command(
 
 add_executable(gammadb glad.c commands.c main.c windows.c viewports.c "${SHADER_STRINGS}")
 target_compile_definitions(gammadb PRIVATE "SHADER_STRINGS=\"${SHADER_STRINGS}\"")
-target_link_libraries(gammadb OpenGL::GL glfw m readline)
+target_link_libraries(gammadb OpenGL::GL Freetype::Freetype Fontconfig::Fontconfig glfw m readline)
 target_include_directories(gammadb PRIVATE .)
 
 install(TARGETS gammadb)

@@ -57,7 +57,7 @@ void pan_viewport(struct viewport *v, float x, float y)
     v->translation[0] += x * v->rotation[0] + y * v->rotation[4];
     v->translation[1] += x * v->rotation[1] + y * v->rotation[5];
     v->translation[2] += x * v->rotation[2] + y * v->rotation[6];
-    v->stale = true;
+    v->stale.projection = true;
 }
 
 void translate_viewport(struct viewport *v, float x, float y, float z)
@@ -79,7 +79,7 @@ void translate_viewport(struct viewport *v, float x, float y, float z)
         v->translation[2] += z;
     }
 
-    v->stale = true;
+    v->stale.projection = true;
 }
 
 void zoom_viewport(struct viewport *v, float zeta)
@@ -90,7 +90,7 @@ void zoom_viewport(struct viewport *v, float zeta)
         v->zoom += zeta;
     }
 
-    v->stale = true;
+    v->stale.projection = true;
 }
 
 // Rotation matrices are built iteratively.  For every step of the
@@ -141,7 +141,7 @@ void rotate_viewport(struct viewport *v, float alpha, float beta, float gamma)
         memcpy(v->rotation, R, sizeof(v->rotation));
     }
 
-    v->stale = true;
+    v->stale.projection = true;
 }
 
 // Here we update the overall transformation matrix of the viewport.
@@ -257,48 +257,4 @@ void refresh_viewport(struct viewport *v)
                  + v->translation[1] * p[1]
                  + v->translation[2] * p[2]);
     }
-}
-
-// This function splits the given viewport along the given direction,
-// as if in `parts` equal parts, but only one split is made.  In other
-// words, with e.g. `directionn` equal to `HORIZONTALLY` and `parts`
-// equal to 3, the viewport would be split in two parts, one having
-// 1/3 of the width, and the other the other 2/3.
-
-struct viewport *split_viewport(
-    struct viewport *v, enum direction direction, unsigned int parts)
-{
-    struct viewport *u = (struct viewport *)malloc(sizeof(struct viewport));
-
-    *u = *v;
-    u->name = strdup(DEFAULT_VIEWPORT_NAME);
-    u->vao = 0;
-
-    u->index = v->index + 1;
-    v->next = u;
-
-    switch (direction) {
-    case HORIZONTALLY:
-        {
-            const int m = v->left + (v->right - v->left) / parts;
-            u->left = m;
-            v->right = m;
-        }
-
-        break;
-
-    case VERTICALLY:
-        {
-            const int m = v->bottom + (v->top - v->bottom) / parts;
-            v->top = m;
-            u->bottom = m;
-        }
-
-        break;
-    }
-
-    v->stale = true;
-    u->stale = true;
-
-    return u;
 }

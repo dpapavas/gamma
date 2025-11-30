@@ -2,6 +2,10 @@
 #include <string.h>
 #include <math.h>
 
+#include <fontconfig/fontconfig.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
 #include "common.h"
 #include SHADER_STRINGS
 
@@ -125,7 +129,6 @@ static void cursor_position_callback(GLFWwindow *window, double x, double y)
 static void mouse_button_callback(
     GLFWwindow *window, int button, int action, int mods)
 {
-    // printf("%d, %d\n", button, action);
     glfwGetCursorPos(window, &previous_x, &previous_y);
 
     // When manipulating the camera we hide the mouse cursor switch
@@ -175,13 +178,13 @@ static void APIENTRY debug_message_callback(
 }
 #endif
 
-// ## GLSL Program State
+// ## GLSL Programs
 
 // We use a structure to keep track of the GL name and uniform
-// locations for each program we create.
+// locations for each program we create.  These are the following:
 
-// The uniform program fills each pixel with a uniform color.  It's
-// mostly useful for drawing the UI elements.
+//   1. The uniform program fills each pixel with a uniform color.
+//   It's mostly useful for drawing the UI elements.
 
 struct {
     GLuint name;
@@ -189,13 +192,22 @@ struct {
     GLuint matrix, color;
 } uniform;
 
-// The `flat` program is for flat shading with per-vertex colors.
+//   2. The `flat` program is for flat shading with per-vertex colors.
 
 struct {
     GLuint name;
 
     GLuint matrix, intensity;
 } flat;
+
+//   3. The `sprite` program is for sprite-like textured quads,
+//   e.g. text.
+
+struct {
+    GLuint name;
+
+    GLuint matrix, color;
+} sprite;
 
 // The following functions compile and link shaders and programs.
 
@@ -236,6 +248,258 @@ static GLuint create_program(GLuint vertex, GLuint fragment)
     }
 
     return i;
+}
+
+// ## Text Rendering
+
+// We need to draw annotations inside the viewports, so we need a way
+// to render text.  We use Freetype to load and render the glyphs for
+// the text we need to display into a texture.  Ref: Text Definitions.
+
+// Before rendering text, we need to create a texture to hold the
+// rendered image.
+
+struct text *make_text(void)
+{
+    struct text *t = (struct text *)malloc(sizeof(struct text));
+
+    glGenTextures(1, &t->texture);
+    glBindTexture(GL_TEXTURE_2D, t->texture);
+
+    // The texture will be rendered without minification or
+    // magnification, so that mipmapping is not necessary.
+    // Furthermore, if we are careful to translate it into position so
+    // that texels and screen pixels align, we should be able to
+    // dispense with linear filtering as well.
+
+    // We do linear filtering nevertheless, just to be on the safe
+    // side, in case we come across some GL implementation that
+    // misbehaves.
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Again, although this should not be necessary, we do clamp
+    // texture coordinates, in case any them end up slightly outside
+    // $[0, 1]$ after interpolation.
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    return t;
+}
+
+// Here we render a piece of text into the texture.  This may happen
+// more than once with the same texture, if the text needs to be
+// updated.
+
+void printf_text(struct text *t, size_t size, const char *fmt, ...)
+{
+    // The first time we attempt to render text, we initialize
+    // Freetype and try to load a face.  Until we determine whether
+    // this can fail in practice and under what circumastances, we
+    // simply return (leaving the texture untouched) if it does.
+
+    static FT_Library ft;
+    static FT_Face face;
+
+    if (!ft) {
+        if (FT_Init_FreeType(&ft) != FT_Err_Ok) {
+            return;
+        }
+    }
+
+    if (!face) {
+        // To load a font, we first need to find it.  We use
+        // Fontconfig to locate a suitable system font.  What we want
+        // is a "good quality sans-serif font"; we request that and
+        // use an environment variable to allow finetuning in case the
+        // default match proves inadequate.
+
+        FcPattern *p;
+        FcChar8 *s = (FcChar8 *)getenv("GAMMADB_FONT");
+
+        p = FcNameParse(s ? s : (FcChar8 *)"sans-serif");
+        if (!p) {
+            fprintf (stderr, "Could not parse the font pattern\n");
+            goto error;
+        }
+
+        FcConfigSubstitute(0, p, FcMatchPattern);
+        FcDefaultSubstitute(p);
+
+        FcPattern *m;
+        FcResult r;
+        m = FcFontMatch (0, p, &r);
+
+        if (r != FcResultMatch
+            || FcPatternGetString(m, FC_FILE, 0, &s) != FcResultMatch) {
+            fprintf (stderr, "Could not match the font pattern\n");
+            goto error;
+        }
+
+        if (FT_New_Face(ft, (char *)s, 0, &face) != FT_Err_Ok) {
+            goto error;
+        }
+
+      error:
+        // One or more of `p`, `m` can be null here, but
+        // `FcPatternDestroy` obligingly ignores `nullptr` arguments.
+
+        FcPatternDestroy(p);
+        FcPatternDestroy(m);
+        FcFini();
+
+        if (!face) {
+            return;
+        }
+    }
+
+    if (FT_Set_Pixel_Sizes(face, 0, size) != FT_Err_Ok) {
+        return;
+    }
+
+    // Next, we construct the string that is to be rendered.
+
+    char *s;
+    va_list ap;
+
+    va_start(ap, fmt);
+    vasprintf(&s, fmt, ap);
+    va_end(ap);
+
+    // Rendering proceeds in two phases: first we measure the bounding
+    // box dimensions the resulting text image will have and then we
+    // allocate a buffer and go again, rendering the glyphs into it.
+
+    // We proceed according to the "subpixel positioning" algorithm
+    // laid out in Freetye's documentation^[See
+    // https://freetype.org/freetype2/docs/glyphs/glyphs-5.html#section-2].
+    // Some parts of the process are the same, so we use the macros
+    // below to:
+
+    //   1. Load the current glyph and transform it by the fractional
+    //   part of the pen position and
+
+    const size_t m = strlen(s);
+
+#define LOAD_CHAR(FLAGS)                                        \
+    do {                                                        \
+        FT_Vector delta = {x_0 & 63, 0};                        \
+        FT_Set_Transform(face, nullptr, &delta);                \
+                                                                \
+        if (FT_Load_Char(face, s[n], FLAGS) != FT_Err_Ok) {     \
+            continue;                                           \
+        }                                                       \
+    } while (false)
+
+    //   2. advance the pen position before going to the next glyph.
+
+#define ADVANCE                                         \
+    do {                                                \
+        if (FT_HAS_KERNING(face)) {                     \
+            FT_Vector delta;                            \
+                                                        \
+            FT_Get_Kerning(                             \
+                face,                                   \
+                FT_Get_Char_Index(face, s[n]),          \
+                FT_Get_Char_Index(face, s[n + 1]),      \
+                FT_KERNING_DEFAULT,                     \
+                &delta);                                \
+                                                        \
+            x_0 += delta.x;                             \
+        }                                               \
+                                                        \
+        x_0 += g->advance.x;                            \
+    } while (false)
+
+    // This is the measuring phase.  We update the vertical extents of
+    // the bounding box for each glyph.  The horizontal extents can be
+    // calculated at once from the metrics of the first and last
+    // glyphs.
+
+    int x_min, x_max, y_min, y_max;
+    for (size_t i = 0; i < 2; i++) {
+        for (size_t n = 0, x_0 = 0; ; n++) {
+            LOAD_CHAR(FT_LOAD_DEFAULT);
+
+            auto g = face->glyph;
+
+            if (n == 0) {
+                x_min = g->bitmap_left;
+                y_max = g->bitmap_top;
+                y_min = y_max - g->bitmap.rows;
+            } else {
+                if (y_max < g->bitmap_top) {
+                    y_max = g->bitmap_top;
+                }
+
+                if (y_min > (int)g->bitmap_top - (int)g->bitmap.rows) {
+                    y_min = g->bitmap_top - (int)g->bitmap.rows;
+                }
+            }
+
+            if (n == m - 1) {
+                x_max = (x_0 >> 6) + g->bitmap_left + g->bitmap.width + 1;
+                break;
+            }
+
+            ADVANCE;
+        }
+    }
+
+    // We can now calculate the dimensions of the texture and allocate
+    // a buffer for its contents, then go again rendering each glyph
+    // and copying it into the buffer
+
+    t->width = (x_max - x_min);
+    t->height = (y_max - y_min);
+    t->offset = x_min;
+    t->descent = y_min;
+
+    GLubyte texels[t->width * t->height] = {};
+
+    for (size_t n = 0, x_0 = 0; n < m ; n++) {
+        LOAD_CHAR(FT_LOAD_RENDER);
+
+        auto g = face->glyph;
+
+        if (g->bitmap.buffer) {
+            const int j_0 = g->bitmap_top - y_min - 1;
+            const int i_0 = (x_0 >> 6) + g->bitmap_left - x_min;
+
+            assert(j_0 >= (int)g->bitmap.rows - 1);
+            assert(j_0 < t->height);
+            assert(i_0 >= 0);
+            assert(i_0 + (int)g->bitmap.width < t->width);
+
+            for (size_t j = 0; j < g->bitmap.rows; j++) {
+                for (size_t i = 0; i < g->bitmap.width; i++) {
+                    GLubyte *p = &texels[(j_0 - j) * t->width + i_0 + i];
+                    const unsigned int a =
+                        *p + g->bitmap.buffer[j * g->bitmap.pitch + i];
+
+                    *p = a > 255 ? 255 : a;
+                }
+            }
+        }
+
+        ADVANCE;
+    }
+
+    // Finally we upload the texture.  Since the image only has one
+    // component per pixel, each row may start on an arbitrary
+    // alignment, depending on the horizontal dimension of the
+    // texture.  We therefore need to set the unpack alignment to 1
+    // (from the default which is 4).
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glBindTexture(GL_TEXTURE_2D, t->texture);
+    glTexImage2D(
+        GL_TEXTURE_2D, 0, GL_RED, t->width, t->height, 0, GL_RED,
+        GL_UNSIGNED_BYTE, texels);
+
+    free(s);
 }
 
 // ## Protecting Access to Window Contexts
@@ -307,7 +571,7 @@ struct window *find_window(const char *name)
     *w->viewports = (struct viewport){
         1,
         strdup(DEFAULT_VIEWPORT_NAME),
-        true,
+        {true, true},
         0, width - 1, 0, height - 1,
         PERSPECTIVE, 0.1f, 100.0f,
         DEFAULT_VIEWPORT_ANGLE / 2.0f / 180.0f * M_PI,
@@ -315,6 +579,7 @@ struct window *find_window(const char *name)
         {0.0f, 0.0f, 0.0f},
         EYE, EYE,
         0,
+        nullptr,
         nullptr,
         nullptr
     };
@@ -411,40 +676,40 @@ struct window *find_window(const char *name)
     // the program when creating the first window only.
 
     if (!w->next) {
-        // A simple uniformly coloring shader used to draw the
-        // inteface or other flat shaded geometry.
+#define BUILD_PROGRAM(NAME)                                     \
+        do {                                                    \
+            assert(!NAME.name);                                 \
+                                                                \
+            const GLuint i = compile_shader(                    \
+                GL_VERTEX_SHADER, NAME ##_vertex_c);            \
+            const GLuint j = compile_shader(                    \
+                GL_FRAGMENT_SHADER, NAME ##_fragment_c);        \
+                                                                \
+            NAME.name = create_program(i, j);                   \
+                                                                \
+            glDeleteShader(i);                                  \
+            glDeleteShader(j);                                  \
+        } while (false)
 
-        {
-            assert(!uniform.name);
+#define WITH_UNIFORM(NAME, VAR)                                 \
+        do {                                                    \
+            NAME.VAR = glGetUniformLocation(NAME.name, #VAR);   \
+        } while (false)
 
-            const GLuint i = compile_shader(GL_VERTEX_SHADER, uniform_vertex_c);
-            const GLuint j = compile_shader(GL_FRAGMENT_SHADER, uniform_fragment_c);
+        BUILD_PROGRAM(uniform);
+        WITH_UNIFORM(uniform, matrix);
+        WITH_UNIFORM(uniform, color);
 
-            uniform.name = create_program(i, j);
+        BUILD_PROGRAM(flat);
+        WITH_UNIFORM(flat, matrix);
+        WITH_UNIFORM(flat, intensity);
 
-            glDeleteShader(i);
-            glDeleteShader(j);
+        BUILD_PROGRAM(sprite);
+        WITH_UNIFORM(sprite, matrix);
+        WITH_UNIFORM(sprite, color);
 
-            uniform.matrix = glGetUniformLocation(uniform.name, "matrix");
-            uniform.color = glGetUniformLocation(uniform.name, "color");
-        }
-
-        // A flat shader with per-vertex colors, used to draw objects.
-
-        {
-            assert(!flat.name);
-
-            const GLuint i = compile_shader(GL_VERTEX_SHADER, flat_vertex_c);
-            const GLuint j = compile_shader(GL_FRAGMENT_SHADER, flat_fragment_c);
-
-            flat.name = create_program(i, j);
-
-            glDeleteShader(i);
-            glDeleteShader(j);
-
-            flat.matrix = glGetUniformLocation(flat.name, "matrix");
-            flat.intensity = glGetUniformLocation(flat.name, "intensity");
-        }
+#undef BUILD_PROGRAM
+#undef WITH_UNIFORM
     }
 
     unlock_window(w);
@@ -474,7 +739,7 @@ void resize_window(struct window *w, int width, int height)
         v->right = v->right * (width - 1) / (w_0 - 1);
         v->bottom = v->bottom * (height - 1) / (h_0 - 1);
         v->top = v->top * (height - 1) / (h_0 - 1);
-        v->stale = true;
+        v->stale.projection = true;
     }
 
     unlock_window(w);
@@ -520,7 +785,8 @@ static bool refresh_window(struct window *w)
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    for (struct viewport *v = w->viewports; v; v = v->next) {
+    size_t i = 1;
+    for (struct viewport *v = w->viewports; v; v = v->next, i++) {
         // Redraw the background and frame of the viewport.  This
         // consists in drawing a unit quad, first filled and then as a
         // line loop, scaled so that its edges run through the middle
@@ -532,47 +798,48 @@ static bool refresh_window(struct window *w)
         const GLfloat a = v->right - v->left;
         const GLfloat b = v->top - v->bottom;
 
-        const GLfloat S[16] = {
-            (a - 1) / a, 0.0f, 0.0f, 0.0f,
-            0.0f, (b - 1) / b, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f
-        };
-
         glViewport(v->left, v->bottom, (GLsizei)a, (GLsizei)b);
 
-        // Now we bind the uniform color program and draw the quads.
-
-        glUseProgram(uniform.name);
-
-        // This is a workaround around a Mesa driver bug.  See:
-        // https://gitlab.freedesktop.org/mesa/mesa/-/issues/14129
-
         {
-            const GLfloat M[16] = {};
-            glUniformMatrix4fv(uniform.matrix, 1, GL_TRUE, M);
-            glUniform4f(uniform.color, 0.0f, 0.0f, 0.0f, 0.0f);
+            const GLfloat S[16] = {
+                (a - 1.0f) / a, 0.0f, 0.0f, 0.0f,
+                0.0f, (b - 1.0f) / b, 0.0f, 0.0f,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f
+            };
+
+            // Now we bind the uniform color program and draw the quads.
+
+            glUseProgram(uniform.name);
+
+            // This is a workaround around a Mesa driver bug.^[See:
+            // https://gitlab.freedesktop.org/mesa/mesa/-/issues/14129]
+
+            {
+                const GLfloat M[16] = {};
+                glUniformMatrix4fv(uniform.matrix, 1, GL_TRUE, M);
+                glUniform4f(uniform.color, 0.0f, 0.0f, 0.0f, 0.0f);
+            }
+
+            glUniformMatrix4fv(uniform.matrix, 1, GL_TRUE, S);
+
+            if (v == w->focus) {
+                glUniform4f(uniform.color, 0.7f, 0.7f, 0.7f, 1.0f);
+            } else {
+                glUniform4f(uniform.color, 0.5f, 0.5f, 0.5f, 1.0f);
+            }
+
+            glBindVertexArray(w->vao);
+            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+            if (v == w->focus) {
+                glUniform4f(uniform.color, 1.0f, 0.85f, 0.24f, 1.0f);
+            } else {
+                glUniform4f(uniform.color, 0.2f, 0.2f, 0.2f, 1.0f);
+            }
+
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
         }
-
-        glDisable(GL_DEPTH_TEST);
-        glUniformMatrix4fv(uniform.matrix, 1, GL_TRUE, S);
-
-        if (v == w->focus) {
-            glUniform4f(uniform.color, 0.7f, 0.7f, 0.7f, 1.0f);
-        } else {
-            glUniform4f(uniform.color, 0.5f, 0.5f, 0.5f, 1.0f);
-        }
-
-        glBindVertexArray(w->vao);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-        if (v == w->focus) {
-            glUniform4f(uniform.color, 1.0f, 0.85f, 0.24f, 1.0f);
-        } else {
-            glUniform4f(uniform.color, 0.2f, 0.2f, 0.2f, 1.0f);
-        }
-
-        glDrawArrays(GL_LINE_LOOP, 0, 4);
 
         // We can now draw the viewport's geometry, assuming it has
         // some.
@@ -583,9 +850,9 @@ static bool refresh_window(struct window *w)
             // First, we recalculate the viewport's projection if
             // needed.
 
-            if (v->stale) {
+            if (v->stale.projection) {
                 refresh_viewport(v);
-                v->stale = false;
+                v->stale.projection = false;
             }
 
             // Now we can draw the:
@@ -613,11 +880,9 @@ static bool refresh_window(struct window *w)
             glDrawElements(GL_TRIANGLES, counts[1], GL_UNSIGNED_INT, 0);
             glDisable(GL_POLYGON_OFFSET_FILL);
 
-            //   2. the edges, draw as a sequence of line segmenta and
-            //   finally,
+            //   2. the edges, draw as a sequence of line segments,
 
             glUseProgram(uniform.name);
-
             glUniformMatrix4fv(uniform.matrix, 1, GL_TRUE, v->matrix);
             glUniform4f(uniform.color, 1.0f, 0.0f, 0.0f, 1.0f);
 
@@ -625,11 +890,79 @@ static bool refresh_window(struct window *w)
                 GL_LINES, counts[2], GL_UNSIGNED_INT,
                 (void *)(counts[1] * sizeof(GLuint)));
 
-            //   3. the vertices, drawn as points.
+            //   3. the vertices, drawn as points and finally,
 
             glUniform4f(uniform.color, 0.0f, 0.0f, 1.0f, 1.0f);
             glPointSize(5);
             glDrawArrays(GL_POINTS, 0, counts[0]);
+
+            glDisable(GL_DEPTH_TEST);
+        }
+
+        //   4. text annotations, which is currently just the viewport
+        //   index and target.
+
+        {
+            if (!v->annotation) {
+                v->annotation = make_text();
+            }
+
+            struct text *t = v->annotation;
+
+            if (v->stale.annotation) {
+                printf_text(
+                    t, 18, (v->name[0] != '\0') ? "%d: %s" : "%d", i, v->name);
+            }
+
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glBindTexture(GL_TEXTURE_2D, t->texture);
+
+            for (int i = (v != w->focus); i < 2 ; i++) {
+                //   This is the equivalent of the product of matrices
+                //   $P T S$, where $P$ is an orthographic projection
+                //   matrix with $l = 0, r = a, b = 0, t = b$,
+                //   i.e. one that maps coordinates to pixels, T is a
+                //   translation by $\lfloor x \rfloor + {1 \over 2}$,
+                //   $\lfloor y \rfloor + {1 \over 2}$, in pixels and
+                //   S is a scaling matrix to scale the 2 by 2 quad to
+                //   the size of the text.
+
+                //   We shift the position to the next pixel center,
+                //   because during rasterization, data that are
+                //   associated with fragmnets are interpolated based
+                //   on the fragment centers.  The shift should ensure
+                //   that all filled fragments end up with texture
+                //   coordinates that precisely correspond to a
+                //   texel.^[This is not critical, since we filter the
+                //   texture anyway, but it won't hurt either.]
+
+                const GLfloat x = floorf(
+                    10.0f + i + t->width / 2.0f + t->offset) + 0.5f;
+                const GLfloat y = floorf(
+                    11.0f + i + t->height / 2.0f + t->descent) + 0.5f;
+
+                const GLfloat S[16] = {
+                    t->width / a, 0.0f, 0.0f, x * 2.0f / a - 1.0f,
+                    0.0f, t->height / b, 0.0f, y * 2.0f / b - 1.0f,
+                    0.0f, 0.0f, 1.0f, 0.0f,
+                    0.0f, 0.0f, 0.0f, 1.0f
+                };
+
+                glUseProgram(sprite.name);
+                glUniformMatrix4fv(sprite.matrix, 1, GL_TRUE, S);
+
+                if (i == 0) {
+                    glUniform4f(sprite.color, 1.0f, 0.85f, 0.24f, 1.0f);
+                } else {
+                    glUniform4f(sprite.color, 0.15f, 0.15f, 0.15f, 1.0f);
+                }
+
+                glBindVertexArray(w->vao);
+                glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+            }
+
+            glDisable(GL_BLEND);
         }
     }
 

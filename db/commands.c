@@ -697,7 +697,43 @@ int read_commands(FILE *fp)
 
             struct viewport *v = w->focus;
             for (size_t j = q; j > n + 1; j--) {
-                v = split_viewport(v, dir, j);
+                struct viewport *u = (struct viewport *)malloc(sizeof(struct viewport));
+
+                *u = *v;
+                u->name = strdup(DEFAULT_VIEWPORT_NAME);
+                u->vao = 0;
+
+                u->index = v->index + 1;
+                v->next = u;
+
+                switch (dir) {
+                case HORIZONTALLY:
+                {
+                    const int m = v->left + (v->right - v->left) / j;
+                    u->left = m;
+                    v->right = m;
+                }
+
+                break;
+
+                case VERTICALLY:
+                {
+                    const int m = v->bottom + (v->top - v->bottom) / j;
+                    v->top = m;
+                    u->bottom = m;
+                }
+
+                break;
+                }
+
+                v->stale.projection = true;
+                u->stale.projection = true;
+
+                v = u;
+
+                for (; u; u = u->next) {
+                    u->stale.annotation = true;
+                }
             }
 
             glfwPostEmptyEvent();
@@ -718,6 +754,9 @@ int read_commands(FILE *fp)
 
             free((char *)w->focus->name);
             w->focus->name = strdup(s);
+            w->focus->stale.annotation = true;
+
+            glfwPostEmptyEvent();
         }
 
         //   `rotate [alpha] [beta] [gamma]` := Rotate the focused
@@ -856,7 +895,7 @@ int read_commands(FILE *fp)
 
             struct viewport *v = w->focus;
 
-            v->stale = true;
+            v->stale.projection = true;
 
             if (p) {
                 v->projection = (
