@@ -245,6 +245,7 @@ static int compare_edges(const void *a, const void *b)
 // values.
 
 struct settings settings = {
+    .present_on_reload = true,
     .edge_color = {0, 0, 0, 1},
     .default_color = {1, 1, 1, 1},
     .mouse_sensitivity = 0.01
@@ -1722,6 +1723,27 @@ int read_commands(FILE *fp)
             PARSING_FINISHED;                   \
         } while(false);                         \
 
+#define SET_BOOLEAN(FP, SETTING)                                        \
+        do {                                                            \
+            char s_[6];                                                 \
+            try_scan(fp, " %3s", s_);                                   \
+                                                                        \
+            PARSING_FINISHED;                                           \
+                                                                        \
+            if (!strcmp(s_, "yes")                                      \
+                || !strcmp(s_, "on")                                    \
+                || !strcmp(s_, "true")) {                               \
+                SETTING = true;                                         \
+            } else if (!strcmp(s_, "no")                                \
+                       || !strcmp(s_, "off")                            \
+                       || !strcmp(s_, "false")) {                       \
+                SETTING = false;                                        \
+            } else {                                                    \
+                fprintf(stderr, "error: \"yes\" (or \"on\", \"true\"), or \"no\" (or \"of\", \"false\") expected\n"); \
+                goto error;                                             \
+            }                                                           \
+        } while(false);
+
         // Here we set up to `N` values of the type specified by the
         // `scanf` specifer `SPEC`.
 
@@ -1748,6 +1770,17 @@ int read_commands(FILE *fp)
                                                 \
             if (SETTING) {                      \
                 puts(SETTING);                  \
+            }                                   \
+        } while(false);
+
+#define SHOW_BOOLEAN(SETTING)                   \
+        do {                                    \
+            PARSING_FINISHED;                   \
+                                                \
+            if (SETTING) {                      \
+                puts("yes");                    \
+            } else {                            \
+                puts("no");                     \
             }                                   \
         } while(false);
 
@@ -1785,6 +1818,14 @@ int read_commands(FILE *fp)
 
             else if (!strcmp(s, "args")) {
                 SET_LINE(fp, settings.args);
+            }
+
+            //   `present-on-reload` := Present the window to the user
+            //   when the contents of one or more of its viewports are
+            //   reloaded.
+
+            else if (!strcmp(s, "present-on-reload")) {
+                SET_BOOLEAN(fp, settings.present_on_reload);
             }
 
             //   `default-color` := The color assigned to vertices
@@ -1831,6 +1872,8 @@ int read_commands(FILE *fp)
                 SHOW_STRING(settings.program);
             } else if (!strcmp(s, "args")) {
                 SHOW_STRING(settings.args);
+            } else if (!strcmp(s, "present-on-reload")) {
+                SHOW_BOOLEAN(settings.present_on_reload);
             } else if (!strcmp(s, "default-color")) {
                 SHOW_VALUES(settings.default_color, "%lg", 4);
             } else if (!strcmp(s, "edge-color")) {

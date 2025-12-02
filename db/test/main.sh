@@ -63,6 +63,7 @@ test_set() {
     done <<EOF
     program hello world
     args --hello --world
+    present-on-reload no
     default-color 0.1 0.2 0.3 0.4
     edge-color 0.1 0.2 0.3 0.4
     mouse-sensitivity 0.123

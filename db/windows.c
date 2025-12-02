@@ -1202,11 +1202,13 @@ void refresh_object(
 
             translate_viewport(v, NAN, NAN, NAN);
 
-            // Finally we make sure the window found to be showing the
-            // object is visible and updated.
+            // Finally we present the window found to be showing the
+            // object to the user, if so configured.
 
-            glfwShowWindow(w->window);
-            glfwPostEmptyEvent();
+            if (settings.present_on_reload) {
+                glfwShowWindow(w->window);
+                glfwPostEmptyEvent();
+            }
         }
     }
 }

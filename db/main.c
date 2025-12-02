@@ -43,19 +43,16 @@ static void error_callback(int error, const char *description)
 
 enum {
     VERSION = 1000,
+    NO_INIT,
+    BATCH
 };
-
-static struct {
-    int no_init;
-    int batch;
-} flags;
 
 static struct option options[] = {
     {"help", no_argument, nullptr, 'h'},
     {"version", no_argument, nullptr, VERSION},
 
-    {"no-init", no_argument, &flags.no_init, 1},
-    {"batch", no_argument, &flags.batch, 1},
+    {"no-init", no_argument, nullptr, NO_INIT},
+    {"batch", no_argument, nullptr, BATCH},
     {"command", required_argument, nullptr, 'c'},
     {"execute", required_argument, nullptr, 'x'},
 
@@ -228,7 +225,7 @@ static char **completion_function(const char *text, int start, int end)
 
     {
         char *v[] = {
-            "program", "args", "default-color", "edge-color",
+            "program", "args", "present-on-reload", "default-color", "edge-color",
             "mouse-sensitivity", nullptr};
 
         WHEN_IN_1("set", {
@@ -547,7 +544,7 @@ int main(int argc, char *argv[])
     sigaction(SIGTERM, &sa, nullptr);
     sigaction(SIGUSR1, &sa, nullptr);
 
-    int n, option;
+    int n, option, no_init = 0, batch = 0;
     while ((n = -1, option = getopt_long(
                 argc, argv,
                 "-hc:x:",
@@ -572,6 +569,15 @@ int main(int argc, char *argv[])
                  "along with this program. If not, see http://www.gnu.org/licenses/.");
 
             exit(EXIT_SUCCESS);
+
+        case BATCH:
+            batch = 1;
+            settings.present_on_reload = false;
+            break;
+
+        case NO_INIT:
+            no_init = 1;
+            break;
 
         case 'h':
             printf("Usage: %s [OPTION...]\n\n"
@@ -625,14 +631,14 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (flags.batch) {
+    if (batch) {
         exit(EXIT_SUCCESS);
     }
 
     // We read in the local init file, if it exists, and execute any
     // commands in it.
 
-    if (!flags.no_init) {
+    if (!no_init) {
         FILE *fp = fopen(".gammadbinit", "r");
 
         if (fp) {

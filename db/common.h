@@ -27,6 +27,8 @@ struct settings {
     const char *args;
     const char *program;
 
+    bool present_on_reload;
+
     double default_color[4], edge_color[4];
     double mouse_sensitivity;
 };
