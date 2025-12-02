@@ -79,25 +79,6 @@ static int evaluate(char *s)
     return n;
 }
 
-// Executing commands from files is more straightforward.
-
-static int execute(char *name)
-{
-    FILE *fp = strcmp(name, "-") ? fopen(name, "r") : stdin;
-
-    if (fp) {
-        const int n = read_commands(fp);
-
-        if (fp != stdin) {
-            fclose(fp);
-        }
-
-        return n;
-    }
-
-    return -1;
-}
-
 // ### Completion
 
 // The functions below implement completion via GNU Readline.  Below,
@@ -219,7 +200,7 @@ static char **completion_function(const char *text, int start, int end)
             (char *[]) {
                 "quit", "exit", "window", "hide", "present", "resize", "focus",
                 "split", "target", "rotate", "translate", "pan", "zoom", "view",
-                "load", "run", "info", "set", "show", "bind", "unbind",
+                "load", "run", "info", "set", "show", "bind", "unbind", "print",
                 nullptr});
     });
 
@@ -247,7 +228,8 @@ static char **completion_function(const char *text, int start, int end)
 
     {
         char *v[] = {
-            "program", "args", "default-color", "mouse-sensitivity", nullptr};
+            "program", "args", "default-color", "edge-color",
+            "mouse-sensitivity", nullptr};
 
         WHEN_IN_1("set", {
                 return MATCHES(nullptr, v);
@@ -617,10 +599,24 @@ int main(int argc, char *argv[])
             break;
 
         case 'x':
-            if (execute(optarg) < 0) {
-                perror("Could not execute init file");
+        {
+            FILE *fp = strcmp(optarg, "-") ? fopen(optarg, "r") : stdin;
+
+            if (fp) {
+                if (read_commands(fp) < 0) {
+                    exit(EXIT_FAILURE);
+                }
+
+                if (fp != stdin) {
+                    fclose(fp);
+                }
+            } else {
+                fprintf(
+                    stderr, "Could not open file '%s': %s\n",
+                    optarg, strerror(errno));
                 exit(EXIT_FAILURE);
             }
+        }
 
             break;
 
@@ -637,11 +633,17 @@ int main(int argc, char *argv[])
     // commands in it.
 
     if (!flags.no_init) {
-        if (execute(".gammadbinit") < 0) {
-            if (errno != ENOENT) {
-                perror("Could not execute command file");
+        FILE *fp = fopen(".gammadbinit", "r");
+
+        if (fp) {
+            if (read_commands(fp) < 0) {
                 exit(EXIT_FAILURE);
             }
+
+            fclose(fp);
+        } else if (errno != ENOENT) {
+            perror("Could not open init file");
+            exit(EXIT_FAILURE);
         }
     }
 

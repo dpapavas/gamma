@@ -27,7 +27,7 @@ struct settings {
     const char *args;
     const char *program;
 
-    double default_color[4];
+    double default_color[4], edge_color[4];
     double mouse_sensitivity;
 };
 
@@ -159,6 +159,7 @@ extern struct window *windows;
 
 struct window *find_window(const char *name);
 void resize_window(struct window *w, int width, int height);
+void print_window(struct window *w, GLint format, FILE *fp);
 bool refresh_windows(void);
 
 // ---

@@ -44,6 +44,19 @@ EOF
         match -o two:two hello world || return 1
 }
 
+test_print_missing() { run -c "window test" -c "print" | error "no output file name specified"; }
+test_print_invalid() { run -c "window test" -c "print file.ps bogus" | syntax_error; }
+test_print_unknown() { run -c "window test" -c "print file.ext" | error "output file has unknown extension"; }
+test_print() {
+    f="$(mktemp -u)"
+    trap "rm $f.*" RETURN
+
+    for x in ".ps" ".eps" ".pdf" ".svg"; do
+        run -c "window test" -c "load <$(dirname $0)/convex.off" -c "print $f$x" | ok \
+            && test -f "$f$x" || return 1
+    done
+}
+
 test_set() {
     while read -ra v; do
         run -c "set ${v[*]}" -c "show ${v[0]}" | match "${v[*]:1}" || return 1
@@ -51,6 +64,7 @@ test_set() {
     program hello world
     args --hello --world
     default-color 0.1 0.2 0.3 0.4
+    edge-color 0.1 0.2 0.3 0.4
     mouse-sensitivity 0.123
 EOF
 }

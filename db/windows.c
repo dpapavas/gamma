@@ -9,6 +9,8 @@
 #include "common.h"
 #include SHADER_STRINGS
 
+#include <gl2ps.h>
+
 // ---
 
 // # Windows
@@ -316,7 +318,7 @@ void printf_text(struct text *t, size_t size, const char *fmt, ...)
         // use an environment variable to allow finetuning in case the
         // default match proves inadequate.
 
-        FcPattern *p;
+        FcPattern *p, *m = nullptr;
         FcChar8 *s = (FcChar8 *)getenv("GAMMADB_FONT");
 
         p = FcNameParse(s ? s : (FcChar8 *)"sans-serif");
@@ -328,7 +330,6 @@ void printf_text(struct text *t, size_t size, const char *fmt, ...)
         FcConfigSubstitute(0, p, FcMatchPattern);
         FcDefaultSubstitute(p);
 
-        FcPattern *m;
         FcResult r;
         m = FcFontMatch (0, p, &r);
 
@@ -880,11 +881,16 @@ static bool refresh_window(struct window *w)
             glDrawElements(GL_TRIANGLES, counts[1], GL_UNSIGNED_INT, 0);
             glDisable(GL_POLYGON_OFFSET_FILL);
 
-            //   2. the edges, draw as a sequence of line segments,
+            //   2. the edges, drawn as a sequence of line segments,
 
             glUseProgram(uniform.name);
             glUniformMatrix4fv(uniform.matrix, 1, GL_TRUE, v->matrix);
-            glUniform4f(uniform.color, 1.0f, 0.0f, 0.0f, 1.0f);
+            glUniform4f(
+                uniform.color,
+                (GLfloat)settings.edge_color[0],
+                (GLfloat)settings.edge_color[1],
+                (GLfloat)settings.edge_color[2],
+                (GLfloat)settings.edge_color[3]);
 
             glDrawElements(
                 GL_LINES, counts[2], GL_UNSIGNED_INT,
@@ -1202,5 +1208,183 @@ void refresh_object(
             glfwShowWindow(w->window);
             glfwPostEmptyEvent();
         }
+    }
+}
+
+// ## Printing Object Geometry
+
+// The following function prints the contents of a window in one of
+// several formats.  It is mostly useful to prepare figuresf for
+// documentation.
+
+void print_window(struct window *w, GLint format, FILE *fp)
+{
+    // We use the window name as document title and set the document
+    // viewport dimensions to match our window.
+
+    {
+        int a, b;
+        glfwGetFramebufferSize(w->window, &a, &b);
+
+        GLint i = gl2psBeginPage(
+            w->name, "gammadb",
+            (GLint []){0, 0, a, b},
+            format, GL2PS_BSP_SORT,
+            GL2PS_NO_OPENGL_CONTEXT | GL2PS_NO_BLENDING
+            | GL2PS_OCCLUSION_CULL,
+            GL_RGBA, 0, nullptr, 0, 0 ,0,
+            0, fp, nullptr);
+
+        assert(i == GL2PS_SUCCESS);
+    }
+
+    // We need to bind and map VBOs and EBOs, so we need to lock the
+    // window's context.
+
+    lock_window(w);
+
+    for (struct viewport *v = w->viewports; v; v = v->next) {
+        struct object *o = v->object;
+
+        if (!o) {
+            continue;
+        }
+
+        // GL2PS was designed to use the legacy GL feedback render
+        // mode to retrieve the to-be-drawn geometry.  This no longer
+        // works with core profile GL and, although we could implement
+        // a similar approach using transform feedback, it is
+        // probabaly easier to just project the geometry ourselves.
+
+        // We do so below, but first we need to make sure the
+        // viewport's projection matrix is up-to-date, since such
+        // print commands are likely to be part of batch jobs, so that
+        // the window might not have been presented yet.
+
+        if (v->stale.projection) {
+            refresh_viewport(v);
+            v->stale.projection = false;
+        }
+
+        // The macro below carries out the standard GL coordinate
+        // transformations from object to clip coordinates by applying
+        // the viewport's matrix, then by perspective division to NDC
+        // and finally to window coordinates via the viewport
+        // transformation.
+
+        // See the section titled "Coordinate Transformations" in the
+        // OpenGL Core Profile specification for more details.
+
+        const GLfloat o_x = v->left, o_y = v->bottom;
+        const GLfloat p_x = v->right - v->left, p_y = v->top - v->bottom;
+        const GLfloat s = (v->far - v->near) / 2.0f;
+        const GLfloat b = (v->near + v->far) / 2.0f;
+
+#define PROJECT(I)                                                      \
+        {                                                               \
+            const GLfloat *v_ = p + 7 * I, *M_ = v->matrix;             \
+            const GLfloat w_ =                                          \
+                M_[12] * v_[0] + M_[13] * v_[1] + M_[14] * v_[2] + M_[15]; \
+            GLfloat *u_ = vertices[I].xyz;                              \
+                                                                        \
+            u_[0] = (                                                   \
+                (M_[0] * v_[0] + M_[1] * v_[1] + M_[2] * v_[2] + M_[3]) \
+                / w_ + 1.0f) * p_x / 2.0f + o_x;                        \
+            u_[1] = (                                                   \
+                (M_[4] * v_[0] + M_[5] * v_[1] + M_[6] * v_[2] + M_[7]) \
+                / w_ + 1.0f) * p_y / 2.0f + o_y;                        \
+            u_[2] = (                                                   \
+                (M_[8] * v_[0] + M_[9] * v_[1] + M_[10] * v_[2] + M_[11]) \
+                / w_ * s + b);                                          \
+        }
+
+        // We now map the object's VBO and transform its vertices (and
+        // also simply copy the vertex colors).
+
+        GL2PSvertex vertices[o->counts[0]];
+
+        glBindBuffer(GL_ARRAY_BUFFER, o->vbo);
+
+        {
+            GLfloat *p = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
+
+            for (GLsizei i = 0; i < o->counts[0]; i++) {
+                PROJECT(i);
+                memcpy(vertices[i].rgba, &p[7 * i + 3], 4 * sizeof(GLfloat));
+            }
+        }
+
+        glUnmapBuffer(GL_ARRAY_BUFFER);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+#undef PROJECT
+
+        // Moving on, we map the EBO and:
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, o->ebo);
+
+        {
+            //   1. assemble and draw the triangles that make up the
+            //   object^[These will be filled wihtout a border, so we
+            //   needn't worry about the fact that they're potentially
+            //   triangulations of larger polygons.], followed by
+
+            GL2PSvertex v[3];
+            GLuint *p = glMapBuffer(GL_ELEMENT_ARRAY_BUFFER, GL_READ_ONLY);
+
+            for (GLsizei i = 0; i < o->counts[1]; i++) {
+                memcpy(v + (i % 3), vertices + p[i], sizeof(GL2PSvertex));
+                if (i % 3 == 2) {
+                    gl2psAddPolyPrimitive(
+                        GL2PS_TRIANGLE, 3, v,
+                        1, 1.0f, 1.0f,
+                        0xffff, 1,
+                        1.0f,
+                        GL2PS_LINE_CAP_BUTT,
+                        GL2PS_LINE_JOIN_MITER,
+                        0);
+                }
+            }
+
+            //   2. the edges.
+
+            const GLuint *q = p + o->counts[1];
+            for (GLsizei i = 0; i < o->counts[2]; i++) {
+                memcpy(&v[i % 2].xyz, vertices + q[i], sizeof(GL2PSxyz));
+                memcpy(
+                    &v[i % 2].rgba,
+                    (GL2PSrgba) {
+                        (GLfloat)settings.edge_color[0],
+                        (GLfloat)settings.edge_color[1],
+                        (GLfloat)settings.edge_color[2],
+                        (GLfloat)settings.edge_color[3]
+                    },
+                    sizeof(GL2PSrgba));
+
+                if (i % 2 == 1) {
+                    gl2psAddPolyPrimitive(
+                        GL2PS_LINE, 2, v,
+                        0, 0.0f, 0.0f,
+                        0xffff, 1,
+                        1.0f,
+                        GL2PS_LINE_CAP_ROUND,
+                        GL2PS_LINE_JOIN_MITER,
+                        0);
+                }
+            }
+        }
+
+        glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    }
+
+    unlock_window(w);
+
+    // We expect no errors here, but `GL2PS_NO_FEEDBACK` can be
+    // returned when printing an empty window.  We're ok with that.
+
+    {
+        const GLint i = gl2psEndPage();
+        assert(i == GL2PS_SUCCESS || i == GL2PS_NO_FEEDBACK);
     }
 }

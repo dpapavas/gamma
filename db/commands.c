@@ -12,6 +12,7 @@
 
 #include "common.h"
 
+#include <gl2ps.h>
 
 // ---
 
@@ -244,6 +245,7 @@ static int compare_edges(const void *a, const void *b)
 // values.
 
 struct settings settings = {
+    .edge_color = {0, 0, 0, 1},
     .default_color = {1, 1, 1, 1},
     .mouse_sensitivity = 0.01
 };
@@ -649,6 +651,70 @@ int read_commands(FILE *fp)
                 w->focus = v;
                 glfwPostEmptyEvent();
             }
+        }
+
+        //   `print file` := Print the contents of the viewports
+        //   in the current window to a file.  The file format is
+        //   chosen based on the file extension, which can be either
+        //   `ps`, `eps`, `pdf`, or `svg`.
+
+        else if (!strcmp(s, "print")) {
+            char *c;
+
+            // We proceed by:
+
+            //   1. scanning the file name^[We go through the stack
+            //   allocation and copying process below to make sure
+            //   that there are no memory leaks, no matter where we
+            //   exit.],
+
+            if (try_scan(fp, "%ms", &c) != 1) {
+                fprintf(stderr, "error: no output file name specified\n");
+                goto error;
+            }
+
+            char t[strlen(c) + 1];
+            strcpy(t, c);
+            free(c);
+
+            //   2. choosing the output format and
+
+            GLint i;
+
+            {
+                const char *c = strrchr(t, '.');
+
+                if (!strcasecmp(c, ".ps")) {
+                    i = GL2PS_PS;
+                } else if (!strcasecmp(c, ".eps")) {
+                    i = GL2PS_EPS;
+                } else if (!strcasecmp(c, ".pdf")) {
+                    i = GL2PS_PDF;
+                } else if (!strcasecmp(c, ".svg")) {
+                    i = GL2PS_SVG;
+                } else {
+                    fprintf(
+                        stderr, "error: output file has unknown extension\n");
+                    goto error;
+                }
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            //   3. writing the document.
+
+            FILE *fp = fopen(t, "wb");
+
+            if (!fp) {
+                fprintf(
+                    stderr, "error: could not open output file (%s)\n",
+                    strerror(errno));
+                goto error;
+            }
+
+            print_window(w, i, fp);
+            fclose(fp);
         }
 
         // ### Viewport Commands
@@ -1729,6 +1795,14 @@ int read_commands(FILE *fp)
                 SET_VALUES(fp, settings.default_color, "%lf", 4);
             }
 
+            //   `edge-color` := The color with which object edges are
+            //   drawn.  It is given as four RGBA floating point
+            //   values.
+
+            else if (!strcmp(s, "edge-color")) {
+                SET_VALUES(fp, settings.edge_color, "%lf", 4);
+            }
+
             //   `mouse-sensitivity` := A number that controls how fast
             //   the viewport is rotated, zoomed, etc. with the mouse.
 
@@ -1759,6 +1833,8 @@ int read_commands(FILE *fp)
                 SHOW_STRING(settings.args);
             } else if (!strcmp(s, "default-color")) {
                 SHOW_VALUES(settings.default_color, "%lg", 4);
+            } else if (!strcmp(s, "edge-color")) {
+                SHOW_VALUES(settings.edge_color, "%lg", 4);
             } else if (!strcmp(s, "mouse-sensitivity")) {
                 SHOW_VALUES((&settings.mouse_sensitivity), "%lg", 1);
             } else {
