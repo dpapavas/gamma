@@ -1,5 +1,11 @@
 BEGINFILE {
   primed = 0
+
+  # Substitutions to "parse" arguments to ```print.
+
+  printsubs["^z:(-?[[:digit:].]+)$"] = "zoom \\1"
+  printsubs["^rx:(-?[[:digit:].]+)$"] = "rotate \\1"
+  printsubs["^ry:(-?[[:digit:].]+)$"] = "rotate 0 \\1"
 }
 
 function print_program()
@@ -66,22 +72,29 @@ function flush_text()
 
 function close_list()
 {
-    if (in_table) {
-      text = text "@end table\n"
-      in_table = 0
-    } else if (in_enumerate) {
-      text = text "@end enumerate\n"
-      in_enumerate = 0
-    } else if (in_itemize) {
-      text = text "@end itemize\n"
-      in_itemize = 0
-    } else if (in_quotation) {
-      text = text "@end quotation\n"
-      in_quotation = 0
-    } else if (in_indentedblock) {
-      text = text "@end indentedblock\n"
-      in_indentedblock = 0
+  if (in_figure) {
+    if (text ~ /@caption{/) {
+      text = text "}"
     }
+
+    text = text "\n@end float\n"
+    in_figure = 0
+  } else if (in_table) {
+    text = text "\n@end table\n"
+    in_table = 0
+  } else if (in_enumerate) {
+    text = text "\n@end enumerate\n"
+    in_enumerate = 0
+  } else if (in_itemize) {
+    text = text "\n@end itemize\n"
+    in_itemize = 0
+  } else if (in_quotation) {
+    text = text "\n@end quotation\n"
+    in_quotation = 0
+  } else if (in_indentedblock) {
+    text = text "\n@end indentedblock\n"
+    in_indentedblock = 0
+  }
 }
 
 /^[[:space:]]*\/\/ ---/ {
@@ -118,7 +131,9 @@ function close_list()
 
     # Table item
 
-    if (split($0, v, ":=") == 2) {
+    if (in_figure) {
+      text = text "@caption{"
+    } else if (split($0, v, ":=") == 2) {
       if (!in_table) {
         in_table = 1
         text = text "\n@table @code"
@@ -159,14 +174,58 @@ function close_list()
         in_indentedblock = 1
         text = text "\n@indentedblock\n"
     }
-  } else {
+  } else if (in_indent) {
     in_indent = 0
     close_list()
   }
 
-  if (/^```graph/) {
+  if (/^Figure:/) {
+    text = text gensub(/^Figure:[[:space:]]*(.*)$/, "@float Figure,\\1\n", 1)
+    in_figure = 1
+  } else if (/^```print/) {
     a = prefix "." ++figures
-    text = text "@noindent\n@center @image {" a "}"
+    n = split($0, v, ";")
+
+    text = text "@center @image {" a ",120mm}\n"
+
+    in_print = (bindir                          \
+                "/db/gammadb --batch "          \
+                 " -c \"window " a "\"")
+
+    if (n > 2) {
+      in_print = (in_print                                      \
+                  " -c \"resize " ((n - 1) * 500) " 500\""      \
+                  " -c \"split horizontally " (n - 1) "\"")
+
+      for (i = 2; i <= n; i++) {
+        in_print = (in_print \
+                    " -c \"focus " (i - 1) "\""                  \
+                    " -c \"target out" (i - 1) "\""              \
+                    " -c \"view orthographic\"")
+
+        m = split(v[i], u, ",")
+
+        for (j = 1; j <= m; j++) {
+          for (r in printsubs) {
+            s = gensub(r, printsubs[r], 1, u[j])
+
+            if (s != u[j]) {
+              in_print = in_print " -c \"" s "\""
+              break
+            }
+          }
+        }
+      }
+    }
+
+    in_print = (in_print                                \
+                " -c \"set args -x scheme /dev/stdin\"" \
+                " -c \"run\""                           \
+                " -c \"print " a ".pdf\"")
+
+  } else if (/^```graph/) {
+    a = prefix "." ++figures
+    text = text "@noindent\n@center @image {" a "}\n"
 
     in_graph = (/,neato/ ? "neato" : "dot") " -Tpdf -o " a ".pdf"
     print "digraph {" | in_graph
@@ -190,6 +249,9 @@ function close_list()
 
       in_graph = ""
       dummy_nodes = 0
+    } else if (in_print) {
+      close(in_print)
+      in_print = ""
     } else {
       if (in_example) {
         text = text "\n" "@end example" "\n"
@@ -215,9 +277,13 @@ function close_list()
     }
 
     print $0 | in_graph
+  } else if (in_print) {
+    print $0 | in_print
   } else if (in_example) {
     text = text "\n" $0
   } else  {
+    # Structure
+
     if (sub(/^# /, "")) {
       sub(/\n*$/, "\n", text)
 
@@ -298,9 +364,9 @@ function close_list()
 
 /^[[:space:]]*$/ {
   if (in_text && text) {
-    sub(/\n*$/, "\n", text)
+    close_list()
+    flush_text()
 
-    print text
     text = ""
   }
 

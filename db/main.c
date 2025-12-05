@@ -368,6 +368,14 @@ static char **completion_function(const char *text, int start, int end)
 
 static void *do_input(void *arg)
 {
+    // We've inherited the signal mask from the main thread, which has
+    // almsot all signals blocked.  Since we're supposed to be in
+    // charge of signal handling, we need to reset it.
+
+    sigset_t set;
+    sigemptyset(&set);
+    pthread_sigmask(SIG_SETMASK, &set, nullptr);
+
     rl_attempted_completion_function = completion_function;
     rl_basic_word_break_characters = WORD_BREAK_CHARACTERS;
     rl_completion_word_break_hook = word_break_hook;
@@ -489,7 +497,8 @@ exit:
 
 // ## The Main Function
 
-// First we define a signal handler.  See below for how it's used.
+// First we need to define a signal handler.  See below for more
+// details.
 
 static void signal_handler(int sig)
 {
@@ -520,19 +529,22 @@ int main(int argc, char *argv[])
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // We will have more to say about signal handling below, but for
-    // now, we need to set up a handler that will flip the `running`
-    // flag and cause the application to exit.  We assign it to the
-    // TERM and USR1 signals.  The former is meant to handle the case
-    // where the TERM signal is sent to our process externally (as
-    // with `kill -TERM`) and will be caught by the input thread (as
-    // it's blocked on all others; see below) causing it to exit along
-    // with the rest of the application.
+    // We'll be creating threads, so we'll want to join them before
+    // exit, which means we need to set up signal handling.
+
+    // We set up a handler that will flip the `running` flag and cause
+    // the application to exit.  We assign it to the TERM and USR1
+    // signals.  The former is meant to handle the case where the TERM
+    // signal is sent to our process externally (as with `kill -TERM`)
+    // and will be caught by the input thread (as it's blocked on all
+    // others; see below)^[It may also be caught by the main thread if
+    // it arrives during command line option processing.] causing it
+    // to exit along with the rest of the application.
 
     // Using the same handler for `USR1` signals^[The `USR1` signal is
     // chosen because Readline doesn't interfere with it.] allows us
-    // to raise this signal from anywhere, if we wish to quit the
-    // application.  This is also the reason we need to set up the
+    // to raise this signal from anywhere if and when we wish to quit
+    // the application.  This is also the reason we need to set up the
     // handler early, since a quit command might appear in an init
     // file, or as argument to the `-c` switch.
 
@@ -543,6 +555,33 @@ int main(int argc, char *argv[])
 
     sigaction(SIGTERM, &sa, nullptr);
     sigaction(SIGUSR1, &sa, nullptr);
+
+    // Now, one gets the impression that Readline was not designed
+    // with multi-threaded applications in mind.  Since it sets up its
+    // own signal handling and since signal disposition is a
+    // per-process attribute^[In a multithreaded application, the
+    // disposition of a particular signal (whether it's ignored,
+    // handled, etc.)  is the same for all threads] we might have
+    // Readline's signal handler invoked by another thread.  This may
+    // be fine, but Readline seems to intefere with signal handling
+    // anyway, so we opt for the conservative approach:
+
+    // We block all signals (apart from USR1) on all but the input
+    // thread, making Readline solely in charge of handling them.
+
+    sigset_t set;
+    sigfillset(&set);
+    sigdelset(&set, SIGUSR1);
+    pthread_sigmask(SIG_SETMASK, &set, nullptr);
+
+    // We need to spawn the IPC thread early, for the same reasons
+    // given for early signal handling setup above.
+
+    pthread_t threads[2] = {};
+
+    if (pthread_create(&threads[0], nullptr, do_ipc, nullptr)) {
+        perror("Failed to create IPC thread\n");
+    }
 
     int n, option, no_init = 0, batch = 0;
     while ((n = -1, option = getopt_long(
@@ -655,35 +694,11 @@ Options:\n\
         }
     }
 
-    // We setup signal handling and create threads, starting with the
-    // thread for terminal input.
-
-    pthread_t threads[2] = {};
+    // Now that we've established that this is not a batch run, we can
+    // go ahead and start the thread for terminal input.
 
     if (pthread_create(&threads[1], nullptr, do_input, nullptr)) {
         perror("Failed to create input thread\n");
-    }
-
-    // One gets the idea that Readline was not designed with
-    // multi-threaded applications in mind.  Since it sets up its own
-    // signal handling and since signal disposition is a per-process
-    // attribute^[In a multithreaded application, the disposition of a
-    // particular signal (whether it's ignored, handled, etc.)  is the
-    // same for all threads] we might have Readline's signal handler
-    // invoked by another thread.  This may be fine, but Readline
-    // seems to intefere with signal handling, so we opt for the
-    // conservative approach:
-
-    // We block all signals (apart from USR1) on all but the input
-    // thread, making Readline solely in charge of handling them.
-
-    sigset_t set;
-    sigfillset(&set);
-    sigdelset(&set, SIGUSR1);
-    pthread_sigmask(SIG_SETMASK, &set, nullptr);
-
-    if (pthread_create(&threads[0], nullptr, do_ipc, nullptr)) {
-        perror("Failed to create IPC thread\n");
     }
 
     // Now we run the main loop and clean up when we've determined

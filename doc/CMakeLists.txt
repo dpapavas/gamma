@@ -14,6 +14,7 @@ foreach(X ${PATCH_SOURCES})
             ${CMAKE_CURRENT_SOURCE_DIR}/weave.texi
             ${CMAKE_CURRENT_SOURCE_DIR}/weave.awk
     COMMAND awk -f ${CMAKE_CURRENT_SOURCE_DIR}/weave.awk
+                -v bindir=${PROJECT_BINARY_DIR}
                 -v prefix=${PROJECT_BINARY_DIR}/${X}
                 -- ${PROJECT_SOURCE_DIR}/${X} > ${PROJECT_BINARY_DIR}/${X}.texi
   )

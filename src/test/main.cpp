@@ -41,12 +41,12 @@ struct Global_fixture {
         Flags::load_operations = 0;
 
 #ifdef HAVE_SCHEME
-        Options::library_directories.push_front(SOURCE_DIR "/scheme");
+        Options::library_directories.push_front(PROJECT_SOURCE_DIR "/scheme");
         setenv("GUILE_AUTO_COMPILE", "fresh", 1);
 #endif
 
 #ifdef HAVE_LUA
-        Options::library_directories.push_front(SOURCE_DIR "/lua");
+        Options::library_directories.push_front(PROJECT_SOURCE_DIR "/lua");
 #endif
 
         parse_options(

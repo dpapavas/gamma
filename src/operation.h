@@ -75,15 +75,18 @@
 // foo
 
 // In this way, operations resulting from the evaluation of front end
-// code are organized into a graph, like the one drawn below with
-// edges pointing from predecessors to successors.  This can then be
-// postprocessed and evaluated.  Ref: Operation Evaluation.
+// code are organized into a graph, like the one drawn in
+// ref:graph-example, edges pointing from predecessors to successors.
+// This can then be postprocessed and evaluated.  Ref: Operation
+// Evaluation.
 
+// Figure:graph-example
 // ```graph
 // "sphere: radius=1" -> "difference"
 // "sphere: radius=2" -> "difference"
 // "difference" -> "write"
 // ```
+//   A simple evaluation graph.
 
 // ## The Base Operation Class
 

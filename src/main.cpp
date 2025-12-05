@@ -39,32 +39,46 @@ extern "C" const char *__lsan_default_suppressions() {
 
 int main(int argc, char *argv[])
 {
-    // Freshly compile all files every time gamma is not run from it's
-    // installed location.  This can avoid problems during
-    // development, e.g. with dependencies between installed (.sld)
-    // and "internal" libraries.
+    // When we're not run from our installed location (meaning most
+    // likely that we're running straight from the build directory
+    // during development) we want to:
 
     if (std::strncmp(INSTALL_PREFIX, argv[0], sizeof(INSTALL_PREFIX) - 1)) {
+        //   1. instruct Guile to freshly compile all files and
+
         setenv("GUILE_AUTO_COMPILE", "fresh", 1);
+
+        //   2. add library paths to load libraries straight from the
+        //   sources.
+
+#ifdef HAVE_SCHEME
+        Options::library_directories.push_front(PROJECT_SOURCE_DIR "/scheme");
+#endif
+
+#ifdef HAVE_LUA
+        Options::library_directories.push_front(PROJECT_SOURCE_DIR "/lua");
+#endif
+    } else {
+        // Conversely, when running from the installed location, we
+        // add the paths for the istalled libraries.
+
+#ifdef HAVE_SCHEME
+        Options::library_directories.push_front(INSTALL_DATADIR "/gamma/scheme");
+#endif
+
+#ifdef HAVE_LUA
+        Options::library_directories.push_front(INSTALL_DATADIR "/gamma/lua");
+#endif
     }
 
-    // Instruct CGAL to throw exceptions, so we can handle them as
-    // we please.
+    // In any case, we also instruct CGAL to throw exceptions, so we
+    // can handle them properly.
 
     CGAL::set_error_behaviour(CGAL::THROW_EXCEPTION);
     CGAL::set_warning_behaviour(CGAL::THROW_EXCEPTION);
 
-    // Configure the default include directories.
-
-#ifdef HAVE_SCHEME
-    Options::library_directories.push_front(INSTALL_DATADIR "/gamma/scheme");
-#endif
-
-#ifdef HAVE_LUA
-    Options::library_directories.push_front(INSTALL_DATADIR "/gamma/lua");
-#endif
-
-    // Parse the command line.
+    // Now we only need to parse the command line.  Everything follows
+    // from there.
 
     if (parse_options(argc, argv) >= 0) {
 #ifdef HAVE_LUA

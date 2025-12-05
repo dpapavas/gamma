@@ -1349,13 +1349,12 @@ int read_commands(FILE *fp)
 
             //   1. the executable, followed by
 
-            if (settings.program) {
-                MAYBE_GROW_TO(buffer, (n += strlen(settings.program)) + 1);
-                p = stpcpy(buffer.p, settings.program);
-            } else {
-                MAYBE_GROW_TO(buffer, (n += strlen("gamma")) + 1);
-                p = stpcpy(buffer.p, "gamma");
+            if (!settings.program) {
+                settings.program = strdup(DEFAULT_PROGRAM);
             }
+
+            MAYBE_GROW_TO(buffer, (n += strlen(settings.program)) + 1);
+            p = stpcpy(buffer.p, settings.program);
 
             //   2. the output, which needs to precede other
             //   options^[Order is important since the output selected
@@ -1388,7 +1387,10 @@ int read_commands(FILE *fp)
                 p = stpcpy(p, settings.args);
             }
 
-            system(buffer.p);
+            if (system(buffer.p)) {
+                fprintf(stderr, "error: execution failed\n");
+                goto error;
+            }
         }
 
         // ### The Information Command

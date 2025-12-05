@@ -21,6 +21,14 @@
 #include "kernel.h"
 #include "sink_operations.h"
 
+static const std::string make_error_string(const char *message)
+{
+    return (std::string(message)
+            + std::string(" (")
+            + std::make_error_code(std::errc(errno)).message()
+            + std::string(")"));
+}
+
 static inline void write_off_color(std::ostream &s, const CGAL::IO::Color &c)
 {
     s << " " << static_cast<int>(c.red())
@@ -92,7 +100,8 @@ void Write_WRL_operation::evaluate()
     s.open(filename);
 
     if (!s) {
-        message(Operation::ERROR, "could not open output file");
+        message(
+            Operation::ERROR, make_error_string("could not open output file"));
         return;
     }
 
@@ -171,7 +180,8 @@ void Write_STL_operation::evaluate()
     s.open(filename);
 
     if (!s) {
-        message(Operation::ERROR, "could not open output file");
+        message(
+            Operation::ERROR, make_error_string("could not open output file"));
         return;
     }
 
@@ -237,7 +247,8 @@ void Write_OFF_operation::evaluate()
     s.open(filename);
 
     if (!s) {
-        message(Operation::ERROR, "could not open output file");
+        message(
+            Operation::ERROR, make_error_string("could not open output file"));
         return;
     }
 
@@ -249,16 +260,26 @@ void Write_OFF_operation::evaluate()
 #include <sys/socket.h>
 #include <sys/un.h>
 
+// This operation writes an output to a UNIX domain socket in OFF
+// format.  Its intended use is to send geometry to the debugger for
+// inspection.
+
+// We need to:
+
 void Inspect_operation::evaluate()
 {
+    //   1. create a socket,
+
     const int fd = socket(AF_UNIX, SOCK_STREAM, 0);
 
     if (fd == -1) {
-        message(Operation::WARNING, "could not open socket");
+        message(Operation::WARNING, make_error_string("could not open socket"));
         return;
     }
 
     struct sockaddr_un addr;
+
+    //   2. connect it to the remote end,
 
 #define NAME "inspector"
     memset(&addr, 0, sizeof(struct sockaddr_un));
@@ -268,18 +289,14 @@ void Inspect_operation::evaluate()
     if (connect(fd,
                 (const struct sockaddr *)&addr,
                 offsetof(struct sockaddr_un, sun_path) + sizeof(NAME)) == -1) {
-        message(Operation::WARNING, "could not connect socket");
+        message(
+            Operation::WARNING, make_error_string("could not connect socket"));
         return;
     }
 #undef NAME
 
-    __gnu_cxx::stdio_filebuf<char> buf(fd, std::ios::out);
-    std::ostream s(&buf);
-
-    if (!s) {
-        message(Operation::WARNING, "could not create buffer");
-        return;
-    }
+    //   3. accumulate all operands into a single mesh, as we did for
+    //   `Write_OFF_operation`,
 
     Surface_mesh M;
 
@@ -305,9 +322,48 @@ void Inspect_operation::evaluate()
         M += *p->get_value();
     }
 
+    //   4. create an ouput stream that will write to the socket's
+    //   file descriptor,
+
+    __gnu_cxx::stdio_filebuf<char> buf(fd, std::ios::out);
+    std::ostream s(&buf);
+
+    assert(s);
+
+    //   5. write the geometry, preceded by a command to the debugger
+    //   to load it with the proper name,
+
     s << "load " << filename << "\n";
     write_off(s, M);
     s.flush();
+
+    //   6. shutdown the write part of the socket, to signal to the
+    //   debugger that we're done transmitting^[This causes the loop
+    //   that executes commands from the socket on the debugger's end
+    //   to exit, after which the debugger closes the socket.] and
+    //   finally
+
+    shutdown(fd, SHUT_WR);
+
+    //   7. wait for the socket to close at the remote end.^[This
+    //   ensures that the operation doesn't exit before the debugger
+    //   has finished loading the geometry.  This is not important to
+    //   use, but it can be convenient to avoid race conditions.  For
+    //   instance, when making figures for the documentation, we
+    //   follow this load command with a print command.  If loading
+    //   hasn't finished yet by the time the print command arrives, we
+    //   may print partial figures.]
+
+    char c;
+    const int i = read(fd, &c, 1);
+
+    assert(i <= 0);
+
+    if (i < 0) {
+        message(
+            Operation::WARNING,
+            make_error_string("could not wait for remote end"));
+    }
 
     close(fd);
 }

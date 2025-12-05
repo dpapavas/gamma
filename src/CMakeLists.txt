@@ -101,6 +101,7 @@ endif ()
 
 # Create the main executable.
 
+target_compile_definitions(gamma PUBLIC "PROJECT_SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\"")
 target_compile_definitions(gamma PUBLIC "INSTALL_DATADIR=\"${CMAKE_INSTALL_FULL_DATADIR}\"")
 target_compile_definitions(gamma PUBLIC "INSTALL_PREFIX=\"${CMAKE_INSTALL_PREFIX}\"")
 target_link_libraries(gamma objects)

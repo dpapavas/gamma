@@ -380,7 +380,7 @@ int parse_options(int argc, char *argv[])
 
             /* Load and evaluate the source file. */
 
-            std::filesystem::path p = std::filesystem::canonical(optarg);
+            std::filesystem::path p = std::filesystem::absolute(optarg);
             std::string s = p.filename();
 
             if (p.has_parent_path()) {

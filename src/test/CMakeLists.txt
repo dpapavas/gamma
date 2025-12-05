@@ -32,7 +32,7 @@ target_compile_definitions(gamma-driver PRIVATE
   $<$<CONFIG:Debug>:CGAL_DISABLE_ROUNDING_MATH_CHECK>
 )
 
-target_compile_definitions(gamma-driver PRIVATE "SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\"")
+target_compile_definitions(gamma-driver PRIVATE "PROJECT_SOURCE_DIR=\"${PROJECT_SOURCE_DIR}\"")
 target_include_directories(gamma-driver PRIVATE ..)
 target_link_libraries(gamma-driver ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} objects
   CGAL::CGAL_Basic_viewer stdc++fs)
