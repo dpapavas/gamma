@@ -969,8 +969,8 @@ static SCM relative_selection(SCM s, SCM t)
 // is mostly of use for volumes and selections.  It is also defined
 // for polygons and (Nef) polyehdra.
 
-// We export this primarily through the `selection` library, but also
-// make it available through the `operations` and `volumes`
+// Although we export this primarily through the `selection` library,
+// we also make it available through the `operations` and `volumes`
 // libararies.  This seems to be supported behavior in R6RS, which
 // states (in section 7.1):
 

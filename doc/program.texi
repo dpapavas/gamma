@@ -1,14 +1,42 @@
 \input texinfo.tex
-@afourwide
+
+@latex
+\overfullrule=1mm
+\usepackage{fullpage}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\definecolor{gray1}{gray}{0.98}
+\definecolor{gray2}{gray}{0.75}
+\definecolor{gray3}{gray}{0.4}
+\definecolor{gray4}{gray}{0.25}
+
+\lstset{
+        backgroundcolor=\color{gray1},
+        showstringspaces=false,
+        aboveskip=8pt,
+        belowskip=8pt,
+        @c Frames
+        frame=tb,
+        rulecolor=\color{gray2},
+        framesep=6pt,
+        @c Highlighting
+        language=C++,
+        basicstyle=\ttfamily\small\color{gray3},
+        identifierstyle=\color{black}\bfseries,
+        keywordstyle=\color{gray4},
+}
+@end latex
+
 @exampleindent 2
 
 @contents
 
 @part Part I:@* The Back End
-@include ./src/operation.h.texi @c 
-@include ./src/basic_operations.h.texi @c 
-@include ./src/evaluation.cpp.texi     @c 
-@include ./src/rewrites.cpp.texi       @c 
+@include ./src/operation.h.texi
+@include ./src/basic_operations.h.texi
+@include ./src/evaluation.cpp.texi
+@include ./src/rewrites.cpp.texi
 
 @part Part II:@* The Front End
 
@@ -62,6 +90,12 @@ radius 10.
 @include ./src/test/fixtures.h.texi
 @include ./src/test/rewrites.cpp.texi
 
+@part Part IV:@* The Debugger
+@include ./db/main.c.texi
+@include ./db/windows.c.texi
+@include ./db/viewports.c.texi
+@include ./db/commands.c.texi
+
 @appendix Operations
 @include ./src/operation.cpp.texi
 @include ./src/compose_tag.h.texi
@@ -71,12 +105,6 @@ radius 10.
 @include ./src/frontend.cpp.texi
 @include ./src/frontend.h.texi
 @include ./src/boxed_operations.h.texi
-
-@part Part IV:@* The Debugger
-@include ./db/main.c.texi
-@include ./db/windows.c.texi
-@include ./db/viewports.c.texi
-@include ./db/commands.c.texi
 
 @appendix Debugger Definitions
 @include ./db/common.h.texi

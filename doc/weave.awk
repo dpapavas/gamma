@@ -1,39 +1,17 @@
-BEGIN {
-  highlight = "source-highlight -s C -f texinfo"
-}
-
 BEGINFILE {
   primed = 0
 }
 
 function print_program()
 {
-  print ""
-  print "@tex"
-  print "\\moveleft 5pt \\hbox{"
-  print "  \\vbox{"
-  print "    \\hrule width 0.5in height 0.4pt"
-  print "    \\hbox{\\vrule height 4pt width 0.4pt}"
-  print "  }"
-  print "}"
-  print "@end tex"
-
-  print "@exampleindent 0"
+  print "@latex"
+  print "\\begin{lstlisting}"
 
   sub(/([[:space:]]*\n)+$/, "", program)
-  printf "%s", program | highlight
-  close(highlight)
+  print program
 
-  print "\n@exampleindent 2"  
-
-  print "@tex"
-  print "\\moveright 5pt \\hbox to \\hsize{"
-  print "  \\hfill"
-  print "  \\vbox{\\hrule width 0.5in height 0.4pt}%"
-  print "  \\vrule height 4pt width 0.4pt"
-  print "}"
-  print "@end tex"
-  print ""
+  print "\\end{lstlisting}"
+  print "@end latex"
 }
 
 function substitue_directive(from, to, pre, post)
@@ -190,7 +168,7 @@ function close_list()
     a = prefix "." ++figures
     text = text "@noindent\n@center @image {" a "}"
 
-    in_graph = (/,neato/ ? "neato" : "dot") " -Teps -o " a ".eps"
+    in_graph = (/,neato/ ? "neato" : "dot") " -Tpdf -o " a ".pdf"
     print "digraph {" | in_graph
 
     if (/,lr/) {
@@ -201,10 +179,10 @@ function close_list()
       print "mode=\"hier\"" | in_graph
     }
 
-    print "node [shape=box, width=0.4, height=0.4]" | in_graph
-    print "node [penwidth=0.5, fontname=\"mono\", fontsize=10]" | in_graph
+    print "node [shape=box, width=0.35, height=0.35]" | in_graph
+    print "node [penwidth=0.5, fontname=\"mono\", fontsize=8]" | in_graph
     print "edge [penwidth=0.5, arrowsize=0.5]" | in_graph
-    print "edge [fontname=\"sans\", fontsize=11]" | in_graph
+    print "edge [fontname=\"sans\", fontsize=8]" | in_graph
   } else if (/^```/) {
     if (in_graph) {
       print "}" | in_graph

@@ -22,10 +22,18 @@ foreach(X ${PATCH_SOURCES})
 endforeach()
 
 add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/weave.pdf
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/weave.tex
   DEPENDS ${PATCHES}
   WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-  COMMAND texi2any --dvipdf ${CMAKE_CURRENT_SOURCE_DIR}/weave.texi -o ${CMAKE_CURRENT_BINARY_DIR}/weave.pdf
+  COMMAND texi2any --latex ${CMAKE_CURRENT_SOURCE_DIR}/weave.texi
+                   -o ${CMAKE_CURRENT_BINARY_DIR}/weave.tex
+)
+
+add_custom_command(
+  OUTPUT weave.pdf
+  DEPENDS weave.tex
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND texi2pdf weave.tex
 )
 
 add_custom_target(weave ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/weave.pdf)

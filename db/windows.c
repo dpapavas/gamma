@@ -72,26 +72,27 @@ static void cursor_position_callback(GLFWwindow *window, double x, double y)
     // between viewports and update the focus accordingly.
 
     case IDLE:
-        {
-            int a, b;
-            glfwGetFramebufferSize(window, &a, &b);
+    {
+        int a, b;
+        glfwGetFramebufferSize(window, &a, &b);
 
-            const double y_1 = b - y;
-            struct viewport *v = w->viewports;
+        const double y_1 = b - y;
+        struct viewport *v = w->viewports;
 
-            while (
-                v && (v->left > x || v->right < x || v->bottom > y_1 || v->top < y_1)) {
-                v = v->next;
-            }
-
-            // We can move the pointer out of all viewports, even if they
-            // seem to span the whole window.  Moving the pointer on the
-            // decorations still fires this callback.
-
-            if (v) {
-                w->focus = v;
-            }
+        while (
+            v && (v->left > x || v->right < x
+                  || v->bottom > y_1 || v->top < y_1)) {
+            v = v->next;
         }
+
+        // We can move the pointer out of all viewports, even if they
+        // seem to span the whole window.  Moving the pointer on the
+        // decorations still fires this callback.
+
+        if (v) {
+            w->focus = v;
+        }
+    }
 
         break;
 

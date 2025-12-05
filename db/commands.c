@@ -764,7 +764,8 @@ int read_commands(FILE *fp)
 
             struct viewport *v = w->focus;
             for (size_t j = q; j > n + 1; j--) {
-                struct viewport *u = (struct viewport *)malloc(sizeof(struct viewport));
+                struct viewport *u =
+                    (struct viewport *)malloc(sizeof(struct viewport));
 
                 *u = *v;
                 u->name = strdup(DEFAULT_VIEWPORT_NAME);
@@ -927,12 +928,12 @@ int read_commands(FILE *fp)
         }
 
         //   `view proj` := Change the projection of the focused
-        //   viewport.  The argument can be either `orthographic`,
-        //   `perspective` or a field of view angle in degrees.  In
-        //   the first case orthographic projection is selected.  In
-        //   the latter two cases, perspecitve projection is selected,
-        //   either retaining the current, or updating the field of
-        //   view angle.
+        //   viewport.  The argument can be either one of
+        //   `orthographic` and `perspective`, or a field of view angle
+        //   in degrees.  In the first case orthographic projection is
+        //   selected.  In the latter two cases, perspecitve
+        //   projection is selected, either retaining the current, or
+        //   updating the field of view angle.
 
         else if (!strcmp(s, "view")) {
             float f = NAN;
@@ -1099,7 +1100,8 @@ int read_commands(FILE *fp)
                             if (do_scan(fp, "%f", &p[j]) != 1) {
                                 fprintf(
                                     stderr,
-                                    "could not read coordinate %zu or vertex %zu\n",
+                                    "could not read coordinate %zu of "
+                                    "vertex %zu\n",
                                     j, i);
 
                                 goto error;
@@ -1143,7 +1145,8 @@ int read_commands(FILE *fp)
                     if (do_scan(fp, "%zu", &l) != 1) {
                         fprintf(
                             stderr,
-                            "could not read number of vertices for face %zu\n", i);
+                            "could not read number of vertices for face %zu\n",
+                            i);
 
                         goto error;
                     }
@@ -1155,7 +1158,8 @@ int read_commands(FILE *fp)
                         if (do_scan(fp, "%u", &s[j]) != 1) {
                             fprintf(
                                 stderr,
-                                "could not read index %zu for face %zu\n", j, i);
+                                "could not read index %zu for face %zu\n",
+                                j, i);
 
                             goto error;
                         }
@@ -1458,8 +1462,10 @@ int read_commands(FILE *fp)
 
                                 COLUMN("%zu", ++i);
                                 COLUMN("%d, %d", a, b);
-                                COLUMN("%s", (glfwGetWindowAttrib(w->window, GLFW_VISIBLE)
-                                              == GL_TRUE ? "Yes" : "No"));
+                                COLUMN("%s", (
+                                           glfwGetWindowAttrib(
+                                               w->window, GLFW_VISIBLE)
+                                           == GL_TRUE ? "Yes" : "No"));
                                 COLUMN("%s", w->name);
                             }
                         });
@@ -1559,7 +1565,10 @@ int read_commands(FILE *fp)
 
                             COLUMN("%zu", ++i);
                             COLUMN("%d, %d", v->left, v->bottom);
-                            COLUMN("%d, %d", (v->right - v->left), (v->top - v->bottom));
+                            COLUMN(
+                                "%d, %d",
+                                (v->right - v->left),
+                                (v->top - v->bottom));
                             COLUMN(
                                 "%.4g, %.4g, %.4g",
                                 x == 0.0f ? 0.0f : x / 1e4,
@@ -1739,7 +1748,7 @@ int read_commands(FILE *fp)
                        || !strcmp(s_, "false")) {                       \
                 SETTING = false;                                        \
             } else {                                                    \
-                fprintf(stderr, "error: \"yes\" (or \"on\", \"true\"), or \"no\" (or \"of\", \"false\") expected\n"); \
+                fprintf(stderr, "error: \"yes\", or \"no\" expected\n"); \
                 goto error;                                             \
             }                                                           \
         } while(false);

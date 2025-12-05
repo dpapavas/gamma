@@ -50,7 +50,8 @@ void Operation::message(Message_level level, const std::string &message) const
     // consequently quite long.  For instance, even for a simple
     // program calculating a hollow sphere, the final operation would
     // be tagged with something like
-    // `'write_off("a.off",mesh(difference(sphere(2,1/15,1/1000000),sphere(1,1/15,1/1000000))))'`.
+    // `'write_off("a.off",mesh(difference(sphere(2,1/15,@/ 1/1000000),
+    // sphere(1,1/15,1/1000000))))'`.
 
     // Such tags are hard for the programmer to parse and are not very
     // useful as parts of diagnostic messages.  We therefore usualy
@@ -58,7 +59,7 @@ void Operation::message(Message_level level, const std::string &message) const
     // level with an ellipsis.
 
     // With `--diagnostics-elide-tags=2`, the above tag would
-    // therefore become `'write_off("a.off",mesh(difference(...)))'`.
+    // therefore become `'write_off("a.off",@/ mesh(difference(...)))'`.
 
     if (Options::diagnostics_elide_tags < 0) {
         t = tag;
