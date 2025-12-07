@@ -34,7 +34,7 @@
 #include <CGAL/draw_nef_3.h>
 #include <CGAL/draw_surface_mesh.h>
 
-// ---
+// --- program
 
 // # Graph Rewrite Tests
 

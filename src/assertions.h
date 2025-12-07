@@ -20,7 +20,7 @@
 
 #include <cassert>
 
-/* This macro ensures that the assrted expression does get executed,
+/* This macro ensures that the asserted expression does get executed,
  * no matter the build type, along with any side-effects. */
 
 #ifdef NDEBUG

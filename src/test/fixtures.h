@@ -20,7 +20,7 @@
 
 #include "basic_operations.h"
 
-// ---
+// --- program
 
 // # Testing Evaluation Results
 
@@ -208,6 +208,6 @@ struct Coarse_evaluation_fixture: public Evaluation_fixture {
     }
 };
 
-// ---
+// --- program
 
 #endif

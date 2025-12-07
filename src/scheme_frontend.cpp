@@ -28,7 +28,7 @@
 #include "boxed_operations.h"
 #include "frontend.h"
 
-// ---
+// --- program
 
 // # The Scheme Front End
 

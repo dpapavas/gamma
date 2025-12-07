@@ -14,7 +14,7 @@
 
 #include <gl2ps.h>
 
-// ---
+// --- program
 
 // # Commands
 

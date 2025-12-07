@@ -14,7 +14,7 @@
 
 #define DEBUG
 
-// ---
+// --- program
 
 // The following definitions are used through the sources and are
 // thefore bunched together in this single header.
@@ -164,7 +164,7 @@ void resize_window(struct window *w, int width, int height);
 void print_window(struct window *w, GLint format, FILE *fp);
 bool refresh_windows(void);
 
-// ---
+// --- program
 
 int read_commands(FILE *fp);
 

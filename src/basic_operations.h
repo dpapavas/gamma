@@ -23,7 +23,7 @@
 
 #include "operation.h"
 
-// ---
+// --- program
 
 // ## Basic Operation Classes
 
@@ -126,6 +126,6 @@ public:
     Threadsafe_operation(const bool p): threadsafe(p) {}
 };
 
-// ---
+// --- program
 
 #endif

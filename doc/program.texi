@@ -33,10 +33,10 @@
 @contents
 
 @part Part I:@* The Back End
-@include ./src/operation.h.texi
-@include ./src/basic_operations.h.texi
-@include ./src/evaluation.cpp.texi
-@include ./src/rewrites.cpp.texi
+@include ./src/operation.h.program.texi
+@include ./src/basic_operations.h.program.texi
+@include ./src/evaluation.cpp.program.texi
+@include ./src/rewrites.cpp.program.texi
 
 @part Part II:@* The Front End
 
@@ -84,29 +84,30 @@ hence not part of the graph; it's simply passed to the clip
 operation), which can then be evaluated to yield a hemisphere of
 radius 10.
 
-@include ./src/scheme_frontend.cpp.texi
+@include ./src/scheme_frontend.cpp.program.texi
 
 @part Part III:@* The Tests
-@include ./src/test/fixtures.h.texi
-@include ./src/test/rewrites.cpp.texi
+@include ./src/test/fixtures.h.program.texi
+@include ./src/test/rewrites.cpp.program.texi
 
 @part Part IV:@* The Debugger
-@include ./db/main.c.texi
-@include ./db/windows.c.texi
-@include ./db/viewports.c.texi
-@include ./db/commands.c.texi
+@include ./db/main.c.program.texi
+@include ./db/windows.c.program.texi
+@include ./db/viewports.c.program.texi
+@include ./db/commands.c.program.texi
 
-@appendix Operations
-@include ./src/operation.cpp.texi
-@include ./src/compose_tag.h.texi
-@include ./src/compose_tag.cpp.texi
+@appendix Back End
+@include ./src/main.cpp.program.texi
+@include ./src/operation.cpp.program.texi
+@include ./src/compose_tag.h.program.texi
+@include ./src/compose_tag.cpp.program.texi
 
 @appendix Front End
-@include ./src/frontend.cpp.texi
-@include ./src/frontend.h.texi
-@include ./src/boxed_operations.h.texi
+@include ./src/frontend.cpp.program.texi
+@include ./src/frontend.h.program.texi
+@include ./src/boxed_operations.h.program.texi
 
-@appendix Debugger Definitions
-@include ./db/common.h.texi
+@appendix Debugger
+@include ./db/common.h.program.texi
 
 @bye

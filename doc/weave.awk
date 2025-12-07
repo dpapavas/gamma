@@ -97,7 +97,7 @@ function close_list()
   }
 }
 
-/^[[:space:]]*\/\/ ---/ {
+$0 ~ "^[[:space:]]*// ---[[:space:]]*" target {
   primed = !primed
   next
 }
@@ -120,7 +120,7 @@ function close_list()
     in_text = 1;
   }
 
-  sub(/^[[:space:]]*\/\/[[:space:]]/, "")
+  sub(/^[[:space:]]*\/\/[[:space:]]?/, "")
 
   # Lists and tables
 
@@ -132,7 +132,9 @@ function close_list()
     # Table item
 
     if (in_figure) {
-      text = text "@caption{"
+      if (!(text ~ /@caption\{/)) {
+        text = text "@caption{"
+      }
     } else if (split($0, v, ":=") == 2) {
       if (!in_table) {
         in_table = 1
@@ -186,7 +188,7 @@ function close_list()
     a = prefix "." ++figures
     n = split($0, v, ";")
 
-    text = text "@center @image {" a ",120mm}\n"
+    text = text "@center @image {" a ",145mm}\n"
 
     in_print = (bindir                          \
                 "/db/gammadb --batch "          \
@@ -319,7 +321,9 @@ function close_list()
 
     if (sub(/[[:space:]]*\^\[/, "@footnote{")) {
       in_footnote = 1
-    } else if (in_footnote && sub(/\]/, "}")) {
+    }
+
+    if (in_footnote && sub(/\]/, "}")) {
       in_footnote = 0
     }
 
@@ -332,7 +336,7 @@ function close_list()
     substitue_directive("ref", "@pxref", "(", ")")
     substitue_directive("ref", " @pxref", ";", ".")
     substitue_directive("ref", " @pxref", ",", ".")
-    substitue_directive("ref", " @ref", "", ".")
+    substitue_directive("ref", " @ref", "", ".,")
 
     if (sub(/^[[:space:]]*anchor:[[:space:]]*/, "@anchor{")) {
       sub(/$/, "}")

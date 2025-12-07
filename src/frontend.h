@@ -18,7 +18,7 @@
 #ifndef FRONTEND_H
 #define FRONTEND_H
 
-// ---
+// --- program
 
 // ## Selecting Between Nef and Corefinement Operations
 
@@ -97,6 +97,6 @@ void print_message(Operation::Message_level level, const char *s, const int n);
 void insert_output_operations(
     std::string name, std::vector<Boxed_polyhedron> &v);
 
-// ---
+// --- program
 
 #endif

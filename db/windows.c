@@ -11,7 +11,7 @@
 
 #include <gl2ps.h>
 
-// ---
+// --- program
 
 // # Windows
 

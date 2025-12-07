@@ -17,7 +17,7 @@
 
 #define VERSION_NUMBER "0.1.0"
 
-// ---
+// --- program
 
 // # The Debugger
 
@@ -363,8 +363,8 @@ static char **completion_function(const char *text, int start, int end)
 // thread for graphical interaction (GLFW doesn't allow calling most
 // of its functions from other threads), we need to handle terminal
 // input in another thread.  This is straightforward, until it's time
-// to quit.  See ref: The Main Function, below for how this is
-// handled.
+// to quit.  See ref: The Debugger Main Function, below for how this
+// is handled.
 
 static void *do_input(void *arg)
 {
@@ -495,7 +495,7 @@ exit:
 
 #undef EXIT
 
-// ## The Main Function
+// ## The Debugger Main Function
 
 // First we need to define a signal handler.  See below for more
 // details.

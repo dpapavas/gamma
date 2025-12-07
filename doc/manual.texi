@@ -1,0 +1,19 @@
+\input texinfo.tex
+@afourpaper
+@fonttextsize 11
+
+@latex
+\overfullrule=1mm
+@end latex
+
+@contents
+
+@include ./src/main.cpp.manual.texi
+
+@node @acronym{GNU} General Public License
+@appendix @acronym{GNU} General Public License
+@include gpl-3.0.texi
+
+@node @acronym{GNU} Free Documentation License
+@appendix @acronym{GNU} Free Documentation License
+@include fdl-1.3.texi
