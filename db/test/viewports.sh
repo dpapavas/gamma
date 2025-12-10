@@ -1,6 +1,7 @@
 run() { rungamma -c "window test" \
                  -c "resize 1001 1001" \
-                 -c "target test" "$@" \
+                 -c "target test" \
+                 "$@" \
                  -c "info viewports"; }
 
 viewports() {
@@ -166,4 +167,9 @@ test_split_5() {
         | viewports 1 "0, 0" "250, 1000" "0, 0, 0" "0, 0, 0" 0.7 90 test "*" \
                     2 "250, 0" "250, 1000" "0, 0, 0" "0, 0, 0" 0.7 90 "" "" \
                     3 "500, 0" "500, 1000" "0, 0, 0" "0, 0, 0" 0.7 90 "" ""
+}
+
+test_target_option() {
+    run --target "other" -c "window other" |
+        viewports 1 "0, 0" "499, 499" "0, 0, 0" "0, 0, 0" 0.7 90 other "*"
 }

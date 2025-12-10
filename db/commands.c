@@ -364,12 +364,12 @@ static int try_scan(FILE *fp, const char *fmt, ...)
 #define PARSING_FINISHED                                \
     do {                                                \
         if (skip(fp) < 1 && !feof(fp)) {                \
-            fprintf(stderr, "error: invalid syntax");   \
+            print_error("error: invalid syntax");       \
                                                         \
             if (try_scan(fp, "%63[^\n]", s) == 1) {     \
-                fprintf(stderr, ", near \"%s\"\n", s);  \
+                print_error(", near \"%s\"\n", s);      \
             } else {                                    \
-                fprintf(stderr, "\n");                  \
+                print_error("\n");                      \
             }                                           \
                                                         \
             goto error;                                 \
@@ -382,7 +382,7 @@ static int try_scan(FILE *fp, const char *fmt, ...)
 #define NEEDS_WINDOW                                                    \
     do {                                                                \
         if (!w) {                                                       \
-            fprintf(stderr, "error: no window selected\n");             \
+            print_error("error: no window selected\n");                 \
             goto error;                                                 \
         }                                                               \
     } while(false)
@@ -399,6 +399,10 @@ int read_commands(FILE *fp)
         }
 
         static struct window *w;
+
+        if (!w) {
+            w = windows;
+        }
 
         if (!strcmp(s, "quit") || !strcmp(s, "exit")) {
             PARSING_FINISHED;
@@ -433,7 +437,7 @@ int read_commands(FILE *fp)
             const bool q = (s[0] == 'b');
 
             if (try_scan(fp, "%63s", s) != 1) {
-                fprintf(stderr, "error: no key specified\n");
+                print_error("error: no key specified\n");
                 goto error;
             }
 
@@ -456,8 +460,7 @@ int read_commands(FILE *fp)
                     }
 
                     if (i == sizeof(modifier_keys) / sizeof(modifier_keys[0])) {
-                        fprintf(
-                            stderr,
+                        print_error(
                             "error: invalid modifier '%c' specified\n", c[0]);
                         goto error;
                     }
@@ -473,7 +476,7 @@ int read_commands(FILE *fp)
 
                 if (c[1] == '\0') {
                     if (!isgraph(c[0])) {
-                        fprintf(stderr, "error: invalid key specified\n");
+                        print_error("error: invalid key specified\n");
                         goto error;
                     }
 
@@ -501,9 +504,7 @@ int read_commands(FILE *fp)
                 }
 
                 if (i == sizeof(function_keys) / sizeof(function_keys[0])) {
-                    fprintf(
-                        stderr,
-                        "error: invalid key '%s' specified\n", c);
+                    print_error("error: invalid key '%s' specified\n", c);
                     goto error;
                 }
 
@@ -518,7 +519,7 @@ int read_commands(FILE *fp)
                 char *t;
 
                 if (try_scan(fp, " %m[^\n]", &t) != 1) {
-                    fprintf(stderr, "error: no command specified\n");
+                    print_error("error: no command specified\n");
                     goto error;
                 }
 
@@ -560,7 +561,7 @@ int read_commands(FILE *fp)
                 struct key_binding *p = find_key_binding(m, k);
 
                 if (!p) {
-                    fprintf(stderr, "error: no such binding\n");
+                    print_error("error: no such binding\n");
                     goto error;
                 }
 
@@ -581,7 +582,7 @@ int read_commands(FILE *fp)
             // We read in the name and look through the window list.
 
             if (try_scan(fp, "%63s", s) != 1) {
-                fprintf(stderr, "error: no window name specified\n");
+                print_error("error: no window name specified\n");
                 goto error;
             }
 
@@ -617,7 +618,7 @@ int read_commands(FILE *fp)
             int a, b;
 
             if (try_scan(fp, "%d", &a) != 1 || try_scan(fp, "%d", &b) != 1) {
-                fprintf(stderr, "error: new size not specified\n");
+                print_error("error: new size not specified\n");
                 goto error;
             }
 
@@ -636,7 +637,7 @@ int read_commands(FILE *fp)
             size_t i;
 
             if (try_scan(fp, "%zu", &i) != 1) {
-                fprintf(stderr, "error: no viewport index specified\n");
+                print_error("error: no viewport index specified\n");
                 goto error;
             }
 
@@ -670,7 +671,7 @@ int read_commands(FILE *fp)
             //   exit.],
 
             if (try_scan(fp, "%ms", &c) != 1) {
-                fprintf(stderr, "error: no output file name specified\n");
+                print_error("error: no output file name specified\n");
                 goto error;
             }
 
@@ -694,8 +695,7 @@ int read_commands(FILE *fp)
                 } else if (!strcasecmp(c, ".svg")) {
                     i = GL2PS_SVG;
                 } else {
-                    fprintf(
-                        stderr, "error: output file has unknown extension\n");
+                    print_error("error: output file has unknown extension\n");
                     goto error;
                 }
             }
@@ -708,8 +708,7 @@ int read_commands(FILE *fp)
             FILE *fp = fopen(t, "wb");
 
             if (!fp) {
-                fprintf(
-                    stderr, "error: could not open output file (%s)\n",
+                print_error("error: could not open output file (%s)\n",
                     strerror(errno));
                 goto error;
             }
@@ -747,7 +746,7 @@ int read_commands(FILE *fp)
                 } else if (!strcmp(s, "vertically")) {
                     dir = VERTICALLY;
                 } else {
-                    fprintf(stderr, "error: invalid split direction specified\n");
+                    print_error("error: invalid split direction specified\n");
                     goto error;
                 }
 
@@ -950,11 +949,11 @@ int read_commands(FILE *fp)
                 } else if (!strcmp(s, "toggle")) {
                     p = true;
                 } else {
-                    fprintf(stderr, "error: invalid projection specified\n");
+                    print_error("error: invalid projection specified\n");
                     goto error;
                 }
             } else {
-                fprintf(stderr, "error: no projection specified\n");
+                print_error("error: no projection specified\n");
                 goto error;
             }
 
@@ -1009,7 +1008,7 @@ int read_commands(FILE *fp)
                         // the file we're currently reading from.
 
                         if (try_scan(fp, "%ms", &t) != 1) {
-                            fprintf(stderr, "error: no file name specified\n");
+                            print_error("error: no file name specified\n");
                             goto error;
                         }
 
@@ -1020,7 +1019,7 @@ int read_commands(FILE *fp)
                         free(t);
 
                         if (!fp) {
-                            perror("Could not open file");
+                            print_error("Could not open file (%s)\n", strerror(errno));
                             goto done;
                         }
 
@@ -1047,7 +1046,7 @@ int read_commands(FILE *fp)
 
                 if (do_scan(fp, "%4[STCN4nOF]", t) < 0
                     || (strcmp(t, "OFF") && strcmp(t, "COFF"))) {
-                    fprintf(stderr, "error: found unsupported or invalid data\n");
+                    print_error("error: found unsupported or invalid data\n");
                     goto error;
                 }
 
@@ -1059,8 +1058,7 @@ int read_commands(FILE *fp)
                 if (do_scan(fp, "%u", &a) != 1
                     || do_scan(fp, "%u", &b) != 1
                     || do_scan(fp, "%u", &c) != 1) {
-                    fprintf(
-                        stderr,
+                    print_error(
                         "could not read vertex, face, or edge counts\n");
 
                     goto error;
@@ -1081,8 +1079,7 @@ int read_commands(FILE *fp)
 
                     for (size_t j = 0; j < 3; j++) {
                         if (do_scan(fp, "%f", &p[j]) != 1) {
-                            fprintf(
-                                stderr,
+                            print_error(
                                 "could not read coordinate %zu of vertex %zu\n",
                                 j, i);
 
@@ -1098,8 +1095,7 @@ int read_commands(FILE *fp)
                     if (t[0] == 'C') {
                         for (size_t j = 3; j < 7; j++) {
                             if (do_scan(fp, "%f", &p[j]) != 1) {
-                                fprintf(
-                                    stderr,
+                                print_error(
                                     "could not read coordinate %zu of "
                                     "vertex %zu\n",
                                     j, i);
@@ -1143,8 +1139,7 @@ int read_commands(FILE *fp)
                     //   1. read the number of vertices into `l`,
 
                     if (do_scan(fp, "%zu", &l) != 1) {
-                        fprintf(
-                            stderr,
+                        print_error(
                             "could not read number of vertices for face %zu\n",
                             i);
 
@@ -1156,8 +1151,7 @@ int read_commands(FILE *fp)
                     unsigned int s[l];
                     for (size_t j = 0; j < l; j++) {
                         if (do_scan(fp, "%u", &s[j]) != 1) {
-                            fprintf(
-                                stderr,
+                            print_error(
                                 "could not read index %zu for face %zu\n",
                                 j, i);
 
@@ -1336,7 +1330,7 @@ int read_commands(FILE *fp)
                 } else if (!strcmp(s, "all")) {
                     mode = ALL;
                 } else {
-                    fprintf(stderr, "error: invalid mode specified\n");
+                    print_error("error: invalid mode specified\n");
                     goto error;
                 }
             }
@@ -1387,8 +1381,10 @@ int read_commands(FILE *fp)
                 p = stpcpy(p, settings.args);
             }
 
+            print_output("Running: %s\n", buffer.p);
+
             if (system(buffer.p)) {
-                fprintf(stderr, "error: execution failed\n");
+                print_error("error: execution failed\n");
                 goto error;
             }
         }
@@ -1425,19 +1421,21 @@ int read_commands(FILE *fp)
         } while (false)
 
 #define PRINT_TABLE(N, ...)                                             \
-        {                                                               \
-            const size_t n_ = N;                                        \
-            int widths_[n_ - 1] = {};                                   \
-            for (size_t phase_ = 0, i_ = 0; phase_ < 2; i_ = 0, phase_++) \
-                __VA_ARGS__                                             \
-        }
+        do {                                                            \
+            if (!settings.quiet) {                                      \
+                const size_t n_ = N;                                    \
+                int widths_[n_ - 1] = {};                               \
+                for (size_t phase_ = 0, i_ = 0; phase_ < 2; i_ = 0, phase_++) \
+                    __VA_ARGS__                                         \
+                        }                                               \
+        } while (false)
 
         //   `info subject` := Display information on a particular
         //   subject.  The subject can be any of the following:
 
         else if (!strcmp(s, "info")) {
             if (try_scan(fp, "%63s", s) != 1) {
-                fprintf(stderr, "error: no subject specified\n");
+                print_error("error: no subject specified\n");
                 goto error;
             }
 
@@ -1447,7 +1445,7 @@ int read_commands(FILE *fp)
                 PARSING_FINISHED;
 
                 if (!windows) {
-                    puts("No existing windows.");
+                    print_output("No existing windows.\n");
                 } else {
                     PRINT_TABLE(
                         4, {
@@ -1628,7 +1626,7 @@ int read_commands(FILE *fp)
                 PARSING_FINISHED;
 
                 if (key_bindings.count == 0) {
-                    puts("No existing bindings.");
+                    print_output("No existing bindings.\n");
                 } else {
                     PRINT_TABLE(
                         2, {
@@ -1703,7 +1701,7 @@ int read_commands(FILE *fp)
             else {
                 PARSING_FINISHED;
 
-                fprintf(stderr, "error: no such subject\n");
+                print_error("error: no such subject\n");
                 goto error;
             }
         }
@@ -1725,7 +1723,7 @@ int read_commands(FILE *fp)
 #define SET_LINE(FP, SETTING)                   \
         do {                                    \
             if (SETTING) {                      \
-                free((char *)SETTING);          \
+                free(SETTING);                  \
                 SETTING = nullptr;              \
             }                                   \
                                                 \
@@ -1750,7 +1748,7 @@ int read_commands(FILE *fp)
                        || !strcmp(s_, "false")) {                       \
                 SETTING = false;                                        \
             } else {                                                    \
-                fprintf(stderr, "error: \"yes\", or \"no\" expected\n"); \
+                print_error("error: \"yes\", or \"no\" expected\n"); \
                 goto error;                                             \
             }                                                           \
         } while(false);
@@ -1780,7 +1778,7 @@ int read_commands(FILE *fp)
             PARSING_FINISHED;                   \
                                                 \
             if (SETTING) {                      \
-                puts(SETTING);                  \
+                print_output("%s\n", SETTING);  \
             }                                   \
         } while(false);
 
@@ -1789,9 +1787,9 @@ int read_commands(FILE *fp)
             PARSING_FINISHED;                   \
                                                 \
             if (SETTING) {                      \
-                puts("yes");                    \
+                print_output("yes\n");          \
             } else {                            \
-                puts("no");                     \
+                print_output("no\n");           \
             }                                   \
         } while(false);
 
@@ -1801,10 +1799,10 @@ int read_commands(FILE *fp)
                                                         \
             size_t n_ = N;                              \
             for (size_t i = 0; i < n_ - 1; i++) {       \
-                printf(SPEC " ", SETTING[i]);           \
+                print_output(SPEC " ", SETTING[i]);           \
             }                                           \
                                                         \
-            printf(SPEC "\n", SETTING[n_ - 1]);         \
+            print_output(SPEC "\n", SETTING[n_ - 1]);         \
         } while(false);
 
         // `set setting value`
@@ -1813,7 +1811,7 @@ int read_commands(FILE *fp)
 
         else if (!strcmp(s, "set")) {
             if (try_scan(fp, "%63s", s) != 1) {
-                fprintf(stderr, "error: no setting specified\n");
+                print_error("error: no setting specified\n");
                 goto error;
             }
 
@@ -1829,6 +1827,12 @@ int read_commands(FILE *fp)
 
             else if (!strcmp(s, "args")) {
                 SET_LINE(fp, settings.args);
+            }
+
+            //   `quiet` := Do not print any messages to the standard output.
+
+            else if (!strcmp(s, "quiet")) {
+                SET_BOOLEAN(fp, settings.quiet);
             }
 
             //   `present-on-reload` := Present the window to the user
@@ -1863,7 +1867,7 @@ int read_commands(FILE *fp)
             }
 
             else {
-                fprintf(stderr, "error: no such setting\n");
+                print_error("error: no such setting\n");
                 goto error;
             }
         }
@@ -1875,7 +1879,7 @@ int read_commands(FILE *fp)
 
         else if (!strcmp(s, "show")) {
             if (try_scan(fp, "%63s", s) != 1) {
-                fprintf(stderr, "error: no setting specified\n");
+                print_error("error: no setting specified\n");
                 goto error;
             }
 
@@ -1883,6 +1887,8 @@ int read_commands(FILE *fp)
                 SHOW_STRING(settings.program);
             } else if (!strcmp(s, "args")) {
                 SHOW_STRING(settings.args);
+            } else if (!strcmp(s, "quiet")) {
+                SHOW_BOOLEAN(settings.quiet);
             } else if (!strcmp(s, "present-on-reload")) {
                 SHOW_BOOLEAN(settings.present_on_reload);
             } else if (!strcmp(s, "default-color")) {
@@ -1892,7 +1898,7 @@ int read_commands(FILE *fp)
             } else if (!strcmp(s, "mouse-sensitivity")) {
                 SHOW_VALUES((&settings.mouse_sensitivity), "%lg", 1);
             } else {
-                fprintf(stderr, "error: no such setting\n");
+                print_error("error: no such setting\n");
                 goto error;
             }
 
@@ -1903,7 +1909,7 @@ int read_commands(FILE *fp)
         }
 
         else {
-            fprintf(stderr, "error: invalid command \"%s\"\n", s);
+            print_error("error: invalid command \"%s\"\n", s);
             goto error;
         }
 

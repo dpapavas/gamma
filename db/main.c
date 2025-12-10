@@ -36,7 +36,7 @@
 
 static void error_callback(int error, const char *description)
 {
-    fprintf(stderr, "GLFW error: %s\n", description);
+    print_error("GLFW error: %s\n", description);
 }
 
 // ## Command Line Options
@@ -44,15 +44,20 @@ static void error_callback(int error, const char *description)
 enum {
     VERSION = 1000,
     NO_INIT,
-    BATCH
+    BATCH,
+    ARGS,
+    TARGET
 };
 
 static struct option options[] = {
     {"help", no_argument, nullptr, 'h'},
     {"version", no_argument, nullptr, VERSION},
 
+    {"quiet", no_argument, nullptr, 'q'},
     {"no-init", no_argument, nullptr, NO_INIT},
     {"batch", no_argument, nullptr, BATCH},
+    {"args", no_argument, nullptr, ARGS},
+    {"target", required_argument, nullptr, TARGET},
     {"command", required_argument, nullptr, 'c'},
     {"execute", required_argument, nullptr, 'x'},
 
@@ -225,8 +230,8 @@ static char **completion_function(const char *text, int start, int end)
 
     {
         char *v[] = {
-            "program", "args", "present-on-reload", "default-color", "edge-color",
-            "mouse-sensitivity", nullptr};
+            "program", "args", "quiet", "present-on-reload", "default-color",
+            "edge-color", "mouse-sensitivity", nullptr};
 
         WHEN_IN_1("set", {
                 return MATCHES(nullptr, v);
@@ -416,13 +421,13 @@ static void *do_ipc(void *arg)
     // When receiving a `SIGTERM` we don't want to print an error
     // message.
 
-#define EXIT(MSG)                               \
-    do {                                        \
-        if (errno != EINTR || running) {        \
-            perror(MSG);                        \
-        }                                       \
-        goto exit;                              \
-    }                                           \
+#define EXIT(MSG)                                       \
+    do {                                                \
+        if (errno != EINTR || running) {                \
+            print_error(MSG ": %s\n", strerror(errno)); \
+        }                                               \
+        goto exit;                                      \
+    }                                                   \
     while (false)
 
     // We use a UNIX domain socket to listen for incoming connections
@@ -431,8 +436,7 @@ static void *do_ipc(void *arg)
     const int listen_socket = socket(AF_UNIX, SOCK_STREAM, 0);
 
     if (listen_socket == -1) {
-        perror("Failed to create listening socket");
-        return nullptr;
+        EXIT("Failed to create listening socket");
     }
 
     // We bind the socket to an abstract address, to spare ourselves
@@ -580,18 +584,41 @@ int main(int argc, char *argv[])
     pthread_t threads[2] = {};
 
     if (pthread_create(&threads[0], nullptr, do_ipc, nullptr)) {
-        perror("Failed to create IPC thread\n");
+        print_error("Failed to create IPC thread: %s\n", strerror(errno));
     }
 
     int n, option, no_init = 0, batch = 0;
     while ((n = -1, option = getopt_long(
                 argc, argv,
-                "-hc:x:",
+                "-hc:x:q",
                 options, &n)) != -1) {
         switch (option) {
+        case 'h':
+            printf("\
+Usage: %s [OPTION...]\n\
+\n\
+Options:\n\
+  -h, --help            Display this help message.\n\
+  --version             Display version information.\n\
+\n\
+  -q, --quiet           Do not print any messages to standard output.\n\
+  -c COMMAND, --command=COMMAND\n\
+                        Execute a single command.  May be used\n\
+                        multiple times.\n\
+  -x FILE, --execute=FILE\n\
+                        Execute commands from a file.  May be\n\
+                        used multiple times.\n\
+  --no-init             Do not read initialization files.\n\
+  --batch               Exit after processing options.\n\
+  --args [ARGS ...]     Set the \"args\" option to the following\n\
+                        arguments.\n\
+  --target TARGET       Create a window on startup and set its main\n\
+                        viewport target.\n", argv[0]);
+
+            exit(EXIT_SUCCESS);
 
         case VERSION:
-            puts("\
+            print_output("\
 Gamma Debugger " VERSION_NUMBER "\n\
 Copyright (C) 2025 Dimitris Papavasiliou.\n\
 \n\
@@ -606,37 +633,50 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n\
 GNU General Public License for more details.\n\
 \n\
 You should have received a copy of the GNU General Public License\n\
-along with this program. If not, see http://www.gnu.org/licenses/.");
+along with this program. If not, see http://www.gnu.org/licenses/.\n");
 
             exit(EXIT_SUCCESS);
 
-        case BATCH:
-            batch = 1;
-            settings.present_on_reload = false;
+        case 'q':
+            settings.quiet = true;
             break;
 
         case NO_INIT:
             no_init = 1;
             break;
 
-        case 'h':
-            printf("\
-Usage: %s [OPTION...]\n\
-\n\
-Options:\n\
-  -h, --help            Display this help message.\n\
-  --version             Display version information.\n\
-\n\
-  -c COMMAND, --command=COMMAND\n\
-                        Execute a single command.  May be used\n\
-                        multiple times.\n\
-  -x FILE, --execute=FILE\n\
-                        Execute commands from a file.  May be\n\
-                        used multiple times.\n\
-  --no-init             Do not read initialization files.\n\
-  --batch               Exit after processing options.\n", argv[0]);
+        case BATCH:
+            batch = 1;
+            settings.present_on_reload = false;
+            break;
 
-            exit(EXIT_SUCCESS);
+        case ARGS:
+        {
+            size_t n = 0;
+            for (int i = optind; i < argc; n += strlen(argv[i++]) + 1);
+
+            settings.args = (char *)malloc(n);
+            for (char *s = settings.args;; optind++) {
+                s = stpcpy(s, argv[optind]);
+
+                if (optind == argc - 1) {
+                    break;
+                }
+
+                s = stpcpy(s, " ");
+            }
+        }
+
+            break;
+
+        case TARGET:
+        {
+            struct viewport *v = find_window(optarg)->viewports;
+
+            free((char *)v->name);
+            v->name = strdup(optarg);
+        }
+        break;
 
         case 'c':
             if (evaluate(optarg) < 0) {
@@ -689,7 +729,7 @@ Options:\n\
 
             fclose(fp);
         } else if (errno != ENOENT) {
-            perror("Could not open init file");
+            print_error("Could not open init file: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
@@ -698,7 +738,7 @@ Options:\n\
     // go ahead and start the thread for terminal input.
 
     if (pthread_create(&threads[1], nullptr, do_input, nullptr)) {
-        perror("Failed to create input thread\n");
+        print_error("Failed to create input thread: %s\n", strerror(errno));
     }
 
     // Now we run the main loop and clean up when we've determined

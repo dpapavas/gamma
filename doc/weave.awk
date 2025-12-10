@@ -190,9 +190,7 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" target {
 
     text = text "@center @image {" a ",145mm}\n"
 
-    in_print = (bindir                          \
-                "/db/gammadb --batch "          \
-                 " -c \"window " a "\"")
+    in_print = (bindir "/db/gammadb -q --batch " " -c \"window " a "\"")
 
     if (n > 2) {
       in_print = (in_print                                      \

@@ -70,6 +70,13 @@ test_set() {
 EOF
 }
 
+# This is a special case.  Once we set it to "yes", we expect no
+# further ouput in the show command.
+
+test_set_quiet() {
+    run -c "set quiet yes" -c "show quiet" | ok
+}
+
 test_bind_no_key() { run -c "bind" | error "no key specified"; }
 test_bind_no_command() { run -c "bind a" | error "no command specified"; }
 test_bind_invalid_key_1() { run -c "bind X-a" | error "invalid modifier 'X' specified"; }

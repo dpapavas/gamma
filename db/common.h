@@ -14,6 +14,14 @@
 
 #define DEBUG
 
+#define print_error(...) fprintf(stderr, __VA_ARGS__)
+#define print_output(...)                       \
+    do {                                        \
+        if (!settings.quiet) {                  \
+            printf(__VA_ARGS__);                \
+        }                                       \
+    } while (false)
+
 // --- program
 
 // The following definitions are used through the sources and are
@@ -24,9 +32,10 @@
 // Ref: Settings.
 
 struct settings {
-    const char *args;
-    const char *program;
+    char *args;
+    char *program;
 
+    bool quiet;
     bool present_on_reload;
 
     double default_color[4], edge_color[4];

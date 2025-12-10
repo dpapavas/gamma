@@ -28,3 +28,8 @@ test_window() {
     run -c "window name" | windows 1 "500, 500" No name \
                                    2 "1000, 1000" No test
 }
+
+test_target_option() {
+    run --target "other" | windows 1 "500, 500" No other \
+                                   2 "1000, 1000" No test;
+}

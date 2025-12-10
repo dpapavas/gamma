@@ -160,24 +160,24 @@ static void APIENTRY debug_message_callback(
     const GLchar *message,
     const void *userParam)
 {
-    fprintf(stderr, "GL ");
+    print_error("GL ");
 
     switch (severity) {
     case GL_DEBUG_SEVERITY_NOTIFICATION:
-        fprintf(stderr, "note");
+        print_error("note");
         break;
     case GL_DEBUG_SEVERITY_LOW:
-        fprintf(stderr, "warning");
+        print_error("warning");
         break;
     case GL_DEBUG_SEVERITY_MEDIUM:
-        fprintf(stderr, "severe warning");
+        print_error("severe warning");
         break;
     case GL_DEBUG_SEVERITY_HIGH:
-        fprintf(stderr, "error");
+        print_error("error");
         break;
     }
 
-    fprintf(stderr, ": %s\n", message);
+    print_error(": %s\n", message);
 }
 #endif
 
@@ -227,7 +227,7 @@ static GLuint compile_shader(GLenum type, const char *source)
     if (!p) {
         GLchar s[512];
         glGetShaderInfoLog(i, 512, nullptr, s);
-        fprintf(stderr, "Shader compilation error:\n%s\n", s);
+        print_error("Shader compilation error:\n%s\n", s);
     }
 
     return i;
@@ -247,7 +247,7 @@ static GLuint create_program(GLuint vertex, GLuint fragment)
     if (!p) {
         GLchar s[512];
         glGetProgramInfoLog(i, 512, nullptr, s);
-        fprintf(stderr, "Program linking error:\n%s\n", s);
+        print_error("Program linking error:\n%s\n", s);
     }
 
     return i;
@@ -324,7 +324,7 @@ void printf_text(struct text *t, size_t size, const char *fmt, ...)
 
         p = FcNameParse(s ? s : (FcChar8 *)"sans-serif");
         if (!p) {
-            fprintf (stderr, "Could not parse the font pattern\n");
+            print_error("Could not parse the font pattern\n");
             goto error;
         }
 
@@ -336,7 +336,7 @@ void printf_text(struct text *t, size_t size, const char *fmt, ...)
 
         if (r != FcResultMatch
             || FcPatternGetString(m, FC_FILE, 0, &s) != FcResultMatch) {
-            fprintf (stderr, "Could not match the font pattern\n");
+            print_error("Could not match the font pattern\n");
             goto error;
         }
 
@@ -617,7 +617,7 @@ struct window *find_window(const char *name)
     // initialize GLAD once.
 
     if (!w->next && !gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        fprintf(stderr, "Failed to initialize GLAD\n");
+        print_error("Failed to initialize GLAD\n");
         exit(EXIT_FAILURE);
     }
 
