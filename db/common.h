@@ -115,7 +115,7 @@ void printf_text(struct text *t, size_t size, const char *fmt, ...);
 // Ref: Viewports.
 
 #define DEFAULT_VIEWPORT_NAME ""
-#define DEFAULT_VIEWPORT_ANGLE 90.0f
+#define DEFAULT_VIEWPORT_ANGLE 50.0f
 #define DEFAULT_VIEWPORT_ZOOM 0.7f
 
 enum projection {ORTHOGRAPHIC, PERSPECTIVE};
