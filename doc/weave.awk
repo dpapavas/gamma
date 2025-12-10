@@ -20,12 +20,12 @@ function print_program()
   print "@end latex"
 }
 
-function substitue_directive(from, to, pre, post)
+function substitute_directive(from, to, pre, post)
 {
   a = "[" pre "][[:space:]]*" from ":[[:space:]]*"
   b = pre to "{"
 
-  $0 = gensub(a "([^" post "]+)[" post "]", b "\\1}" post, "g")
+  $0 = gensub(a "([^" post "]+)([" post "])", b "\\1}\\2", "g")
 
   if (sub(a, b)) {
     in_directive = 1
@@ -327,18 +327,22 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" target {
 
     # Whole sentence cross-references
 
-    substitue_directive("Ref", "  @xref", "", ".")
+    substitute_directive("Ref", "  @xref", "", ".")
 
     # End of sentence or parenthesized cross-references
 
-    substitue_directive("ref", "@pxref", "(", ")")
-    substitue_directive("ref", " @pxref", ";", ".")
-    substitue_directive("ref", " @pxref", ",", ".")
-    substitue_directive("ref", " @ref", "", ".,")
+    substitute_directive("ref", "@pxref", "(", ")")
+    substitute_directive("ref", " @pxref", ";", ".")
+    substitute_directive("ref", " @pxref", ",", ".")
+    substitute_directive("ref", " @ref", "", ".,")
 
     if (sub(/^[[:space:]]*anchor:[[:space:]]*/, "@anchor{")) {
       sub(/$/, "}")
     }
+
+    # Definition
+
+    substitute_directive("def", " @dfn", "", "[:space:][:punct:]")
 
     # Special glyphs
 
