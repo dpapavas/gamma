@@ -303,8 +303,23 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" target {
 
     # `code` spans
 
-    while(sub(/`/, (in_code ? "}" : "@code{"))) {
-      in_code = !in_code
+    while ((in_code && sub(/`/, "}")) ||
+           (!in_code && match($0, /[ksvfco]?`/))) {
+      if (!in_code) {
+        s = substr($0, RSTART, RLENGTH)
+
+        (s == "k`" && sub(/k`/, "@kbd{")) ||
+          (s == "s`" && sub(/s`/, "@samp{")) ||
+          (s == "v`" && sub(/v`/, "@var{")) ||
+          (s == "f`" && sub(/f`/, "@file{")) ||
+          (s == "c`" && sub(/c`/, "@command{")) ||
+          (s == "o`" && sub(/o`/, "@option{")) ||
+          (s == "`" && sub(/`/, "@code{"));
+
+        in_code = 1;
+      } else {
+        in_code = 0;
+      }
     }
 
     # **strong** and *emphasized* text
