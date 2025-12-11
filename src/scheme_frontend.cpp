@@ -608,10 +608,29 @@ static SCM define_option(SCM s, SCM t)
 static SCM output(SCM args)
 {
     std::string s;
+    int n = -1;
     std::vector<Boxed_polyhedron> v;
 
-    const int i = try_pop_argument(1, args, s);
+    // The first argument is the name of the output which can be
+    // either a string or a positive integer.  It can also be omitted
+    // altogether in which case the output is unnamed.
+
+    const int i = try_pop_argument(1, args, s) || try_pop_argument(1, args, n);
     const SCM t = scm_car(args);
+
+    // Numeric outputs are converted to strings and are typically used
+    // to target unnamed viewports in the debugger.
+
+    if (i && s.empty()) {
+        if (n > 0) {
+            s = std::to_string(n);
+        } else {
+            scm_misc_error(
+                "output",
+                "wrong argument in position ~A (expecting positive integer or string): ~S",
+                scm_list_2(scm_from_int(1), scm_from_int(n)));
+        }
+    }
 
     pop_arguments(1 + i, args, v);
 
@@ -2212,33 +2231,38 @@ struct context {
 };
 
 // It is often useful to quickly and temporarily create an output from
-// intermediae results of a computation in order to inspect them while
-// debugging.  While one could simply wrap the relevant expression
-// inside a call to `output`, the following function implements a
-// reader extension that allows us to achieve this by simply
-// prepending `#>` to it.  Alternatively, using `#>foo` will result in
-// the equivalent of `(output "foo" ...)`.
+// intermediate results of a computation, in order to inspect them
+// while debugging.  While one could simply wrap the relevant
+// expression inside a call to `output`, the following function
+// implements a reader extension that allows us to achieve this by
+// simply prepending `#>` to it.  Alternatively, using `#>foo` will
+// result in the equivalent of `(output "foo" ...)`.
 
 static SCM read_hash_greater(SCM chr, SCM port)
 {
-    const SCM s = scm_read(port);
+    SCM s = scm_read(port);
 
-    if (scm_is_true(scm_eof_object_p(s))) {
-        return s;
+    // As targets for the output, we allow either:
+
+    //   1. integers (e.g `#>1`),
+
+    if (scm_is_exact_integer(s)) {
+        s = scm_list_2(s, scm_read(port));
     }
 
-    if (scm_is_symbol(s)) {
-        const SCM t = scm_read(port);
+    //   2. symbols (e.g. `#>part`), or
 
-        if (scm_is_true(scm_eof_object_p(t))) {
-            return t;
-        }
-
-        return scm_list_3(
-            scm_from_latin1_symbol("output"), scm_symbol_to_string(s), t);
+    else if (scm_is_symbol(s)) {
+        s = scm_list_2(scm_symbol_to_string(s), scm_read(port));
     }
 
-    return scm_list_2(scm_from_latin1_symbol("output"), s);
+    //   3. nothing.
+
+    else {
+        s = scm_cons(s, SCM_EOL);
+    }
+
+    return scm_cons(scm_from_latin1_symbol("output"), s);
 }
 
 static void *run_scheme_with_guile(void *data)

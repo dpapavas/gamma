@@ -200,7 +200,7 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" target {
       for (i = 2; i <= n; i++) {
         in_print = (in_print \
                     " -c \"focus " (i - 1) "\""                  \
-                    " -c \"target out" (i - 1) "\""              \
+                    " -c \"target " (i - 1) "\""                 \
                     " -c \"view orthographic\"")
 
         m = split(v[i], u, ",")
