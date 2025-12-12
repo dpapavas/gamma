@@ -387,9 +387,25 @@ static void *do_input(void *arg)
 
     char *s = nullptr;
     while (running && (s = readline("# "))) {
-        if (s[0] != '\0') {
-            add_history(s);
+        char *t;
+        for (t = s; isspace(*t); t++);
 
+        // If the line entered by the user is empty, we repeat the
+        // last command.  GNU History's manual doesn't seem to be very
+        // clear here.  It says:
+
+        //   > The range of valid values of offset starts at
+        //   > history_base and ends at history_length - 1
+
+        // Looking at the implementation of `history_get`, this should
+        // probably read "at history_base + history_length - 1".
+
+        if (*t == '\0') {
+            if (history_length > 0) {
+                evaluate(history_get(history_base + history_length - 1)->line);
+            }
+        } else {
+            add_history(s);
             evaluate(s);
         }
 
