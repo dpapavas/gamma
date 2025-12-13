@@ -8,7 +8,7 @@
 
 @contents
 
-@include ./src/main.cpp.manual.texi
+@include src_main_cpp.texi
 
 @node @acronym{GNU} General Public License
 @appendix @acronym{GNU} General Public License
