@@ -1,6 +1,4 @@
 BEGINFILE {
-  primed = 0
-
   # Substitutions to "parse" arguments to ```print.
 
   printsubs["^z:(-?[[:digit:].]+)$"] = "zoom \\1"
@@ -97,8 +95,11 @@ function close_list()
   }
 }
 
-$0 ~ "^[[:space:]]*// ---[[:space:]]*" target {
-  primed = !primed
+$0 ~ "^[[:space:]]*// ---[[:space:]]*" {
+  sub("^[[:space:]]*// ---[[:space:]]*", "")
+  sub("/all$", "")
+
+  primed = ($0 == target) || (target ~ "^" $0 "/")
   next
 }
 
