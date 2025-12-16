@@ -40,12 +40,23 @@ static void multiply_matrix_4(
 
 // # Viewports
 
-// Viewports are rectangular subdvisions of a window, each dedicated
-// to showing one particular object.  Here, we're mostly concerned
-// with creating and manipulating them, along with their viewing and
-// projection characteristics.  For details on loading the actual
-// geometry, ref: Refreshing Object Geometry.  For details on
-// rendering, ref: Refreshing Window Contents.
+// Viewports are rectangular subdvisions of a window, each showing one
+// particular object.  Every viewport has a name as does every object
+// and by convention, when an object is loaded, it is displayed in
+// every viewport with a matching name.
+
+// When a viewport is created, it is assigned its default name, which
+// is the textual representation of its index.  This allows them to be
+// used straight away, by outputting to numeric targets, e.g. with
+// something like `#>1`.  Alternatively, their name can be set to that
+// of a particular output with the `target` command, dedicating them
+// to displaying the object it produces.
+
+// Here, we're mostly concerned with creating and manipulating them,
+// along with their viewing and projection characteristics.  For
+// details on loading the actual geometry, ref: Refreshing Object
+// Geometry.  For details on rendering, ref: Refreshing Window
+// Contents.
 
 // ## Viewing and Projection
 

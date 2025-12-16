@@ -572,7 +572,7 @@ struct window *find_window(const char *name)
 
     *w->viewports = (struct viewport){
         1,
-        strdup(DEFAULT_VIEWPORT_NAME),
+        strdup("1"),
         {true, true},
         0, width - 1, 0, height - 1,
         PERSPECTIVE, 0.1f, 100.0f,
@@ -907,7 +907,9 @@ static bool refresh_window(struct window *w)
         }
 
         //   4. text annotations, which is currently just the viewport
-        //   index and target.
+        //   index and target^[We only display the target if it has
+        //   been changed from the default, which is the viewport
+        //   index].
 
         {
             if (!v->annotation) {
@@ -917,8 +919,9 @@ static bool refresh_window(struct window *w)
             struct text *t = v->annotation;
 
             if (v->stale.annotation) {
-                printf_text(
-                    t, 18, (v->name[0] != '\0') ? "%d: %s" : "%d", i, v->name);
+                size_t j = 0;
+                sscanf(v->name, "%zu", &j);
+                printf_text(t, 18, (j != v->index) ? "%d: %s" : "%d", i, v->name);
             }
 
             glEnable(GL_BLEND);

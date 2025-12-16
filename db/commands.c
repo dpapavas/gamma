@@ -767,10 +767,11 @@ int read_commands(FILE *fp)
                     (struct viewport *)malloc(sizeof(struct viewport));
 
                 *u = *v;
-                u->name = strdup(DEFAULT_VIEWPORT_NAME);
                 u->vao = 0;
-
                 u->index = v->index + 1;
+                u->name = (const char *)malloc(4);
+                snprintf((char *)u->name, 3, "%zu", u->index);
+
                 v->next = u;
 
                 switch (dir) {
