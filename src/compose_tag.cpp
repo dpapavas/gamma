@@ -18,7 +18,7 @@
 #include "compose_tag.h"
 #include "kernel.h"
 
-// --- program
+// Document: program
 
 // ## Serialization of Simple Arguments
 

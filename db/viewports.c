@@ -36,7 +36,7 @@ static void multiply_matrix_4(
     R[15] = A[12] * B[3] + A[13] * B[7] + A[14] * B[11] + A[15] * B[15];
 }
 
-// --- program
+// Document: program
 
 // # Viewports
 

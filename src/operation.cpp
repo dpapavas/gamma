@@ -29,7 +29,7 @@
 #include "options.h"
 #include "operation.h"
 
-// --- program
+// Document: program
 
 // ## Operation Evaluation Messages
 

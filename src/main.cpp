@@ -106,7 +106,7 @@ extern "C" const char *__lsan_default_suppressions() {
 
 // --- manual
 
-// --- program
+// Document: program
 
 // ## The Main Function
 

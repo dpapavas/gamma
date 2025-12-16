@@ -30,7 +30,7 @@
 #include "options.h"
 #include "compose_tag.h"
 
-// --- program
+// Document: program
 
 // # Operations
 
@@ -304,6 +304,6 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-// --- program
+// Document: none
 
 #endif

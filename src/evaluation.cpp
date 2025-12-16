@@ -31,7 +31,7 @@
 #include "basic_operations.h"
 #include "kernel.h"
 
-// --- program
+// Document: program
 
 // # Operation Evaluation
 

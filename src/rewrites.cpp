@@ -27,7 +27,7 @@
 #include "rewrites.h"
 #include "evaluation.h"
 
-// --- program
+// Document: program
 
 // # Graph Rewriting
 

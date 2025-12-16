@@ -17,7 +17,7 @@
 
 #define VERSION_NUMBER "0.1.0"
 
-// --- program
+// Document: program
 
 // # The Debugger
 

@@ -22,7 +22,7 @@
 #include <ostream>
 #include <tuple>
 
-// --- program
+// Document: program
 
 // ## Tag Composition
 
@@ -108,6 +108,6 @@ std::string compose_tag(const char *name, Args &&... args)
     return s.str();
 }
 
-// --- program
+// Document: none
 
 #endif

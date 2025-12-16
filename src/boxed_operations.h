@@ -25,7 +25,7 @@
 #include "conic_polygon_types.h"
 #include "polyhedron_types.h"
 
-// --- program
+// Document: program
 
 // ## Boxed Operations
 

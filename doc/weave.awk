@@ -95,8 +95,8 @@ function close_list()
   }
 }
 
-$0 ~ "^[[:space:]]*" prefix "[[:space:]]?---[[:space:]]*" {
-  sub("^[[:space:]]*" prefix "[[:space:]]?---[[:space:]]*", "")
+$0 ~ "^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*" {
+  sub("^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*", "")
   sub("/all$", "")
 
   primed = ($0 == target) || (target ~ "^" $0 "/")
