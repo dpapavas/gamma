@@ -95,8 +95,8 @@ function close_list()
   }
 }
 
-$0 ~ "^[[:space:]]*// ---[[:space:]]*" {
-  sub("^[[:space:]]*// ---[[:space:]]*", "")
+$0 ~ "^[[:space:]]*" prefix "[[:space:]]?---[[:space:]]*" {
+  sub("^[[:space:]]*" prefix "[[:space:]]?---[[:space:]]*", "")
   sub("/all$", "")
 
   primed = ($0 == target) || (target ~ "^" $0 "/")
@@ -105,9 +105,24 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
 
 !primed { next }
 
-# Commented text
+# Blank lines
 
-/^[[:space:]]*\/\// {
+!(in_example || in_listing || in_graph || in_print) && /^[[:space:]]*$/ {
+  if (in_text && text) {
+    close_list()
+    flush_text()
+
+    text = ""
+  }
+
+  if (!in_program) {
+    next
+  }
+}
+
+# Document text
+
+$0 ~ "^[[:space:]]*" prefix {
   if (in_program) {
     if (program) {
       print_program()
@@ -121,11 +136,13 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
     in_text = 1;
   }
 
-  sub(/^[[:space:]]*\/\/[[:space:]]?/, "")
+  if (prefix) {
+    sub("^[[:space:]]*" prefix "[[:space:]]?", "")
+  }
 
   # Lists and tables
 
-  if (/^ {2,}/ && (in_indent || !(in_example || in_listing || in_graph))) {
+  if (/^ {2,}/ && (in_indent || !(in_example || in_listing || in_graph || in_print))) {
     in_indent = 1
 
     sub(/^ */, "")
@@ -188,7 +205,7 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
   } else if (/^Concept:/) {
     text = text gensub(/^Concept:[[:space:]]*(.*)$/, "@cindex \\1\n", 1)
   } else if (/^```print/) {
-    a = prefix "." ++figures
+    a = path "." ++figures
     n = split($0, v, ";")
 
     text = text "@center @image {" a ",145mm}\n"
@@ -227,7 +244,7 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
                 " -c \"print " a ".pdf\"")
 
   } else if (/^```graph/) {
-    a = prefix "." ++figures
+    a = path "." ++figures
     text = text "@noindent\n@center @image {" a "}\n"
 
     in_graph = (/,neato/ ? "neato" : "dot") " -Tpdf -o " a ".pdf"
@@ -263,7 +280,7 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
         text = text "\n@end example\n"
         in_example = 0
       } else if ($0 != "```") {
-        text = text "\n@latex\n\\begin{lstlisting}[language=" substr($0, 4) "]"
+        text = text "\n@latex\n\\begin{lstlisting}[style=" substr($0, 4) "]"
         in_listing = 1
       } else {
         text = text "@example"
@@ -390,24 +407,9 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
   next
 }
 
-# Blank lines
-
-/^[[:space:]]*$/ {
-  if (in_text && text) {
-    close_list()
-    flush_text()
-
-    text = ""
-  }
-
-  if (!in_program) {
-    next
-  }
-}
-
 # Progam source code
 
-{
+prefix {
   if (in_text) {
     in_text = 0
   }
@@ -425,5 +427,7 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
 END {
   if (in_program) {
     print_program()
+  } else {
+    flush_text()
   }
 }

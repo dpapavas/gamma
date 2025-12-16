@@ -26,6 +26,10 @@
         identifierstyle=\color{black}\bfseries,
         keywordstyle=\color{gray4},
 }
+
+\lstdefinestyle{Scheme} {
+        language={Lisp}
+}
 @end latex
 
 @exampleindent 2
@@ -40,50 +44,7 @@
 
 @part Part II:@* The Front End
 
-@node The Front End
-@chapter The Front End
-
-The preceding material assumed the existence of an operation graph,
-representing a calculation producing some desired result.  While such
-graphs can be created at a low level (as is done in the tests for
-instance), we would rather be able to specify arbitrary calculations
-as easily as possible (not to mention without having to recompile the
-program).  This is where front ends come in.
-
-
-A front end is called upon to execute a program, which is typically
-read from a file.  These programs are written in high level languages,
-which are augmented with libraries of functions implementing the
-various operations that can be added to the graph, along with types
-that represent the data they operate on (polygons and polyhedra,
-points and planes, transformations, etc.)
-
-Invoking these functions during the course of the program instantiates
-operations and links them into the graph appropriately.  Consider for
-instance the following small Scheme program:
-
-@example
-(import (gamma polyhedra) (gamma operations))
-(define-output hemisphere (clip (sphere 10) (plane 0 0 1 0)))
-@end example
-
-The first line imports the libraries containing polyhedral primitives,
-and operations.  From the former it uses the @code{sphere} function
-which instantiates a @code{Sphere_operation} of radius 10, adds it to
-the graph and returns it. This is then passed to the @code{clip}
-function, which instantiates a @code{Polyhedron_clip_operation} and
-links it into the graph as a successor to the @code{Sphere_operation}
-which is its first operand.  Its second operand is created using the
-@code{plane} function, which returns a @code{Plane_3} representing the
-XY plane.  Finally, the result of the clip operation is used to define
-the @code{hemisphere} output.
-
-Once executed, the program will have resulted in the instantiation of
-a simple graph with two operations (the plane is not an operation and
-hence not part of the graph; it's simply passed to the clip
-operation), which can then be evaluated to yield a hemisphere of
-radius 10.
-
+@include doc_program_frontend_introduction.texi
 @include src_scheme_frontend_cpp.texi
 
 @part Part III:@* The Tests

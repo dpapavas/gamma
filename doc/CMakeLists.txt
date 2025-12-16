@@ -5,7 +5,9 @@ set(program_SOURCES src/operation.h src/operation.cpp src/evaluation.cpp src/bas
 
   src/test/fixtures.h src/test/rewrites.cpp
 
-  db/common.h db/main.c db/windows.c db/viewports.c db/commands.c)
+  db/common.h db/main.c db/windows.c db/viewports.c db/commands.c
+
+  doc/program_frontend_introduction)
 
 set(manual_SOURCES src/main.cpp)
 
@@ -21,6 +23,12 @@ foreach(WHAT "program;program" "manual;scheme" "manual;lua")
   )
 
   foreach(SOURCE ${${DOCUMENT}_SOURCES})
+    if(SOURCE MATCHES "^doc/.*$")
+      set(PREFIX)
+    else()
+      set(PREFIX "//")
+    endif()
+
     string(REGEX REPLACE "[/.]" "_" NAME ${SOURCE})
 
     add_custom_command(
@@ -30,9 +38,10 @@ foreach(WHAT "program;program" "manual;scheme" "manual;lua")
               ${WEAVE_DIR}/.file
       WORKING_DIRECTORY ${WEAVE_DIR}
       COMMAND awk -f ${CMAKE_CURRENT_SOURCE_DIR}/weave.awk
+                  -v prefix="${PREFIX}"
                   -v target=${DOCUMENT}/${VARIANT}
+                  -v path=${NAME}
                   -v bindir=${PROJECT_BINARY_DIR}
-                  -v prefix=${NAME}
                   -- ${PROJECT_SOURCE_DIR}/${SOURCE} > ${NAME}.texi
     )
 
