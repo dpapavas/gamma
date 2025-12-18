@@ -20,10 +20,22 @@ function print_program()
 
 function substitute_directive(from, to, pre, post)
 {
-  a = "[" pre "][[:space:]]*" from ":[[:space:]]*"
+  a = "[" pre "][[:space:]]*" from ":"
+
+  # If post is empty, we expect a directive of the form `foo:{hello
+  # world}`
+
+  if (post) {
+    a = a "[[:space:]]*"
+    c = "\\1}\\2"
+  } else {
+    a = a "{"
+    c = "\\1\\2"
+  }
+
   b = pre to "{"
 
-  $0 = gensub(a "([^" post "]+)([" post "])", b "\\1}\\2", "g")
+  $0 = gensub(a "([^" post "]+)([" post "])", b c, "g")
 
   if (sub(a, b)) {
     in_directive = 1
@@ -384,6 +396,7 @@ $0 ~ "^[[:space:]]*" prefix {
 
     # Definition
 
+    substitute_directive("def", " @dfn", "", "")
     substitute_directive("def", " @dfn", "", "[:space:][:punct:]")
 
     # Special glyphs
