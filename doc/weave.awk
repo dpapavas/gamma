@@ -152,6 +152,13 @@ $0 ~ "^[[:space:]]*" prefix {
     sub("^[[:space:]]*" prefix "[[:space:]]?", "")
   }
 
+  for (a in aliases) {
+    n = index($0, a)
+    if (n > 0) {
+      $0 = substr($0, 1, n - 1) aliases[a] substr($0, n + length(a))
+    }
+  }
+
   # Lists and tables
 
   if (/^ {2,}/ && (in_indent || !(in_example || in_listing || in_graph || in_print))) {
@@ -211,7 +218,13 @@ $0 ~ "^[[:space:]]*" prefix {
     close_list()
   }
 
-  if (/^(Figure|Program):/) {
+  if (/^Alias:/) {
+    match($0, /^Alias:[[:space:]]*([^[:space:]]+)[[:space:]]*(.*)$/, v)
+    aliases[v[1]] = v[2]
+  } else if (/^Unalias:/) {
+    match($0, /^Unalias:[[:space:]]*([^[:space:]]+)[[:space:]]*$/, v)
+    delete aliases[v[1]]
+  } else if (/^(Figure|Program):/) {
     text = text gensub(/^([^:]+):[[:space:]]*(.*)$/, "@float \\1,\\2\n", 1)
     in_figure = 1
   } else if (/^Concept:/) {

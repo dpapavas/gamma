@@ -1,4 +1,4 @@
-// Copyright 2022 Dimitris Papavasiliou
+// Copyright 2025 Dimitris Papavasiliou
 
 // This file is part of Gamma.
 
@@ -37,6 +37,151 @@ typedef CGAL::Constrained_Delaunay_triangulation_2<
 typedef Constrained_Delaunay_triangulation::Face_handle Face_handle;
 typedef Constrained_Delaunay_triangulation::Vertex_handle Vertex_handle;
 
+// Document: program
+
+// # The Extrusion Operation
+
+// The extrusion operation creates one or more 3D polyhedra from a
+// polygon set.  It proceeds in two steps:
+
+//   1. First the polygons making up the each extruded polyhedron are
+//   created as disjointed polygons, a so-called polygon soup.
+
+//   2. These are then assembled into a mesh, performing repairs as
+//   needed to get rid of duplicated points, non-manifold edges and
+//   the like and to ensure a properly oriented mesh.
+
+// Although the process is essentially the same, we need to handle the
+// following two cases separately.
+
+// ## Extruding Polygons Without Holes
+
+// This is the simplest of the two cases.
+
+inline static void extrude_polygon(
+    Polygon &G,
+    const std::vector<Aff_transformation_3> &transformations,
+    std::vector<Point_3> &points,
+    std::vector<std::vector<std::size_t>> &polygons)
+{
+    // The extrusion consists of a series of *steps*, i.e. transformed
+    // versions of the vertices of the base polygon, that are
+    // connected with polygons that form the side walls.
+
+    // Below:
+
+    //   n := is the number of vertices of the extruded polygon (and
+    //   hence the vertices making up each transformed step) and
+
+    //   m := is the number of polygons form the side walls of the
+    //   extrusion.
+
+    const int steps = transformations.size();
+    const std::size_t n = G.size();
+    const std::size_t m = (steps - 1) * n;
+
+    // Furthermore, it can be closed, in the sense that it closes in
+    // on itself (like a torus), or not (like a cylinder).
+
+    const bool closed = (transformations.size() > 1
+                        && transformations.front() == transformations.back());
+
+    // First, we need to reserve space of the vertices and polygons of
+    // the final extrusion.
+
+    // There will be $steps$ numbers of copies of the polygon's
+    // vertices, unless the extrusion is closed so that the first and
+    // last step coincide and there's one fewer.
+
+    // For each pair of consecutive steps, we will create side wall
+    // polygons connecting matching segments of the corresponding
+    // transformed polygons.  There are $steps - 1$ such pairs with
+    // $n$ polygons each.  To that we add one polygon for the top cap
+    // plus one more for the bottom cap, if there is one.
+
+    // Note that we extend the contains, as they may contain points
+    // and polygons from previous extrusion if the extruded polygon
+    // set contained more than one polygons
+
+    points.reserve(points.size() + (steps - closed) * n);
+    polygons.reserve(polygons.size() + 2 + m);
+
+    // We now:
+
+    //   1. Transform the polygon's vertices for each step, to build
+    //   the extrusion's vertices.
+
+    for (int s = 0; s < steps - closed; s++) {
+        for (std::size_t i = 0; i < n; i++) {
+            const Point_2 &p = G.vertex(i);
+
+            points.push_back(
+                transformations[s].transform(Point_3(p.x(), p.y(), FT(0))));
+        }
+    }
+
+    //   2. Create polygons for the side walls connecting consecutive
+    //   steps.
+
+    for (int s = 1, i_0 = n; s < steps - closed; s++, i_0 += n) {
+
+        for (std::size_t i = 0; i < n; i++) {
+            polygons.emplace_back(
+                std::initializer_list({
+                        i_0 - n + i, i_0 - n + (i + 1) % n,
+                        i_0 + (i + 1) % n, i_0 + i}));
+        }
+    }
+
+    if (!closed) {
+        //   3. Create polygons for the top and bottom caps if the
+        //   polygon is not closed.
+
+        //   The bottom cap is a flipped version of the extruded
+        //   polygon.  We only add it if there are more than one
+        //   steps.  If there's only one, the extrusion is degenerate,
+        //   i.e. just a 3D version of the 2D polygon.
+
+        if (transformations.size() > 1) {
+            auto &v = polygons.emplace_back();
+            v.reserve(n);
+
+            for (std::size_t i = n; i > 0; i--) {
+                v.push_back(i - 1);
+            }
+        }
+
+        //   The top cap is just the extruded polygon.
+
+        {
+            auto &v = polygons.emplace_back();
+            v.reserve(n);
+
+            for (std::size_t i = 0; i < n; i++) {
+                v.push_back(m + i);
+            }
+        }
+    } else {
+        //   4.  If it is closed, we create on more set of side wall
+        //   polygons connecting the last step back with the first.
+
+        for (std::size_t i = 0; i < n; i++) {
+            polygons.emplace_back(
+                std::initializer_list({
+                        m - n + i, m - n + (i + 1) % n,
+                        (i + 1) % n, i}));
+        }
+    }
+}
+
+// ## Extruding Polygons With Holes
+
+// This case is a little more complicated.  For one, we need to create
+// two sets of side walls; one for the outer wall and one for the hole
+// wall.  Additionally, we need to triangulate the polygons for the
+// top and bottom caps, since they contain holes.  The following
+// function facilitates this process.
+
 static void mark_domains(Constrained_Delaunay_triangulation& T,
                          Face_handle face, int index)
 {
@@ -54,6 +199,8 @@ static void mark_domains(Constrained_Delaunay_triangulation& T,
     }
 }
 
+// Here we form the extrusion's polygon soup.
+
 inline static void extrude_polygon_with_holes(
     Polygon_with_holes &G,
     const std::vector<Aff_transformation_3> &transformations,
@@ -64,7 +211,7 @@ inline static void extrude_polygon_with_holes(
     const Polygon &B = G.outer_boundary();
     Polygon_with_holes::Hole_const_iterator H;
 
-    // Triangulate the to-be-extruded polygon.
+    // We begin by triangulating the to-be-extruded polygon.
 
     T.insert_constraint(B.vertices_begin(), B.vertices_end(), true);
 
@@ -78,9 +225,9 @@ inline static void extrude_polygon_with_holes(
 
     mark_domains(T, T.infinite_face(), 0);
 
-    // Extrude the triangulation.
+    // Next, as before, we allocate space for points and polygons.
 
-    const bool close = (transformations.size() > 1
+    const bool closed = (transformations.size() > 1
                         && transformations.front() == transformations.back());
     const int steps = transformations.size();
     const std::size_t k = T.number_of_vertices();
@@ -90,8 +237,12 @@ inline static void extrude_polygon_with_holes(
     std::vector<Vertex_handle> v;
 
     v.reserve(k);
-    points.reserve(points.size() + (steps - close) * k);
+    points.reserve(points.size() + (steps - closed) * k);
     polygons.reserve(polygons.size() + 2 * l + n);
+
+    // Now we build the vertices of the extrusion.  This is
+    // essentially the same as before, but in this case we get the
+    // vertices from the triangulation.
 
     {
         std::size_t i = 0;
@@ -100,7 +251,7 @@ inline static void extrude_polygon_with_holes(
         }
     }
 
-    for (int s = 0; s < steps - close; s++) {
+    for (int s = 0; s < steps - closed; s++) {
         for (std::size_t i = 0; i < k; i++) {
             const Constrained_Delaunay_triangulation::Point &p = v[i]->point();
 
@@ -109,55 +260,24 @@ inline static void extrude_polygon_with_holes(
         }
     }
 
+    // Finally we create polygons for the side walls and caps.  Again,
+    // the process is the same as for polygons without holes, but we
+    // have to make sure to create side wall only for the peripheral
+    // segments of the triangulation (those that were part of the
+    // original polygon with holes).
+
     for(Face_handle f : T.finite_face_handles()) {
-        // Faces within the triangulation have an odd number of
-        // crossings.
+        // We skip faces with an odd number of crossings, as they lie
+        // within the triangulation and for the rest, we introduce
+        // polygons:
 
         if (f->info() % 2 == 0) {
             continue;
         }
 
-        if (!close) {
-            // Bottom
+        //   1. for the sides,
 
-            {
-                auto &v = polygons.emplace_back();
-                v.reserve(3);
-
-                for (int i = 2; i >= 0; i--) {
-                    v.push_back(f->vertex(i)->info());
-                }
-            }
-
-            if (transformations.size() > 1) {
-                // Top
-
-                auto &v = polygons.emplace_back();
-                v.reserve(3);
-
-                for (int i = 0; i < 3; i++) {
-                    v.push_back(n + f->vertex(i)->info());
-                }
-            }
-        } else {
-            // Loopback
-
-            for (int i = 0; i < 3; i++) {
-                const Constrained_Delaunay_triangulation::Edge e(f, i);
-
-                if (T.is_constrained(e)) {
-                    const std::size_t a = f->vertex(f->ccw(i))->info(),
-                        b = f->vertex(f->cw(i))->info();
-
-                    polygons.emplace_back(
-                        std::initializer_list({n - k + a, n - k + b, b, a}));
-                }
-            }
-        }
-
-        // Sides
-
-        for (int s = 1, i_0 = k; s < steps - close; s++, i_0 += k) {
+        for (int s = 1, i_0 = k; s < steps - closed; s++, i_0 += k) {
             for (int i = 0; i < 3; i++) {
                 const Constrained_Delaunay_triangulation::Edge e(f, i);
 
@@ -171,77 +291,51 @@ inline static void extrude_polygon_with_holes(
                 }
             }
         }
+
+        if (!closed) {
+            //   2. the bottom cap,
+
+            if (transformations.size() > 1) {
+                auto &v = polygons.emplace_back();
+                v.reserve(3);
+
+                for (int i = 2; i >= 0; i--) {
+                    v.push_back(f->vertex(i)->info());
+                }
+            }
+
+            //   3. the top cap and possibly,
+
+            {
+                auto &v = polygons.emplace_back();
+                v.reserve(3);
+
+                for (int i = 0; i < 3; i++) {
+                    v.push_back(n + f->vertex(i)->info());
+                }
+            }
+        } else {
+            //   4. the loop-back side wall segment, in case of a
+            //   closed extrusion.
+
+            for (int i = 0; i < 3; i++) {
+                const Constrained_Delaunay_triangulation::Edge e(f, i);
+
+                if (T.is_constrained(e)) {
+                    const std::size_t a = f->vertex(f->ccw(i))->info(),
+                        b = f->vertex(f->cw(i))->info();
+
+                    polygons.emplace_back(
+                        std::initializer_list({n - k + a, n - k + b, b, a}));
+                }
+            }
+        }
     }
 }
 
-inline static void extrude_polygon(
-    Polygon &G,
-    const std::vector<Aff_transformation_3> &transformations,
-    std::vector<Point_3> &points,
-    std::vector<std::vector<std::size_t>> &polygons)
-{
-    const bool close = (transformations.size() > 1
-                        && transformations.front() == transformations.back());
-    const int steps = transformations.size();
-    const std::size_t n = G.size();
-    const std::size_t m = (steps - 1) * n;
+// ## Creating the Extruded Polyhedron
 
-    points.reserve(points.size() + (steps - close) * n);
-    polygons.reserve(polygons.size() + 2 + m);
-
-    for (int s = 0; s < steps - close; s++) {
-        for (std::size_t i = 0; i < n; i++) {
-            const Point_2 &p = G.vertex(i);
-
-            points.push_back(
-                transformations[s].transform(Point_3(p.x(), p.y(), FT(0))));
-        }
-    }
-
-    if (!close) {
-        // Bottom
-
-        {
-            auto &v = polygons.emplace_back();
-            v.reserve(n);
-
-            for (std::size_t i = n; i > 0; i--) {
-                v.push_back(i - 1);
-            }
-        }
-
-        if (transformations.size() > 1) {
-            // Top
-
-            auto &v = polygons.emplace_back();
-            v.reserve(n);
-
-            for (std::size_t i = 0; i < n; i++) {
-                v.push_back(m + i);
-            }
-        }
-    } else {
-        // Loopback
-
-        for (std::size_t i = 0; i < n; i++) {
-            polygons.emplace_back(
-                std::initializer_list({
-                        m - n + i, m - n + (i + 1) % n,
-                        (i + 1) % n, i}));
-        }
-    }
-
-    for (int s = 1, i_0 = n; s < steps - close; s++, i_0 += n) {
-        // Sides
-
-        for (std::size_t i = 0; i < n; i++) {
-            polygons.emplace_back(
-                std::initializer_list({
-                        i_0 - n + i, i_0 - n + (i + 1) % n,
-                        i_0 + (i + 1) % n, i_0 + i}));
-        }
-    }
-}
+// Here's the main function of the extrusion operation.
 
 void Extrusion_operation::evaluate()
 {
@@ -254,12 +348,16 @@ void Extrusion_operation::evaluate()
     v.reserve(n);
     polyhedron = std::make_shared<Polyhedron>();
 
-    // Extrude each polygon in the set separately.
+    // We're give a polygon set with potentially more than on
+    // polygons, so each must be extruded separately.
 
     p->polygons_with_holes(std::back_inserter(v));
     for (Polygon_with_holes &G: v) {
         std::vector<Point_3> points;
         std::vector<std::vector<std::size_t>> polygons;
+
+        // For each, then, we first create the basic extrusion as a
+        // polygon soup.
 
         if (G.number_of_holes() > 0) {
             extrude_polygon_with_holes(G, transformations, points, polygons);
@@ -269,6 +367,11 @@ void Extrusion_operation::evaluate()
         }
 
         Polyhedron P;
+
+        // For normal, i.e. not degenerate extrusions, we use a series
+        // of steps to convert this soup to a proper polyhedron.  If
+        // any of these steps fail, we attempt to repair the soup and
+        // try again.
 
         if (transformations.size() > 1) {
             bool p = false;
@@ -315,10 +418,20 @@ void Extrusion_operation::evaluate()
                     p = true;
                 }
             }
-        } else if (polygons.size() > 1) {
+        }
+
+        // For degenerate extrusion of multiple separate polygons, we
+        // just convert them to a mesh.
+
+        else if (polygons.size() > 1) {
             CGAL::Polygon_mesh_processing::polygon_soup_to_polygon_mesh(
                 points, polygons, P);
-        } else {
+        }
+
+        // Finally, for a single polygon, we build the trivial
+        // polyhedron ourselves.
+
+        else {
             const auto &v = polygons.front();
             assert(v.size() >= 3);
             auto h = P.make_triangle(points[v[0]],

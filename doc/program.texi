@@ -41,6 +41,7 @@
 @include src_basic_operations_h.texi
 @include src_evaluation_cpp.texi
 @include src_rewrites_cpp.texi
+@include src_extrusion_operation_cpp.texi
 
 @part Part II:@* The Front End
 
