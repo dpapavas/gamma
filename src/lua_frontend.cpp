@@ -808,15 +808,37 @@ static int output(lua_State *L)
     const int j = lua_gettop(L);
     int i = 1 + (s != nullptr);
 
-    std::vector<Boxed_polyhedron> v;
-
-    v.reserve(j - i + 1);
-    for (; i <= j; i++) {
-        v.push_back(fromlua<Boxed_polyhedron>(L, i));
+    if (!s) {
+        s = "";
     }
 
-    insert_output_operations(s ? s : "", v);
+    // For commentary, ref: Scheme output argument handling.
 
+    {
+        std::vector<Boxed_polygon> v;
+        v.reserve(j - i + 1);
+
+        for (; luaL_testudata(L, i, "polygon"); i++) {
+            v.push_back(fromlua<Boxed_polygon>(L, i));
+        }
+
+        if (!v.empty()) {
+            insert_output_operations(s, v);
+        }
+    }
+
+    {
+        std::vector<Boxed_polyhedron> v;
+        v.reserve(j - i + 1);
+
+        for (; i <= j; i++) {
+            v.push_back(fromlua<Boxed_polyhedron>(L, i));
+        }
+
+        if (!v.empty()) {
+            insert_output_operations(s, v);
+        }
+    }
     return 1;
 }
 

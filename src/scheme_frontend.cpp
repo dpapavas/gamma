@@ -512,6 +512,18 @@ bool try_pop_argument(int i, SCM &s, T &x)
     return pop_argument_impl<T, E, F>(i, s, x);
 }
 
+// Just another variation of the above.  We convert as many values of
+// the given type as are available and place them in the vector.
+
+template<typename T>
+void try_pop_arguments(int i, SCM &s, std::vector<T> &v)
+{
+    T x;
+    while (try_pop_argument(i++, s, x)) {
+        v.emplace_back(std::move(x));
+    }
+}
+
 // The function template `make_primitive` conveniently instantiates a
 // function accepting any number of Scheme arguments of arbitrary
 // types and validates them, before passing them to C++ function `F`,
@@ -609,13 +621,12 @@ static SCM output(SCM args)
 {
     std::string s;
     int n = -1;
-    std::vector<Boxed_polyhedron> v;
 
     // The first argument is the name of the output which can be
     // either a string or a positive integer.  It can also be omitted
     // altogether in which case the output is unnamed.
 
-    const int i = try_pop_argument(1, args, s) || try_pop_argument(1, args, n);
+    int i = try_pop_argument(1, args, s) || try_pop_argument(1, args, n);
     const SCM t = scm_car(args);
 
     // Numeric outputs are converted to strings and are typically used
@@ -627,15 +638,38 @@ static SCM output(SCM args)
         } else {
             scm_misc_error(
                 "output",
-                "wrong argument in position ~A (expecting positive integer or string): ~S",
+                "wrong argument in position ~A (expecting positive integer "
+                "or string): ~S",
                 scm_list_2(scm_from_int(1), scm_from_int(n)));
         }
     }
 
-    pop_arguments(1 + i, args, v);
+    // anchor: Scheme output argument handling
 
-    if (!v.empty()) {
-        insert_output_operations(s, v);
+    // We generally only expect to get a single value to output;
+    // either a polyhedron, or a polygon.  Nevertheless we accept a
+    // vector for cases where a combination of items will be output.
+    // Again, the expectation is that these will either be all
+    // polyhedra, or all polygons, but it's easier to support a series
+    // of zero or more polygons, potentially followed by zero or more
+    // polyhedra, so we do that.
+
+    {
+        std::vector<Boxed_polygon> v;
+        try_pop_arguments(1 + i, args, v);
+
+        if (!v.empty()) {
+            insert_output_operations(s, v);
+        }
+    }
+
+    {
+        std::vector<Boxed_polyhedron> v;
+        pop_arguments(1 + i, args, v);
+
+        if (!v.empty()) {
+            insert_output_operations(s, v);
+        }
     }
 
     return t;

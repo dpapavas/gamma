@@ -148,8 +148,6 @@ void insert_output_operations(
                     goto next_output;
                 }
             }
-
-            outputs.push_front({x, -1});
         }
 
       next_output:;
@@ -214,21 +212,44 @@ void insert_output_operations(
 
     for (const auto &[s, i]: outputs) {
         switch (i) {
-            case -1:
+        case -1:
             sink_operation(INSPECT(s.c_str(), std::vector(w)));
             break;
 
-            case 0:
+        case 0:
             sink_operation(WRITE_STL(s.c_str(), std::vector(w)));
             break;
 
-            case 1:
+        case 1:
             sink_operation(WRITE_OFF(s.c_str(), std::vector(w)));
             break;
 
-            case 2:
+        case 2:
             sink_operation(WRITE_WRL(s.c_str(), std::vector(w)));
             break;
         }
     }
+}
+
+// Until we have support for outputting polygons to more appropriate
+// formats, we simply convert them to polyhedra and output them as
+// such.  This is at least useful as a way to export them to the
+// Debugger for inspection.
+
+void insert_output_operations(std::string name, std::vector<Boxed_polygon> &v)
+{
+    std::vector<Boxed_polyhedron> u;
+
+    u.reserve(v.size());
+
+    for (const auto &x: v) {
+        std::visit(
+            [&u](auto &&y) {
+                u.push_back(EXTRUSION(
+                                y, std::vector<Aff_transformation_3>({
+                                        TRANSLATION_3(0, 0, 0)})));
+            }, x);
+    }
+
+    insert_output_operations(name, u);
 }

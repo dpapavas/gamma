@@ -96,6 +96,7 @@ inline auto make_polyhedron_clip_visitor(const Plane_3 &Pi) {
 void print_message(Operation::Message_level level, const char *s, const int n);
 void insert_output_operations(
     std::string name, std::vector<Boxed_polyhedron> &v);
+void insert_output_operations(std::string name, std::vector<Boxed_polygon> &v);
 
 // Document: none
 
