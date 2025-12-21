@@ -113,10 +113,29 @@ static void cursor_position_callback(GLFWwindow *window, double x, double y)
                     c * (GLfloat)(y - previous_y),
                     0);
             } else if (mode == PANNING) {
+                // The appropriate panning sensitivity depends on the
+                // current viewport projecton.  If we're viewing a
+                // large object, zoomed out to fill the viewport, we
+                // want to pan faster (in terms of world units per
+                // mouse motion pixels) than when viewing a small
+                // object, or when zoomed into a detail of a large
+                // object.
+
+                // We therefore scale the sensitivity by the current
+                // viewing volume extents.
+
+                struct viewport *v = w->focus;
+                const GLfloat a =
+                    (GLfloat)(v->top - v->bottom) / (v->right - v->left);
+                const GLfloat w = v->object->bounds[3] - v->object->bounds[0];
+                const GLfloat h = v->object->bounds[4] - v->object->bounds[1];
+                const GLfloat dim = fmaxf(w, h / a);
+                const float d = c * dim / v->zoom / 2.0f;
+
                 pan_viewport(
-                    w->focus,
-                    -c * (GLfloat)(x - previous_x),
-                    c * (GLfloat)(y - previous_y));
+                    v,
+                    -d * (GLfloat)(x - previous_x),
+                    d * (GLfloat)(y - previous_y));
             }
         }
 
