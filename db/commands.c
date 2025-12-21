@@ -1265,7 +1265,6 @@ int read_commands(FILE *fp)
                 //   times, so we sort and deduplicate the edges
                 //   before copying them to the GL buffers.
 
-                assert(m >= 6);
                 qsort(edges.p, m / 2, 2 * sizeof(edges.p[0]), compare_edges);
 
                 for (unsigned int *p = edges.p,
@@ -1282,10 +1281,15 @@ int read_commands(FILE *fp)
                     }
                 }
 
-                //   6. load the resulting triangles and edges to the
+                //   6. load the resulting triangles and edges^[Unless
+                //   there are none, which can happen if we try to
+                //   load an OFF file with no polygons] to the
                 //   specified object.
 
-                refresh_object(s, a, vertices.p, n, triangles.p, m, edges.p);
+                if (n > 0) {
+                    assert(a > 0 && m > 0);
+                    refresh_object(s, a, vertices.p, n, triangles.p, m, edges.p);
+                }
             }
 
             // We also remember to undo the file "redirection", if
