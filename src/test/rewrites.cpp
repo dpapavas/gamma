@@ -227,7 +227,7 @@ DEFINE_CHAIN_TEST(
 
 // These tests follow much the same pattern as for polygons above.
 
-// anchor: `polyhedron_union` test
+// Anchor: `polyhedron_union` test
 
 // The union test in particular produces a sensible result with a
 // chain of simple (i.e. untransformed) tetrahedrons, so the resulting
@@ -263,7 +263,7 @@ DEFINE_CHAIN_TEST(
 
     true, false, true)
 
-// anchor: `large_polyhedron_union` test
+// Anchor: `large_polyhedron_union` test
 
 // These test are larger versions of the above.  They're mostly meant
 // to showcase the effect of rewrites in practive and are disabled by

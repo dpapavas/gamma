@@ -196,7 +196,7 @@ public:
         op->predecessors.insert(this);
     }
 
-    // anchor: `Operation` destructor
+    // Anchor: `Operation` destructor
 
     // The operation will be destroyed when there are no more shared
     // pointers referencing it.  This can happen either

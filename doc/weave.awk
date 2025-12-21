@@ -403,7 +403,7 @@ $0 ~ "^[[:space:]]*" prefix {
     substitute_directive("ref", " @ref", "", ".,")
     substitute_directive("fig", " @ref", "", " .,")
 
-    if (sub(/^[[:space:]]*anchor:[[:space:]]*/, "@anchor{")) {
+    if (sub(/^[[:space:]]*Anchor:[[:space:]]*/, "@anchor{")) {
       sub(/$/, "}")
     }
 

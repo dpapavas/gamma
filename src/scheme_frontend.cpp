@@ -644,7 +644,7 @@ static SCM output(SCM args)
         }
     }
 
-    // anchor: Scheme output argument handling
+    // Anchor: Scheme output argument handling
 
     // We generally only expect to get a single value to output;
     // either a polyhedron, or a polygon.  Nevertheless we accept a
@@ -1962,7 +1962,7 @@ static void print_location(SCM s, SCM port)
     scm_putc(':', port);
     scm_puts(ANSI_COLOR(1, 37), port);
 
-    // anchor: comment in `print_location`
+    // Anchor: comment in `print_location`
     // Lifted from the Guile sources:
 
     //   > Lines are zero-indexed inside Guile, but users expect them

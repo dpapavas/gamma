@@ -134,7 +134,7 @@ static inline std::string maybe_shortened_tag(std::string t)
 
 // The main structures are the following:
 
-//   anchor: ready list
+//   Anchor: ready list
 //   ready_list[] := hold pointers to operations that are ready for
 //   evaluation, i.e. source operations or operations whose
 //   predecessors have already been evaluated.  We keep two lists, the
@@ -143,7 +143,7 @@ static inline std::string maybe_shortened_tag(std::string t)
 //   threading has not been enabled at all), while operations that
 //   will be evaluated in worker threads are put in the second.
 
-//   anchor: locked set
+//   Anchor: locked set
 //   locked_set := keeps track of operands being accessed by operations
 //   currently undergoing evaluation. CGAL's documentation states that
 //   "it should be possible to use different objects in different
@@ -389,7 +389,7 @@ void Worker::work()
             const std::string &l = (it == tags.end() ? k : it->second);
             int n = evaluation_sequence++;
 
-            // anchor: tag abridging
+            // Anchor: tag abridging
 
             // We replace occurences of our tag in the tag of successor
             // nodes by our evaluation number for clarity.  That is, we
