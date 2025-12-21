@@ -1220,10 +1220,16 @@ void refresh_object(
                 v->object = o;
             }
 
-            // Having calculated the object's AABB, we can
-            // recenter the viewport.
+            // Having calculated the object's AABB, we can recenter
+            // the viewport, but we only do so if the user hasn't
+            // adjusted the translation already.  We want to help, not
+            // annoy.
 
-            translate_viewport(v, NAN, NAN, NAN);
+            if (v->translation[0] == 0.0f
+                && v->translation[1] == 0.0f
+                && v->translation[2] == 0.0f) {
+                translate_viewport(v, NAN, NAN, NAN);
+            }
 
             // Finally we present the window found to be showing the
             // object to the user, if so configured.
