@@ -51,6 +51,7 @@
 @part Part III:@* The Tests
 @include src_test_fixtures_h.texi
 @include src_test_rewrites_cpp.texi
+@include src_test_frontend_cpp.texi
 
 @part Part IV:@* The Debugger
 @include db_main_c.texi

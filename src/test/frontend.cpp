@@ -31,10 +31,12 @@
 #include "scheme_frontend.h"
 #include "fixtures.h"
 
-// ## Front End Tests
+// Document: program
 
-// These tests exercise the language front ends, by executing test
-// programs in each language.  The goal is to test whether the
+// # Front End Tests
+
+// These tests exercise the language front ends.  They do so by
+// executing test programs in each language and testing whether the
 // front end produces the correct operations; evaluation of those
 // operations is tested elsewhere.
 
@@ -43,7 +45,7 @@
 // the operations map to ensure that all expected operations, and only
 // those, have been created.
 
-// All tests work by the following fixture that takes care of placing
+// All tests work by the following fixture, that takes care of placing
 // the source for each language into a temporary file which is then
 // loaded by synthesizing an appropriate command line.
 
@@ -163,15 +165,16 @@ BOOST_AUTO_TEST_CASE(__VA_ARGS__)                                       \
         THEN
 
 // Execute the sources as above and compare the resulting operations
-// to a set of expected operations.  Note that we don't need
-// operations to be succeeded by sink operations, so that they would
-// be ultimately evaluated in a normal run.  They need not even be
-// referenced by the source file that created them, even though the
-// might be garbage collected.  Every operation generated during a
-// normal run should end up in the operations map as a (potentially
-// expired) weak pointer.  By comparing the keys in the map with the
-// expected set, we ensure that exactly those expected operations were
-// generated and only those.
+// to a set of expected operations.
+
+// Note that we don't need operations to be succeeded by sink
+// operations, so that they would be ultimately evaluated in a normal
+// run.  They need not even be referenced by the source file that
+// created them, even though they risk being garbage collected.  Every
+// operation generated during a normal run should end up in the
+// operations map as a (potentially expired) weak pointer.  By
+// comparing the keys in the map with the expected set, we ensure that
+// exactly those expected operations were generated and only those.
 
 // Evaluating the operations is not necessary for the testing itself,
 // but it ensures that the operations map and associated evaluation
@@ -223,6 +226,11 @@ BOOST_AUTO_TEST_CASE(__VA_ARGS__)                                       \
 
 BOOST_FIXTURE_TEST_SUITE(frontend, Frontend_fixture)
 
+// ## Front End Invocation Tests
+
+// We start with some simple tests for basic execution behavior.
+// Below we test execution of scripts containing errors.
+
 DEFINE_TEST_CASE(syntax_error)
 WITH_SOURCE("lua",
             "function f()"
@@ -247,7 +255,9 @@ DEFINE_TEST_CASE(arguments)
 
 // The following is equivalent to:
 
+// ```
 // gamma source -- hello world
+// ```
 
 // This passes two parameters to the input script, which are handled
 // according to the conventions of the respective language's
@@ -277,8 +287,10 @@ DEFINE_TEST_CASE(multiple_files)
 
 // These tests run the equivalent of:
 
+// ```
 // gamma -Dfirst=1 -L/tmp/test/first first_source
 //       -Dsecond=1 -L/tmp/test/second second_source
+// ```
 
 // Each source should run as soon as it is encountered in the command
 // line arguments, with only preceding definitions etc. set.  Both
@@ -341,6 +353,9 @@ RUN({
 })
 EXPECTING_SUCCESS(true)
 
+// Here we test setting of boolean options and parameters with numeric
+// values.
+
 DEFINE_TEST_CASE(boolean_definition)
 WITH_SOURCE("lua",
             "option = (option or false)"
@@ -379,6 +394,9 @@ WITH_SOURCE("scheme",
 RUN()
 EXPECTING_SUCCESS(true)
 
+// These test the setting/getting functions for the various
+// tolerances.
+
 DEFINE_TEST_CASE(tolerances)
 WITH_SOURCE("lua",
             "assert(set_curve_tolerance(0.5) > 0, \"set curve failed\");"
@@ -399,9 +417,10 @@ EXPECTING_SUCCESS(true)
 
 #define RECTANGLE_TAG "polygon(point(-1,-1),point(1,-1),point(1,1),point(-1,1))"
 
-////////////////
-// Primitives //
-////////////////
+// ## Front End Tests for Primitives
+
+// These are simple tests for polygon or polyhedron primitive
+// functions.
 
 DEFINE_TEST_CASE(polygon)
 WITH_SOURCE("lua",
@@ -505,9 +524,10 @@ EXPECTING("tetrahedron(1,1,1)",
           "extrusion(regular_polygon(124,3,1/1048576),"
           "translation(0,0,-5),translation(0,0,5))")
 
-/////////////////////
-// Transformations //
-/////////////////////
+// ## Front End Tests for Transformations
+
+// Here we test application and manipulation of transformations,
+// including flushing.
 
 DEFINE_TEST_CASE(transform_point)
 WITH_SOURCE("lua",
@@ -719,6 +739,10 @@ EXPECTING("cuboid(2,2,2)",
           "color_selection(mesh(cuboid(2,2,2)),vertices_in("
           "bounding_cylinder(point(-4,-4,-2),vector(0,0,1),4,2)),0,0,0,255)")
 
+// ## Front End Tests for Polygon Operations
+
+// Here we test operations that can be applied exlusively to polygons.
+
 DEFINE_TEST_CASE(extrusion)
 WITH_SOURCE("lua",
             "t = require 'gamma.transformation'"
@@ -757,10 +781,6 @@ EXPECTING(RECTANGLE_TAG,
           "extrusion(segments(circle(100),1/1024,1/1048576),"
           "translation(0,0,0),translation(0,0,2))")
 
-////////////
-// Offset //
-////////////
-
 DEFINE_TEST_CASE(offset)
 WITH_SOURCE("lua",
             "g = require 'gamma.polygons'"
@@ -774,9 +794,284 @@ WITH_SOURCE("scheme",
 EXPECTING(RECTANGLE_TAG,
           "offset(" RECTANGLE_TAG ",3)")
 
-////////////////
-// Selections //
-////////////////
+// ## Front End Tests for Boolean Operations
+
+// Boolean operations accept both polygons (of all kinds) and
+// polyhedra.  They're binary in nature but the functions accept any
+// number of operands.
+
+DEFINE_TEST_CASE(polygon_boolean)
+WITH_SOURCE("lua",
+            "g = require 'gamma.polygons'"
+
+            "a = (g.rectangle(2, 2)"
+            "     + g.simple(point(1, -1), point(2, -1), point(1, 1)))"
+            "b = g.rectangle(2, 2) - g.circle(1)"
+            "c = g.ellipse(4, 2) * g.circle(1)")
+WITH_SOURCE("scheme",
+            "(import (gamma polygons) (gamma operations))"
+
+            "(union (rectangle 2 2)"
+            "       (simple-polygon (point 1 -1) (point 2 -1) (point 1 1)))"
+            "(difference (rectangle 2 2) (circle 1))"
+            "(intersection (ellipse 4 2) (circle 1))")
+EXPECTING(RECTANGLE_TAG,
+          "polygon(point(1,-1),point(2,-1),point(1,1))",
+          "join(" RECTANGLE_TAG ","
+          "polygon(point(1,-1),point(2,-1),point(1,1)))",
+          "circles(" RECTANGLE_TAG ")",
+          "circle(1)",
+          "difference(circles(" RECTANGLE_TAG "),circle(1))",
+          "conics(circle(1))",
+          "transform(conics(circle(1)),scaling(4,2))",
+          "intersection(transform(conics(circle(1)),scaling(4,2)),"
+          "conics(circle(1)))")
+
+DEFINE_TEST_CASE(polygon_boolean_many)
+WITH_SOURCE("lua",
+            "g = require 'gamma.polygons'"
+            "op = require 'gamma.operations'"
+
+            "op.union("
+            "     g.rectangle(2, 2),"
+            "     g.simple(point(1, -1), point(2, -1), point(1, 1)),"
+            "     g.circle(1))"
+            "op.difference(g.circle(5), g.circle(1.25), g.rectangle(2, 2))"
+            "op.intersection(g.circle(3), g.circle(2), g.circle(1))")
+WITH_SOURCE("scheme",
+            "(import (gamma polygons) (gamma operations))"
+
+            "(union (rectangle 2 2)"
+            "       (simple-polygon (point 1 -1) (point 2 -1) (point 1 1))"
+            "       (circle 1))"
+            "(difference (circle 5) (circle 5/4) (rectangle 2 2))"
+            "(intersection (circle 3) (circle 2) (circle 1))")
+EXPECTING(RECTANGLE_TAG,
+          "polygon(point(1,-1),point(2,-1),point(1,1))",
+          "join(" RECTANGLE_TAG ",polygon(point(1,-1),point(2,-1),point(1,1)))",
+          "circles(join(" RECTANGLE_TAG ","
+          "polygon(point(1,-1),point(2,-1),point(1,1))))",
+          "join(circles(join(" RECTANGLE_TAG ","
+          "polygon(point(1,-1),point(2,-1),point(1,1)))),circle(1))",
+          "circle(5)",
+          "circle(5/4)",
+          "difference(circle(5),circle(5/4))",
+          "circles(" RECTANGLE_TAG ")",
+          "difference(difference(circle(5),circle(5/4)),"
+          "circles(" RECTANGLE_TAG "))",
+          "circle(3)",
+          "circle(2)",
+          "intersection(circle(3),circle(2))",
+          "circle(1)",
+          "intersection(intersection(circle(3),circle(2)),circle(1))")
+
+DEFINE_TEST_CASE(polyhedron_boolean)
+WITH_SOURCE("lua",
+            "h = require 'gamma.polyhedra'"
+
+            "a = (h.tetrahedron(1, 1, 1) + h.tetrahedron(-1, 1, 1))"
+            "b = (h.tetrahedron(1, 1, 1) - h.tetrahedron(1 / 2, 1 / 2, 1 / 2))"
+            "c = (h.tetrahedron(1, 1, 1) * h.tetrahedron(1 / 2, 1 / 2, 1 / 2))"
+            "d = (h.tetrahedron(1, 1, 1) * plane(0, 0, -1, 0))")
+WITH_SOURCE("scheme",
+            "(import (gamma polyhedra) (gamma operations))"
+
+            "(union (tetrahedron 1 1 1) (tetrahedron -1 1 1))"
+            "(difference (tetrahedron 1 1 1) (tetrahedron 1/2 1/2 1/2))"
+            "(intersection (tetrahedron 1 1 1) (tetrahedron 1/2 1/2 1/2))"
+            "(clip (tetrahedron 1 1 1) (plane 0 0 -1 0))")
+EXPECTING("tetrahedron(1,1,1)",
+          "tetrahedron(-1,1,1)",
+          "join(tetrahedron(1,1,1),tetrahedron(-1,1,1))",
+          "tetrahedron(1/2,1/2,1/2)",
+          "difference(tetrahedron(1,1,1),tetrahedron(1/2,1/2,1/2))",
+          "intersection(tetrahedron(1,1,1),tetrahedron(1/2,1/2,1/2))",
+          "clip(tetrahedron(1,1,1),plane(0,0,-1,0))")
+
+DEFINE_TEST_CASE(polyhedron_boolean_many)
+WITH_SOURCE("lua",
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.union(h.cuboid(2, 2, 2), h.tetrahedron(1, 1, 1), h.sphere(1))"
+            "op.difference(h.sphere(5), h.sphere(1.25), h.cuboid(2, 2, 2))"
+            "op.intersection(h.sphere(3), h.sphere(2), h.sphere(1))")
+WITH_SOURCE("scheme",
+            "(import (gamma polyhedra) (gamma operations))"
+
+            "(union (cuboid 2 2 2) (tetrahedron 1 1 1) (sphere 1))"
+            "(difference (sphere 5) (sphere 5/4) (cuboid 2 2 2))"
+            "(intersection (sphere 3) (sphere 2) (sphere 1))")
+EXPECTING("cuboid(2,2,2)",
+          "tetrahedron(1,1,1)",
+          "join(cuboid(2,2,2),tetrahedron(1,1,1))",
+          "sphere(1,1/1024,1/1048576)",
+          "join(join(cuboid(2,2,2),tetrahedron(1,1,1)),"
+          "sphere(1,1/1024,1/1048576))",
+          "sphere(5,1/1024,1/1048576)",
+          "sphere(5/4,1/1024,1/1048576)",
+          "difference(sphere(5,1/1024,1/1048576),sphere(5/4,1/1024,1/1048576))",
+          "difference("
+          "difference(sphere(5,1/1024,1/1048576),sphere(5/4,1/1024,1/1048576)),"
+          "cuboid(2,2,2))",
+          "sphere(3,1/1024,1/1048576)",
+          "sphere(2,1/1024,1/1048576)",
+          "intersection(sphere(3,1/1024,1/1048576),sphere(2,1/1024,1/1048576))",
+          "sphere(1,1/1024,1/1048576)",
+          "intersection("
+          "intersection(sphere(3,1/1024,1/1048576),sphere(2,1/1024,1/1048576)),"
+          "sphere(1,1/1024,1/1048576))")
+
+// Below we test the behavior of the various boolean modes for
+// polyhedra.  We use the fixture below to set one of the modes and
+// test whether the operations are carried out with Nef polyhedra or
+// corefinement, as required.
+
+struct Booleans_mode_fixture: Main_fixture {
+    Booleans_mode_fixture(Polyhedron_booleans_mode mode) {
+        push(Options::polyhedron_booleans, mode);
+    }
+
+    ~Booleans_mode_fixture() {
+        pop(Options::polyhedron_booleans);
+    }
+};
+
+#define WITH_POLYHEDRON_BOOLEANS_SOURCES                        \
+WITH_SOURCE("lua",                                              \
+            "h = require 'gamma.polyhedra'"                     \
+            "op = require 'gamma.operations'"                   \
+                                                                \
+            "a = (op.minkowski_sum("                            \
+            "         h.tetrahedron(1, 1, 1),"                  \
+            "         h.octahedron(0.25, 0.25, 0.125))"         \
+            "     - h.sphere(0.5))"                             \
+            "b = (op.minkowski_sum("                            \
+            "         h.tetrahedron(1, 1, 1),"                  \
+            "         h.octahedron(0.25, 0.25, 0.125))"         \
+            "     - op.minkowski_sum("                          \
+            "         h.tetrahedron(-1, 1, 1),"                 \
+            "         h.octahedron(0.25, 0.25, 0.125)))"        \
+            "op.clip("                                          \
+            "    op.minkowski_sum("                             \
+            "        h.tetrahedron(1, 1, 1),"                   \
+            "        h.octahedron(0.25, 0.25, 0.125)),"         \
+            "    plane(0, 0, 1, -0.5))"                         \
+            "op.clip("                                          \
+            "    h.tetrahedron(1, 1, 1),"                       \
+            "    plane(0, 0, 1, -0.5))")                        \
+WITH_SOURCE("scheme",                                           \
+            "(import (gamma polyhedra) (gamma operations))"     \
+                                                                \
+            "(difference (minkowski-sum"                        \
+            "             (tetrahedron 1 1 1)"                  \
+            "             (octahedron 1/4 1/4 1/8))"            \
+            "            (sphere 1/2))"                         \
+            "(difference (minkowski-sum"                        \
+            "             (tetrahedron 1 1 1)"                  \
+            "             (octahedron 1/4 1/4 1/8))"            \
+            "            (minkowski-sum"                        \
+            "             (tetrahedron -1 1 1)"                 \
+            "             (octahedron 1/4 1/4 1/8)))"           \
+            "(clip (minkowski-sum"                              \
+            "       (tetrahedron 1 1 1)"                        \
+            "       (octahedron 1/4 1/4 1/8))"                  \
+            "      (plane 0 0 1 -1/2))"                         \
+            "(clip (tetrahedron 1 1 1)"                         \
+            "      (plane 0 0 1 -1/2))")
+
+DEFINE_TEST_CASE(
+    polyhedron_booleans_mode_nef,
+    * boost::unit_test::fixture<Booleans_mode_fixture>(
+        Polyhedron_booleans_mode::NEF))
+WITH_POLYHEDRON_BOOLEANS_SOURCES
+EXPECTING("tetrahedron(1,1,1)",
+          "nef(tetrahedron(1,1,1))",
+          "octahedron(1/4,1/4,1/8,1/8)",
+          "nef(octahedron(1/4,1/4,1/8,1/8))",
+          "minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))",
+          "sphere(1/2,1/1024,1/1048576)",
+          "nef(sphere(1/2,1/1024,1/1048576))",
+          "difference(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))),"
+          "nef(sphere(1/2,1/1024,1/1048576)))",
+          "tetrahedron(-1,1,1)",
+          "nef(tetrahedron(-1,1,1))",
+          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))",
+          "difference(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))),"
+          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))))",
+          "clip(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))),plane(0,0,1,-1/2))",
+          "clip(nef(tetrahedron(1,1,1)),plane(0,0,1,-1/2))")
+
+DEFINE_TEST_CASE(
+    polyhedron_booleans_mode_corefine,
+    * boost::unit_test::fixture<Booleans_mode_fixture>(
+        Polyhedron_booleans_mode::COREFINE))
+WITH_POLYHEDRON_BOOLEANS_SOURCES
+EXPECTING("tetrahedron(1,1,1)",
+          "nef(tetrahedron(1,1,1))",
+          "octahedron(1/4,1/4,1/8,1/8)",
+          "nef(octahedron(1/4,1/4,1/8,1/8))",
+          "minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))",
+          "polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))))",
+          "sphere(1/2,1/1024,1/1048576)",
+          "difference(polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))),sphere(1/2,1/1024,1/1048576))",
+          "tetrahedron(-1,1,1)",
+          "nef(tetrahedron(-1,1,1))",
+          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))",
+          "polyhedron(minkowski_sum(nef(tetrahedron(-1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))))",
+          "difference(polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))),"
+          "polyhedron(minkowski_sum(nef(tetrahedron(-1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))))",
+          "clip(polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))),plane(0,0,1,-1/2))",
+          "clip(tetrahedron(1,1,1),plane(0,0,1,-1/2))")
+
+DEFINE_TEST_CASE(
+    polyhedron_booleans_mode_auto,
+    * boost::unit_test::fixture<Booleans_mode_fixture>(
+        Polyhedron_booleans_mode::AUTO))
+WITH_POLYHEDRON_BOOLEANS_SOURCES
+EXPECTING("tetrahedron(1,1,1)",
+          "nef(tetrahedron(1,1,1))",
+          "octahedron(1/4,1/4,1/8,1/8)",
+          "nef(octahedron(1/4,1/4,1/8,1/8))",
+          "minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))",
+          "polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))))",
+          "sphere(1/2,1/1024,1/1048576)",
+          "difference(polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))),sphere(1/2,1/1024,1/1048576))",
+          "tetrahedron(-1,1,1)",
+          "nef(tetrahedron(-1,1,1))",
+          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8)))",
+          "difference(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))),"
+          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))))",
+          "clip(minkowski_sum(nef(tetrahedron(1,1,1)),"
+          "nef(octahedron(1/4,1/4,1/8,1/8))),plane(0,0,1,-1/2))",
+          "clip(tetrahedron(1,1,1),plane(0,0,1,-1/2))")
+
+#undef WITH_POLYHEDRON_BOOLEANS_SOURCES
+
+// ## Front End Tests for Selections
+
+// We test selection application and manipulation below.  These are
+// mostly useful for the mesh operations that follow.
 
 DEFINE_TEST_CASE(selection)
 WITH_SOURCE("lua",
@@ -1113,402 +1408,10 @@ EXPECTING("cuboid(2,2,2)",
           "edges_partially_in(faces_in(bounding_plane(plane(0,0,1,-1)))),"
           "1,1)")
 
-////////////////////////
-// Boolean operations //
-////////////////////////
+// ## Front End Tests for Mesh Operations
 
-DEFINE_TEST_CASE(polygon_boolean)
-WITH_SOURCE("lua",
-            "g = require 'gamma.polygons'"
-
-            "a = (g.rectangle(2, 2)"
-            "     + g.simple(point(1, -1), point(2, -1), point(1, 1)))"
-            "b = g.rectangle(2, 2) - g.circle(1)"
-            "c = g.ellipse(4, 2) * g.circle(1)")
-WITH_SOURCE("scheme",
-            "(import (gamma polygons) (gamma operations))"
-
-            "(union (rectangle 2 2)"
-            "       (simple-polygon (point 1 -1) (point 2 -1) (point 1 1)))"
-            "(difference (rectangle 2 2) (circle 1))"
-            "(intersection (ellipse 4 2) (circle 1))")
-EXPECTING(RECTANGLE_TAG,
-          "polygon(point(1,-1),point(2,-1),point(1,1))",
-          "join(" RECTANGLE_TAG ","
-          "polygon(point(1,-1),point(2,-1),point(1,1)))",
-          "circles(" RECTANGLE_TAG ")",
-          "circle(1)",
-          "difference(circles(" RECTANGLE_TAG "),circle(1))",
-          "conics(circle(1))",
-          "transform(conics(circle(1)),scaling(4,2))",
-          "intersection(transform(conics(circle(1)),scaling(4,2)),"
-          "conics(circle(1)))")
-
-DEFINE_TEST_CASE(polygon_boolean_many)
-WITH_SOURCE("lua",
-            "g = require 'gamma.polygons'"
-            "op = require 'gamma.operations'"
-
-            "op.union("
-            "     g.rectangle(2, 2),"
-            "     g.simple(point(1, -1), point(2, -1), point(1, 1)),"
-            "     g.circle(1))"
-            "op.difference(g.circle(5), g.circle(1.25), g.rectangle(2, 2))"
-            "op.intersection(g.circle(3), g.circle(2), g.circle(1))")
-WITH_SOURCE("scheme",
-            "(import (gamma polygons) (gamma operations))"
-
-            "(union (rectangle 2 2)"
-            "       (simple-polygon (point 1 -1) (point 2 -1) (point 1 1))"
-            "       (circle 1))"
-            "(difference (circle 5) (circle 5/4) (rectangle 2 2))"
-            "(intersection (circle 3) (circle 2) (circle 1))")
-EXPECTING(RECTANGLE_TAG,
-          "polygon(point(1,-1),point(2,-1),point(1,1))",
-          "join(" RECTANGLE_TAG ",polygon(point(1,-1),point(2,-1),point(1,1)))",
-          "circles(join(" RECTANGLE_TAG ","
-          "polygon(point(1,-1),point(2,-1),point(1,1))))",
-          "join(circles(join(" RECTANGLE_TAG ","
-          "polygon(point(1,-1),point(2,-1),point(1,1)))),circle(1))",
-          "circle(5)",
-          "circle(5/4)",
-          "difference(circle(5),circle(5/4))",
-          "circles(" RECTANGLE_TAG ")",
-          "difference(difference(circle(5),circle(5/4)),"
-          "circles(" RECTANGLE_TAG "))",
-          "circle(3)",
-          "circle(2)",
-          "intersection(circle(3),circle(2))",
-          "circle(1)",
-          "intersection(intersection(circle(3),circle(2)),circle(1))")
-
-DEFINE_TEST_CASE(polyhedron_boolean)
-WITH_SOURCE("lua",
-            "h = require 'gamma.polyhedra'"
-
-            "a = (h.tetrahedron(1, 1, 1) + h.tetrahedron(-1, 1, 1))"
-            "b = (h.tetrahedron(1, 1, 1) - h.tetrahedron(1 / 2, 1 / 2, 1 / 2))"
-            "c = (h.tetrahedron(1, 1, 1) * h.tetrahedron(1 / 2, 1 / 2, 1 / 2))"
-            "d = (h.tetrahedron(1, 1, 1) * plane(0, 0, -1, 0))")
-WITH_SOURCE("scheme",
-            "(import (gamma polyhedra) (gamma operations))"
-
-            "(union (tetrahedron 1 1 1) (tetrahedron -1 1 1))"
-            "(difference (tetrahedron 1 1 1) (tetrahedron 1/2 1/2 1/2))"
-            "(intersection (tetrahedron 1 1 1) (tetrahedron 1/2 1/2 1/2))"
-            "(clip (tetrahedron 1 1 1) (plane 0 0 -1 0))")
-EXPECTING("tetrahedron(1,1,1)",
-          "tetrahedron(-1,1,1)",
-          "join(tetrahedron(1,1,1),tetrahedron(-1,1,1))",
-          "tetrahedron(1/2,1/2,1/2)",
-          "difference(tetrahedron(1,1,1),tetrahedron(1/2,1/2,1/2))",
-          "intersection(tetrahedron(1,1,1),tetrahedron(1/2,1/2,1/2))",
-          "clip(tetrahedron(1,1,1),plane(0,0,-1,0))")
-
-DEFINE_TEST_CASE(polyhedron_boolean_many)
-WITH_SOURCE("lua",
-            "h = require 'gamma.polyhedra'"
-            "op = require 'gamma.operations'"
-
-            "op.union(h.cuboid(2, 2, 2), h.tetrahedron(1, 1, 1), h.sphere(1))"
-            "op.difference(h.sphere(5), h.sphere(1.25), h.cuboid(2, 2, 2))"
-            "op.intersection(h.sphere(3), h.sphere(2), h.sphere(1))")
-WITH_SOURCE("scheme",
-            "(import (gamma polyhedra) (gamma operations))"
-
-            "(union (cuboid 2 2 2) (tetrahedron 1 1 1) (sphere 1))"
-            "(difference (sphere 5) (sphere 5/4) (cuboid 2 2 2))"
-            "(intersection (sphere 3) (sphere 2) (sphere 1))")
-EXPECTING("cuboid(2,2,2)",
-          "tetrahedron(1,1,1)",
-          "join(cuboid(2,2,2),tetrahedron(1,1,1))",
-          "sphere(1,1/1024,1/1048576)",
-          "join(join(cuboid(2,2,2),tetrahedron(1,1,1)),"
-          "sphere(1,1/1024,1/1048576))",
-          "sphere(5,1/1024,1/1048576)",
-          "sphere(5/4,1/1024,1/1048576)",
-          "difference(sphere(5,1/1024,1/1048576),sphere(5/4,1/1024,1/1048576))",
-          "difference("
-          "difference(sphere(5,1/1024,1/1048576),sphere(5/4,1/1024,1/1048576)),"
-          "cuboid(2,2,2))",
-          "sphere(3,1/1024,1/1048576)",
-          "sphere(2,1/1024,1/1048576)",
-          "intersection(sphere(3,1/1024,1/1048576),sphere(2,1/1024,1/1048576))",
-          "sphere(1,1/1024,1/1048576)",
-          "intersection("
-          "intersection(sphere(3,1/1024,1/1048576),sphere(2,1/1024,1/1048576)),"
-          "sphere(1,1/1024,1/1048576))")
-
-struct Booleans_mode_fixture: Main_fixture {
-    Booleans_mode_fixture(Polyhedron_booleans_mode mode) {
-        push(Options::polyhedron_booleans, mode);
-    }
-
-    ~Booleans_mode_fixture() {
-        pop(Options::polyhedron_booleans);
-    }
-};
-
-#define WITH_POLYHEDRON_BOOLEANS_SOURCES                        \
-WITH_SOURCE("lua",                                              \
-            "h = require 'gamma.polyhedra'"                     \
-            "op = require 'gamma.operations'"                   \
-                                                                \
-            "a = (op.minkowski_sum("                            \
-            "         h.tetrahedron(1, 1, 1),"                  \
-            "         h.octahedron(0.25, 0.25, 0.125))"         \
-            "     - h.sphere(0.5))"                             \
-            "b = (op.minkowski_sum("                            \
-            "         h.tetrahedron(1, 1, 1),"                  \
-            "         h.octahedron(0.25, 0.25, 0.125))"         \
-            "     - op.minkowski_sum("                          \
-            "         h.tetrahedron(-1, 1, 1),"                 \
-            "         h.octahedron(0.25, 0.25, 0.125)))"        \
-            "op.clip("                                          \
-            "    op.minkowski_sum("                             \
-            "        h.tetrahedron(1, 1, 1),"                   \
-            "        h.octahedron(0.25, 0.25, 0.125)),"         \
-            "    plane(0, 0, 1, -0.5))"                         \
-            "op.clip("                                          \
-            "    h.tetrahedron(1, 1, 1),"                       \
-            "    plane(0, 0, 1, -0.5))")                        \
-WITH_SOURCE("scheme",                                           \
-            "(import (gamma polyhedra) (gamma operations))"     \
-                                                                \
-            "(difference (minkowski-sum"                        \
-            "             (tetrahedron 1 1 1)"                  \
-            "             (octahedron 1/4 1/4 1/8))"            \
-            "            (sphere 1/2))"                         \
-            "(difference (minkowski-sum"                        \
-            "             (tetrahedron 1 1 1)"                  \
-            "             (octahedron 1/4 1/4 1/8))"            \
-            "            (minkowski-sum"                        \
-            "             (tetrahedron -1 1 1)"                 \
-            "             (octahedron 1/4 1/4 1/8)))"           \
-            "(clip (minkowski-sum"                              \
-            "       (tetrahedron 1 1 1)"                        \
-            "       (octahedron 1/4 1/4 1/8))"                  \
-            "      (plane 0 0 1 -1/2))"                         \
-            "(clip (tetrahedron 1 1 1)"                         \
-            "      (plane 0 0 1 -1/2))")
-
-DEFINE_TEST_CASE(
-    polyhedron_booleans_mode_nef,
-    * boost::unit_test::fixture<Booleans_mode_fixture>(
-        Polyhedron_booleans_mode::NEF))
-WITH_POLYHEDRON_BOOLEANS_SOURCES
-EXPECTING("tetrahedron(1,1,1)",
-          "nef(tetrahedron(1,1,1))",
-          "octahedron(1/4,1/4,1/8,1/8)",
-          "nef(octahedron(1/4,1/4,1/8,1/8))",
-          "minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))",
-          "sphere(1/2,1/1024,1/1048576)",
-          "nef(sphere(1/2,1/1024,1/1048576))",
-          "difference(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))),"
-          "nef(sphere(1/2,1/1024,1/1048576)))",
-          "tetrahedron(-1,1,1)",
-          "nef(tetrahedron(-1,1,1))",
-          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))",
-          "difference(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))),"
-          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))))",
-          "clip(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))),plane(0,0,1,-1/2))",
-          "clip(nef(tetrahedron(1,1,1)),plane(0,0,1,-1/2))")
-
-DEFINE_TEST_CASE(
-    polyhedron_booleans_mode_corefine,
-    * boost::unit_test::fixture<Booleans_mode_fixture>(
-        Polyhedron_booleans_mode::COREFINE))
-WITH_POLYHEDRON_BOOLEANS_SOURCES
-EXPECTING("tetrahedron(1,1,1)",
-          "nef(tetrahedron(1,1,1))",
-          "octahedron(1/4,1/4,1/8,1/8)",
-          "nef(octahedron(1/4,1/4,1/8,1/8))",
-          "minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))",
-          "polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))))",
-          "sphere(1/2,1/1024,1/1048576)",
-          "difference(polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))),sphere(1/2,1/1024,1/1048576))",
-          "tetrahedron(-1,1,1)",
-          "nef(tetrahedron(-1,1,1))",
-          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))",
-          "polyhedron(minkowski_sum(nef(tetrahedron(-1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))))",
-          "difference(polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))),"
-          "polyhedron(minkowski_sum(nef(tetrahedron(-1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))))",
-          "clip(polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))),plane(0,0,1,-1/2))",
-          "clip(tetrahedron(1,1,1),plane(0,0,1,-1/2))")
-
-DEFINE_TEST_CASE(
-    polyhedron_booleans_mode_auto,
-    * boost::unit_test::fixture<Booleans_mode_fixture>(
-        Polyhedron_booleans_mode::AUTO))
-WITH_POLYHEDRON_BOOLEANS_SOURCES
-EXPECTING("tetrahedron(1,1,1)",
-          "nef(tetrahedron(1,1,1))",
-          "octahedron(1/4,1/4,1/8,1/8)",
-          "nef(octahedron(1/4,1/4,1/8,1/8))",
-          "minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))",
-          "polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))))",
-          "sphere(1/2,1/1024,1/1048576)",
-          "difference(polyhedron(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))),sphere(1/2,1/1024,1/1048576))",
-          "tetrahedron(-1,1,1)",
-          "nef(tetrahedron(-1,1,1))",
-          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8)))",
-          "difference(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))),"
-          "minkowski_sum(nef(tetrahedron(-1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))))",
-          "clip(minkowski_sum(nef(tetrahedron(1,1,1)),"
-          "nef(octahedron(1/4,1/4,1/8,1/8))),plane(0,0,1,-1/2))",
-          "clip(tetrahedron(1,1,1),plane(0,0,1,-1/2))")
-
-#undef WITH_POLYHEDRON_BOOLEANS_SOURCES
-
-DEFINE_TEST_CASE(corefine)
-WITH_SOURCE("lua",
-            "t = require 'gamma.transformation'"
-            "h = require 'gamma.polyhedra'"
-            "op = require 'gamma.operations'"
-
-            "op.corefine(h.tetrahedron(1, 1, 1), plane(0, 0, 1, -0.5))"
-            "op.corefine("
-            "    h.cuboid(2, 2, 2),"
-            "    t.translation(1, 1, 1) * h.cuboid(2, 2, 2))")
-WITH_SOURCE("scheme",
-            "(import (gamma transformation)"
-            "        (gamma polyhedra) (gamma operations))"
-
-            "(corefine (tetrahedron 1 1 1) (plane 0 0 1 -1/2))"
-            "(corefine (cuboid 2 2 2)"
-            "          (transformation-apply (translation 1 1 1)"
-            "          (cuboid 2 2 2)))")
-EXPECTING("tetrahedron(1,1,1)",
-          "corefine(tetrahedron(1,1,1),plane(0,0,1,-1/2))",
-          "cuboid(2,2,2)",
-          "transform(cuboid(2,2,2),translation(1,1,1))",
-          "corefine(cuboid(2,2,2),transform(cuboid(2,2,2),translation(1,1,1)))")
-
-///////////
-// Hulls //
-///////////
-
-DEFINE_TEST_CASE(polygon_hull)
-WITH_SOURCE("lua",
-            "g = require 'gamma.polygons'"
-            "op = require 'gamma.operations'"
-
-            "op.hull("
-            "    g.rectangle(2, 2),"
-            "    g.simple(point(1, -1), point(2, -1), point(1, 1)))"
-            "op.hull(point(0, 0), point(1, 0), point(0, 1))"
-            "op.hull(g.rectangle(2, 2), point(2, -1))")
-WITH_SOURCE("scheme",
-            "(import (gamma polygons) (gamma operations))"
-
-            "(hull (rectangle 2 2)"
-            "      (simple-polygon"
-            "       (point 1 -1) (point 2 -1) (point 1 1)))"
-            "(hull (point 0 0) (point 1 0) (point 0 1))"
-            "(hull (rectangle 2 2) (point 2 -1))")
-EXPECTING(RECTANGLE_TAG,
-          "polygon(point(1,-1),point(2,-1),point(1,1))",
-          "hull(" RECTANGLE_TAG ","
-          "polygon(point(1,-1),point(2,-1),point(1,1)))",
-          "hull(point(0,0),point(1,0),point(0,1))",
-          "hull(" RECTANGLE_TAG ",point(2,-1))")
-
-DEFINE_TEST_CASE(polyhedron_hull)
-WITH_SOURCE("lua",
-            "h = require 'gamma.polyhedra'"
-            "op = require 'gamma.operations'"
-
-            "op.hull(h.tetrahedron(1, 1, 1), h.tetrahedron(-1, 1, 1))"
-            "op.hull(h.tetrahedron(1, 1, 1), point(-1, 0, 0))"
-            "op.hull(point(0, 0, 0), point(1, 0, 0),"
-            "        point(0, 1, 0), point(0, 0, 1))")
-WITH_SOURCE("scheme",
-            "(import (gamma polyhedra) (gamma operations))"
-
-            "(hull (tetrahedron 1 1 1) (tetrahedron -1 1 1))"
-            "(hull (tetrahedron 1 1 1) (point -1 0 0))"
-            "(hull (point 0 0 0) (point 1 0 0)"
-            "      (point 0 1 0) (point 0 0 1))")
-EXPECTING("tetrahedron(1,1,1)",
-          "tetrahedron(-1,1,1)",
-          "hull(tetrahedron(1,1,1),tetrahedron(-1,1,1))",
-          "hull(tetrahedron(1,1,1),point(-1,0,0))",
-          "hull(point(0,0,0),point(1,0,0),point(0,1,0),point(0,0,1))")
-
-DEFINE_TEST_CASE(minkowski_sum)
-WITH_SOURCE("lua",
-            "g = require 'gamma.polygons'"
-            "h = require 'gamma.polyhedra'"
-            "op = require 'gamma.operations'"
-
-            "op.minkowski_sum(g.rectangle(2, 2), g.regular(4, 0.5))"
-            "op.minkowski_sum(g.rectangle(2, 2), g.circle(0.5))"
-            "op.minkowski_sum(h.tetrahedron(5, 5, 5), h.octahedron(1, 1, 0.5))")
-WITH_SOURCE("scheme",
-            "(import (gamma polygons) (gamma polyhedra)"
-            "        (gamma operations))"
-
-            "(minkowski-sum (rectangle 2 2) (regular-polygon 4 1/2))"
-            "(minkowski-sum (rectangle 2 2) (circle 1/2))"
-            "(minkowski-sum (tetrahedron 5 5 5) (octahedron 1 1 1/2))")
-EXPECTING(RECTANGLE_TAG,
-          "regular_polygon(4,1/2,1/1048576)",
-          "minkowski_sum(" RECTANGLE_TAG ",regular_polygon(4,1/2,1/1048576))",
-          "circle(1/2)",
-          "segments(circle(1/2),1/1024,1/1048576)",
-          "minkowski_sum(" RECTANGLE_TAG ","
-          "segments(circle(1/2),1/1024,1/1048576))",
-          "tetrahedron(5,5,5)",
-          "nef(tetrahedron(5,5,5))",
-          "octahedron(1,1,1/2,1/2)",
-          "nef(octahedron(1,1,1/2,1/2))",
-          "minkowski_sum(nef(tetrahedron(5,5,5)),nef(octahedron(1,1,1/2,1/2)))")
-
-DEFINE_TEST_CASE(subdivision)
-WITH_SOURCE("lua",
-            "h = require 'gamma.polyhedra'"
-            "op = require 'gamma.operations'"
-
-            "op.subdivide_catmull_clark(h.tetrahedron(1, 1, 1), 1)"
-            "op.subdivide_doo_sabin(h.tetrahedron(1, 1, 1), 2)"
-            "op.subdivide_loop(h.tetrahedron(1, 1, 1), 3)"
-            "op.subdivide_sqrt_3(h.tetrahedron(1, 1, 1), 4)")
-WITH_SOURCE("scheme",
-            "(import (gamma polyhedra) (gamma operations))"
-
-            "(subdivide-catmull-clark (tetrahedron 1 1 1) 1)"
-            "(subdivide-doo-sabin (tetrahedron 1 1 1) 2)"
-            "(subdivide-loop (tetrahedron 1 1 1) 3)"
-            "(subdivide-sqrt-3 (tetrahedron 1 1 1) 4)")
-EXPECTING("tetrahedron(1,1,1)",
-          "sqrt_3(tetrahedron(1,1,1),4)",
-          "loop(tetrahedron(1,1,1),3)",
-          "doo_sabin(tetrahedron(1,1,1),2)",
-          "catmull_clark(tetrahedron(1,1,1),1)")
-
-/////////////////////
-// Mesh operations //
-/////////////////////
+// These operations process geometry at the mesh level.  They're
+// derived from the Polygon Mesh Processing CGAL package.
 
 DEFINE_TEST_CASE(perturb)
 WITH_SOURCE("lua",
@@ -1562,6 +1465,30 @@ EXPECTING("sphere(2,1/1024,1/1048576)",
           "faces_in(join(bounding_plane(plane(0,0,1,1)),"
           "bounding_plane(plane(0,0,-1,1)))),5)")
 
+DEFINE_TEST_CASE(corefine)
+WITH_SOURCE("lua",
+            "t = require 'gamma.transformation'"
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.corefine(h.tetrahedron(1, 1, 1), plane(0, 0, 1, -0.5))"
+            "op.corefine("
+            "    h.cuboid(2, 2, 2),"
+            "    t.translation(1, 1, 1) * h.cuboid(2, 2, 2))")
+WITH_SOURCE("scheme",
+            "(import (gamma transformation)"
+            "        (gamma polyhedra) (gamma operations))"
+
+            "(corefine (tetrahedron 1 1 1) (plane 0 0 1 -1/2))"
+            "(corefine (cuboid 2 2 2)"
+            "          (transformation-apply (translation 1 1 1)"
+            "          (cuboid 2 2 2)))")
+EXPECTING("tetrahedron(1,1,1)",
+          "corefine(tetrahedron(1,1,1),plane(0,0,1,-1/2))",
+          "cuboid(2,2,2)",
+          "transform(cuboid(2,2,2),translation(1,1,1))",
+          "corefine(cuboid(2,2,2),transform(cuboid(2,2,2),translation(1,1,1)))")
+
 DEFINE_TEST_CASE(remesh)
 WITH_SOURCE("lua",
             "t = require 'gamma.transformation'"
@@ -1574,7 +1501,7 @@ WITH_SOURCE("lua",
             "op.remesh("
             "    h.cuboid(1, 1, 1),"
             "    s.faces_partially_in("
-"                    t.translation(0, 0, 0.5) * v.box(1, 1, 1)), 0.5)"
+            "        t.translation(0, 0, 0.5) * v.box(1, 1, 1)), 0.5)"
             "op.remesh(h.cuboid(1, 1, 1), 0.125, 2)"
             "op.remesh(h.cuboid(1, 1, 1),"
             "    s.faces_partially_in("
@@ -1826,9 +1753,114 @@ EXPECTING("cuboid(2,2,2)",
           "vertices_in(bounding_plane(plane(0,0,1,-1))),"
           "3,1/4,1/8)")
 
-////////////
-// Output //
-////////////
+// ## Front End Tests for Other Operations
+
+// The tests below are for miscellaneous operations, that don't fall
+// into any of the other categories and don't require extensive enough
+// testing to merit their own.
+
+DEFINE_TEST_CASE(polygon_hull)
+WITH_SOURCE("lua",
+            "g = require 'gamma.polygons'"
+            "op = require 'gamma.operations'"
+
+            "op.hull("
+            "    g.rectangle(2, 2),"
+            "    g.simple(point(1, -1), point(2, -1), point(1, 1)))"
+            "op.hull(point(0, 0), point(1, 0), point(0, 1))"
+            "op.hull(g.rectangle(2, 2), point(2, -1))")
+WITH_SOURCE("scheme",
+            "(import (gamma polygons) (gamma operations))"
+
+            "(hull (rectangle 2 2)"
+            "      (simple-polygon"
+            "       (point 1 -1) (point 2 -1) (point 1 1)))"
+            "(hull (point 0 0) (point 1 0) (point 0 1))"
+            "(hull (rectangle 2 2) (point 2 -1))")
+EXPECTING(RECTANGLE_TAG,
+          "polygon(point(1,-1),point(2,-1),point(1,1))",
+          "hull(" RECTANGLE_TAG ","
+          "polygon(point(1,-1),point(2,-1),point(1,1)))",
+          "hull(point(0,0),point(1,0),point(0,1))",
+          "hull(" RECTANGLE_TAG ",point(2,-1))")
+
+DEFINE_TEST_CASE(polyhedron_hull)
+WITH_SOURCE("lua",
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.hull(h.tetrahedron(1, 1, 1), h.tetrahedron(-1, 1, 1))"
+            "op.hull(h.tetrahedron(1, 1, 1), point(-1, 0, 0))"
+            "op.hull(point(0, 0, 0), point(1, 0, 0),"
+            "        point(0, 1, 0), point(0, 0, 1))")
+WITH_SOURCE("scheme",
+            "(import (gamma polyhedra) (gamma operations))"
+
+            "(hull (tetrahedron 1 1 1) (tetrahedron -1 1 1))"
+            "(hull (tetrahedron 1 1 1) (point -1 0 0))"
+            "(hull (point 0 0 0) (point 1 0 0)"
+            "      (point 0 1 0) (point 0 0 1))")
+EXPECTING("tetrahedron(1,1,1)",
+          "tetrahedron(-1,1,1)",
+          "hull(tetrahedron(1,1,1),tetrahedron(-1,1,1))",
+          "hull(tetrahedron(1,1,1),point(-1,0,0))",
+          "hull(point(0,0,0),point(1,0,0),point(0,1,0),point(0,0,1))")
+
+DEFINE_TEST_CASE(minkowski_sum)
+WITH_SOURCE("lua",
+            "g = require 'gamma.polygons'"
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.minkowski_sum(g.rectangle(2, 2), g.regular(4, 0.5))"
+            "op.minkowski_sum(g.rectangle(2, 2), g.circle(0.5))"
+            "op.minkowski_sum(h.tetrahedron(5, 5, 5), h.octahedron(1, 1, 0.5))")
+WITH_SOURCE("scheme",
+            "(import (gamma polygons) (gamma polyhedra)"
+            "        (gamma operations))"
+
+            "(minkowski-sum (rectangle 2 2) (regular-polygon 4 1/2))"
+            "(minkowski-sum (rectangle 2 2) (circle 1/2))"
+            "(minkowski-sum (tetrahedron 5 5 5) (octahedron 1 1 1/2))")
+EXPECTING(RECTANGLE_TAG,
+          "regular_polygon(4,1/2,1/1048576)",
+          "minkowski_sum(" RECTANGLE_TAG ",regular_polygon(4,1/2,1/1048576))",
+          "circle(1/2)",
+          "segments(circle(1/2),1/1024,1/1048576)",
+          "minkowski_sum(" RECTANGLE_TAG ","
+          "segments(circle(1/2),1/1024,1/1048576))",
+          "tetrahedron(5,5,5)",
+          "nef(tetrahedron(5,5,5))",
+          "octahedron(1,1,1/2,1/2)",
+          "nef(octahedron(1,1,1/2,1/2))",
+          "minkowski_sum(nef(tetrahedron(5,5,5)),nef(octahedron(1,1,1/2,1/2)))")
+
+DEFINE_TEST_CASE(subdivision)
+WITH_SOURCE("lua",
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.subdivide_catmull_clark(h.tetrahedron(1, 1, 1), 1)"
+            "op.subdivide_doo_sabin(h.tetrahedron(1, 1, 1), 2)"
+            "op.subdivide_loop(h.tetrahedron(1, 1, 1), 3)"
+            "op.subdivide_sqrt_3(h.tetrahedron(1, 1, 1), 4)")
+WITH_SOURCE("scheme",
+            "(import (gamma polyhedra) (gamma operations))"
+
+            "(subdivide-catmull-clark (tetrahedron 1 1 1) 1)"
+            "(subdivide-doo-sabin (tetrahedron 1 1 1) 2)"
+            "(subdivide-loop (tetrahedron 1 1 1) 3)"
+            "(subdivide-sqrt-3 (tetrahedron 1 1 1) 4)")
+EXPECTING("tetrahedron(1,1,1)",
+          "sqrt_3(tetrahedron(1,1,1),4)",
+          "loop(tetrahedron(1,1,1),3)",
+          "doo_sabin(tetrahedron(1,1,1),2)",
+          "catmull_clark(tetrahedron(1,1,1),1)")
+
+// ## Front End Tests for Output Operations
+
+// Finally, here we test for the creation of output operations with
+// any of the various switches that enable them.
 
 struct Output_fixture: Main_fixture {
     Output_fixture() {
