@@ -810,6 +810,21 @@ DEFINE_MESH_OPERATION(
     const FT &l, const int n)
 FOR(Remesh_operation, q, r, l, n)
 
+// Color
+
+template<typename T, typename U,
+         typename R = Polyhedron_operation<Surface_mesh>>
+inline std::shared_ptr<R> COLOR_SELECTION(
+    const std::shared_ptr<Polygon_operation<T>> &p,
+    const std::shared_ptr<U> &q,
+    const FT r, const FT g, const FT b, const FT a)
+{
+    return make_and_map<Color_selection_operation<U>, R>(
+        CONVERT_TO<Surface_mesh>(
+            EXTRUSION(p, std::vector<Aff_transformation_3>({
+                        TRANSLATION_3(0, 0, 0)}))), q, r, g, b, a);
+}
+
 template<typename T, typename U,
          typename R = Polyhedron_operation<Surface_mesh>>
 inline std::shared_ptr<R> COLOR_SELECTION(
@@ -819,6 +834,46 @@ inline std::shared_ptr<R> COLOR_SELECTION(
 {
     return make_and_map<Color_selection_operation<U>, R>(
         CONVERT_TO<Surface_mesh>(p), q, r, g, b, a);
+}
+
+template<typename T, typename R = Polyhedron_operation<Surface_mesh>>
+inline std::shared_ptr<R> COLOR_VERTICES(
+    const std::shared_ptr<Polygon_operation<T>> &p,
+    const FT r, const FT g, const FT b, const FT a)
+{
+    return make_and_map<Color_vertices_operation, R>(
+        CONVERT_TO<Surface_mesh>(
+            EXTRUSION(p, std::vector<Aff_transformation_3>({
+                        TRANSLATION_3(0, 0, 0)}))), r, g, b, a);
+}
+
+template<typename T, typename R = Polyhedron_operation<Surface_mesh>>
+inline std::shared_ptr<R> COLOR_VERTICES(
+    const std::shared_ptr<Polyhedron_operation<T>> &p,
+    const FT r, const FT g, const FT b, const FT a)
+{
+    return make_and_map<Color_vertices_operation, R>(
+        CONVERT_TO<Surface_mesh>(p), r, g, b, a);
+}
+
+template<typename T, typename R = Polyhedron_operation<Surface_mesh>>
+inline std::shared_ptr<R> COLOR_FACES(
+    const std::shared_ptr<Polygon_operation<T>> &p,
+    const FT r, const FT g, const FT b, const FT a)
+{
+    return make_and_map<Color_faces_operation, R>(
+        CONVERT_TO<Surface_mesh>(
+            EXTRUSION(p, std::vector<Aff_transformation_3>({
+                        TRANSLATION_3(0, 0, 0)}))), r, g, b, a);
+}
+
+template<typename T, typename R = Polyhedron_operation<Surface_mesh>>
+inline std::shared_ptr<R> COLOR_FACES(
+    const std::shared_ptr<Polyhedron_operation<T>> &p,
+    const FT r, const FT g, const FT b, const FT a)
+{
+    return make_and_map<Color_faces_operation, R>(
+        CONVERT_TO<Surface_mesh>(p), r, g, b, a);
 }
 
 // Perturb

@@ -29,45 +29,68 @@
 // Color selected vertices/faces
 
 template<typename T>
-void Color_selection_operation<T>::evaluate()
+static void apply_color(
+    Surface_mesh &P, const T &elements, CGAL::IO::Color color)
 {
-    assert(!polyhedron);
-
-    polyhedron = std::make_shared<Surface_mesh>(*operand->get_value());
-
-    using U = std::conditional_t<std::is_same_v<T, Face_selector>,
-                                 Surface_mesh::Face_index,
-                                 Surface_mesh::Vertex_index>;
+    using U = typename T::iterator::value_type;
 
     const char *s;
-    if constexpr (std::is_same_v<T, Face_selector>) {
+    if constexpr (std::is_same_v<U, Surface_mesh::Face_index>) {
         s = "f:color";
     } else {
+        static_assert(std::is_same_v<U, Surface_mesh::Vertex_index>);
         s = "v:color";
     }
 
-    auto [map, p] = polyhedron->add_property_map<U, CGAL::IO::Color>(
-        s, CGAL::IO::Color(165, 165, 165, 255));
+    auto [map, p] = P.add_property_map<U, std::optional<CGAL::IO::Color>>(s);
 
-    const auto v = selector->apply(*polyhedron);
-    for (const auto &x: v) {
-        if (p) {
+    for (const auto &x: elements) {
+        if (p || !map[x].has_value()) {
             map[x] = color;
         } else {
-            const auto c = map[x];
+            const auto c = map[x].value();
+            const double a = color.alpha() / 255.0, b = 1.0 - a;
+
             map[x] = CGAL::IO::Color(
-                (c.red() + color.red()) / 2,
-                (c.green() + color.green()) / 2,
-                (c.blue() + color.blue()) / 2,
-                (c.alpha() + color.alpha()) / 2);
+                a * color.red() + b * c.red(),
+                a * color.green() + b * c.green(),
+                a * color.blue() + b * c.blue(),
+                a * color.alpha() + b * c.alpha());
         }
     }
+}
+
+template<typename T>
+void Color_selection_operation<T>::evaluate()
+{
+    assert(!polyhedron);
+    polyhedron = std::make_shared<Surface_mesh>(*operand->get_value());
+
+    const auto v = selector->apply(*polyhedron);
+
+    apply_color(*polyhedron, v, color);
 
     annotations.insert({"selected", std::to_string(v.size())});
 }
 
 template void Color_selection_operation<Face_selector>::evaluate();
 template void Color_selection_operation<Vertex_selector>::evaluate();
+
+void Color_vertices_operation::evaluate()
+{
+    assert(!polyhedron);
+    polyhedron = std::make_shared<Surface_mesh>(*operand->get_value());
+
+    apply_color(*polyhedron, polyhedron->vertices(), color);
+}
+
+void Color_faces_operation::evaluate()
+{
+    assert(!polyhedron);
+    polyhedron = std::make_shared<Surface_mesh>(*operand->get_value());
+
+    apply_color(*polyhedron, polyhedron->faces(), color);
+}
 
 // Perturb selected vertices
 

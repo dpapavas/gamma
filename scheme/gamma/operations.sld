@@ -2,8 +2,8 @@
 
 (define-library (gamma operations)
   (export offset extrusion hull minkowski-sum union difference intersection
-          complement boundary clip deflate color-selection
-          subdivide-catmull-clark subdivide-doo-sabin subdivide-loop
+          complement boundary clip deflate color-selection color-vertices
+          color-faces subdivide-catmull-clark subdivide-doo-sabin subdivide-loop
           subdivide-sqrt-3 remesh perturb refine fair smooth-shape
           deform corefine complement
 

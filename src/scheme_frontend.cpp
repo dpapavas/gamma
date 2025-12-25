@@ -1623,37 +1623,90 @@ static SCM deform(SCM s, SCM rest)
         }, a);
 }
 
-static SCM color_selection(SCM s, SCM t, SCM u)
+static std::array<FT, 4> pop_color(int i, SCM rest)
 {
-    std::variant<std::shared_ptr<Face_selector>,
-                 std::shared_ptr<Vertex_selector>> p;
+    std::array<FT, 4> v = {0, 0, 0, 1};
 
-    Boxed_polyhedron a;
-    pop_argument(1, s, a);
+    if (!scm_is_null(rest)) {
+        if (scm_is_pair(rest)
+            && scm_is_null(scm_cdr(rest))) {
+            int n;
+
+            pop_argument(i, rest, n);
+
+            for (int i = 0; i < 3; i++) {
+                v[i] = (n >> i) & 1;
+            }
+        } else {
+            pop_argument(i, rest, v[0]);
+            pop_argument(i + 1, rest, v[1]);
+            pop_argument(i + 2, rest, v[2]);
+            pop_optional(i + 3, rest, v[3]);
+        }
+    }
+
+    return v;
+}
+
+#define DEFINE_COLOR_OPERATION(FUNC, OP)                                \
+static SCM FUNC(SCM s, SCM rest)                                        \
+{                                                                       \
+    std::array<FT, 4> v = pop_color(2, rest);                           \
+                                                                        \
+    if (Boxed_polygon p; try_pop_argument(1, s, p)) {                   \
+        return std::visit(                                              \
+            [&v](auto &&x) {                                            \
+                return to_scheme<Boxed_polyhedron>(                     \
+                    OP(x, v[0], v[1], v[2], v[3]));                     \
+            }, p);                                                      \
+    } else if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {         \
+        return std::visit(                                              \
+            [&v](auto &&x) {                                            \
+                return to_scheme<Boxed_polyhedron>(                     \
+                    OP(x, v[0], v[1], v[2], v[3]));                     \
+            }, p);                                                      \
+    } else {                                                            \
+        throw wrong_type_exception(1, s, "polygon or polyhedron");      \
+    }                                                                   \
+}
+
+DEFINE_COLOR_OPERATION(color_vertices, COLOR_VERTICES)
+DEFINE_COLOR_OPERATION(color_faces, COLOR_FACES)
+
+#undef DEFINE_COLOR_OPERATION
+
+static SCM color_selection(SCM s, SCM t, SCM rest)
+{
+    std::array<FT, 4> v = pop_color(3, rest);
+
+    std::variant<std::shared_ptr<Face_selector>,
+                 std::shared_ptr<Vertex_selector>> q;
 
     if (std::shared_ptr<Face_selector> x;
         try_pop_argument(2, t, x)) {
-        p = x;
+        q = x;
     } else if (std::shared_ptr<Vertex_selector> x;
                try_pop_argument(2, t, x)) {
-        p = x;
+        q = x;
     } else {
         throw wrong_type_exception(2, t, "selector");
     }
 
-    FT v[4] = {0, 0, 0, 1};
-
-    if (int n; pop_optional(3, u, n)) {
-        for (int i = 0; i < 3; i++) {
-            v[i] = (n >> i) & 1;
-        }
+    if (Boxed_polygon p; try_pop_argument(1, s, p)) {
+        return std::visit(
+            [&v](auto &&x, auto &&y) {
+                return to_scheme<Boxed_polyhedron>(
+                    COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+            }, p, q);
+    } else if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {
+        return std::visit(
+            [&v](auto &&x, auto &&y) {
+                return to_scheme<Boxed_polyhedron>(
+                    COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+            }, p, q);
+    } else {
+        throw wrong_type_exception(1, s, "polygon or polyhedron");
     }
-
-    return std::visit(
-        [&v](auto &&x, auto &&y) {
-            return to_scheme<Boxed_polyhedron>(
-                COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
-        }, a, p);
 }
 
 // ## Scheme Library Definitions
@@ -1918,7 +1971,9 @@ static void define_operations(void *)
     DEFINE_FOREIGN_PROC("deform", 1, 0, 1, deform);
     DEFINE_FOREIGN_PROC("deflate", 1, 0, 1, deflate);
 
-    DEFINE_FOREIGN_PROC("color-selection", 2, 1, 0, color_selection);
+    DEFINE_FOREIGN_PROC("color-selection", 2, 0, 1, color_selection);
+    DEFINE_FOREIGN_PROC("color-vertices", 1, 0, 1, color_vertices);
+    DEFINE_FOREIGN_PROC("color-faces", 1, 0, 1, color_faces);
 }
 
 #undef DEFINE_FOREIGN_TYPE

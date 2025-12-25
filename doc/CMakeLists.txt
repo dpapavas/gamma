@@ -1,6 +1,6 @@
 set(program_SOURCES src/operation.h src/operation.cpp src/evaluation.cpp
   src/basic_operations.h src/compose_tag.h src/compose_tag.cpp src/rewrites.cpp
-  src/main.cpp src/extrusion_operation.cpp
+  src/main.cpp src/extrusion_operation.cpp src/sink_operations.cpp
 
   src/boxed_operations.h src/frontend.h src/frontend.cpp src/scheme_frontend.cpp
 

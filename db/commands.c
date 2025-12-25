@@ -1089,11 +1089,16 @@ int read_commands(FILE *fp)
                     }
 
                     //   2. plus 4 required color coordinates if we're
-                    //   reading the COFF variant.  If not, we still
-                    //   set the vertex to the default color.
+                    //   reading the COFF variant.  If not, or if we
+                    //   read in the special color with zero
+                    //   components, we set the vertex to the default
+                    //   color.
 
+                    memset(&p[3], 0, 4 * sizeof(float));
 
                     if (t[0] == 'C') {
+                        bool q = false;
+
                         for (size_t j = 3; j < 7; j++) {
                             if (do_scan(fp, "%f", &p[j]) != 1) {
                                 print_error(
@@ -1103,8 +1108,18 @@ int read_commands(FILE *fp)
 
                                 goto error;
                             }
+
+                            q = q || p[j] > 1.0f;
                         }
-                    } else {
+
+                        if (q) {
+                            for (size_t j = 3; j < 7; j++) {
+                                p[j] /= 255.0;
+                            }
+                        }
+                    }
+
+                    if (p[3] == 0 && p[4] == 0 && p[5] == 0 && p[6] == 0) {
                         p[3] = (float)settings.default_color[0];
                         p[4] = (float)settings.default_color[1];
                         p[5] = (float)settings.default_color[2];

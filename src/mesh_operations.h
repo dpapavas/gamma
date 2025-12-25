@@ -22,32 +22,19 @@
 
 #include "selection.h"
 
-template<typename T>
-class Color_selection_operation:
+class Color_operation:
     public Unary_operation<Polyhedron_operation<Surface_mesh>> {
-    const std::shared_ptr<T> selector;
+public:
     const CGAL::IO::Color color;
 
-public:
-    Color_selection_operation(
+    Color_operation(
         const std::shared_ptr<Polyhedron_operation<Surface_mesh>> &p,
-        const std::shared_ptr<T> &q,
         const FT r, const FT g, const FT b, const FT a):
         Unary_operation<Polyhedron_operation<Surface_mesh>>(p),
-        selector(q),
         color(static_cast<unsigned char>(CGAL::to_double(r * 255)),
               static_cast<unsigned char>(CGAL::to_double(g * 255)),
               static_cast<unsigned char>(CGAL::to_double(b * 255)),
               static_cast<unsigned char>(CGAL::to_double(a * 255))) {}
-
-    void evaluate() override;
-
-    std::string describe() const override {
-        return compose_tag(
-            "color_selection", operand, selector,
-            static_cast<int>(color.red()), static_cast<int>(color.blue()),
-            static_cast<int>(color.green()), static_cast<int>(color.alpha()));
-    }
 
     // We don't searialize color maps, so always need to re-evaluate.
 
@@ -58,6 +45,56 @@ public:
     bool load() override {
         return false;
     };
+};
+
+template<typename T>
+class Color_selection_operation: public Color_operation {
+    const std::shared_ptr<T> selector;
+
+public:
+    Color_selection_operation(
+        const std::shared_ptr<Polyhedron_operation<Surface_mesh>> &p,
+        const std::shared_ptr<T> &q,
+        const FT r, const FT g, const FT b, const FT a):
+        Color_operation(p, r, g, b, a),
+        selector(q) {}
+
+    void evaluate() override;
+
+    std::string describe() const override {
+        return compose_tag(
+            "color_selection", operand, selector,
+            static_cast<int>(color.red()), static_cast<int>(color.green()),
+            static_cast<int>(color.blue()), static_cast<int>(color.alpha()));
+    }
+};
+
+class Color_vertices_operation: public Color_operation {
+public:
+    using Color_operation::Color_operation;
+
+    void evaluate() override;
+
+    std::string describe() const override {
+        return compose_tag(
+            "color_vertices", operand,
+            static_cast<int>(color.red()), static_cast<int>(color.green()),
+            static_cast<int>(color.blue()), static_cast<int>(color.alpha()));
+    }
+};
+
+class Color_faces_operation: public Color_operation {
+public:
+    using Color_operation::Color_operation;
+
+    void evaluate() override;
+
+    std::string describe() const override {
+        return compose_tag(
+            "color_faces", operand,
+            static_cast<int>(color.red()), static_cast<int>(color.green()),
+            static_cast<int>(color.blue()), static_cast<int>(color.alpha()));
+    }
 };
 
 template<typename T>

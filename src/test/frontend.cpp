@@ -1753,6 +1753,87 @@ EXPECTING("cuboid(2,2,2)",
           "vertices_in(bounding_plane(plane(0,0,1,-1))),"
           "3,1/4,1/8)")
 
+DEFINE_TEST_CASE(color_selection)
+WITH_SOURCE("lua",
+            "v = require 'gamma.volumes'"
+            "s = require 'gamma.selection'"
+            "h = require 'gamma.polyhedra'"
+            "g = require 'gamma.polygons'"
+            "op = require 'gamma.operations'"
+
+            "op.color_selection("
+            "    g.regular(3, 1), s.vertices_in(v.plane(1, 0, 0, 0)))"
+            "op.color_selection("
+            "    g.regular(3, 1),"
+            "    s.vertices_in(v.plane(0, 1, 0, 0)), 5)"
+            "op.color_selection("
+            "    h.sphere(1),"
+            "    s.faces_in(v.plane(0, 0, 1, 0)),"
+            "    0.4, 0.5, 0.6)")
+WITH_SOURCE("scheme",
+            "(import (gamma volumes) (gamma selection)"
+            "        (gamma polyhedra) (gamma polygons)"
+            "        (gamma operations))"
+
+            "(color-selection"
+            " (regular-polygon 3 1)"
+            " (vertices-in (bounding-plane 1 0 0 0)))"
+            "(color-selection"
+            " (regular-polygon 3 1)"
+            " (vertices-in (bounding-plane 0 1 0 0)) 5)"
+            "(color-selection"
+            " (sphere 1) (faces-in (bounding-plane 0 0 1 0))"
+            " 0.4 0.5 0.6)")
+EXPECTING("regular_polygon(3,1,1/1048576)",
+          "sphere(1,1/1024,1/1048576)",
+          "extrusion(regular_polygon(3,1,1/1048576),translation(0,0,0))",
+          "mesh(extrusion(regular_polygon(3,1,1/1048576),translation(0,0,0)))",
+          "mesh(sphere(1,1/1024,1/1048576))",
+          "color_selection(mesh(extrusion(regular_polygon(3,1,1/1048576),"
+          "translation(0,0,0))),vertices_in(bounding_plane(plane(1,0,0,0)))"
+          ",0,0,0,255)",
+          "color_selection(mesh(extrusion(regular_polygon(3,1,1/1048576),"
+          "translation(0,0,0))),vertices_in(bounding_plane(plane(0,1,0,0)))"
+          ",255,0,255,255)",
+          "color_selection(mesh(sphere(1,1/1024,1/1048576)),"
+          "faces_in(bounding_plane(plane(0,0,1,0))),102,127,153,255)")
+
+#define DEFINE_COLOR_TEST_CASE(WHAT)                                    \
+DEFINE_TEST_CASE(color_## WHAT)                                         \
+WITH_SOURCE("lua",                                                      \
+            "v = require 'gamma.volumes'"                               \
+            "s = require 'gamma.selection'"                             \
+            "h = require 'gamma.polyhedra'"                             \
+            "g = require 'gamma.polygons'"                              \
+            "op = require 'gamma.operations'"                           \
+                                                                        \
+            "op.color_" #WHAT "(g.regular(3, 1))"                       \
+            "op.color_" #WHAT "(g.regular(3, 1), 5)"                    \
+            "op.color_" #WHAT "(h.tetrahedron(1, 1, 1), 0.4, 0.5, 0.6)") \
+WITH_SOURCE("scheme",                                                   \
+            "(import (gamma volumes) (gamma selection)"                 \
+            "        (gamma polyhedra) (gamma polygons)"                \
+            "        (gamma operations))"                               \
+                                                                        \
+            "(color-" #WHAT " (regular-polygon 3 1))"                   \
+            "(color-" #WHAT " (regular-polygon 3 1) 5)"                 \
+            "(color-" #WHAT " (tetrahedron 1 1 1) 0.4 0.5 0.6)")        \
+EXPECTING("regular_polygon(3,1,1/1048576)",                             \
+          "tetrahedron(1,1,1)",                                         \
+          "extrusion(regular_polygon(3,1,1/1048576),translation(0,0,0))", \
+          "mesh(extrusion(regular_polygon(3,1,1/1048576),translation(0,0,0)))", \
+          "mesh(tetrahedron(1,1,1))",                                   \
+          "color_" #WHAT "(mesh(extrusion(regular_polygon(3,1,1/1048576)," \
+          "translation(0,0,0))),0,0,0,255)",                            \
+          "color_" #WHAT "(mesh(extrusion(regular_polygon(3,1,1/1048576)," \
+          "translation(0,0,0))),255,0,255,255)",                        \
+          "color_" #WHAT "(mesh(tetrahedron(1,1,1)),102,127,153,255)")
+
+DEFINE_COLOR_TEST_CASE(vertices)
+DEFINE_COLOR_TEST_CASE(faces)
+
+#undef DEFINE_COLOR_TEST_CASE
+
 // ## Front End Tests for Other Operations
 
 // The tests below are for miscellaneous operations, that don't fall

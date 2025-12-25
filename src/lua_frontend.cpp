@@ -942,6 +942,60 @@ DEFINE_SUBDIVISION_OPERATION(sqrt_3, SQRT_3)
 
 #undef DEFINE_SUBDIVISION_OPERATION
 
+static std::array<FT, 4> checkcolor(lua_State *L, int arg)
+{
+    std::array<FT, 4> v = {0, 0, 0, 1};
+
+    if (lua_gettop(L) == arg) {
+        int n = luaL_checkinteger(L, arg);
+
+        for (int i = 0; i < 3; i++) {
+            v[i] = (n >> i) & 1;
+        }
+    } else {
+        for (int i = 0; i < 4; i++) {
+            if (lua_isnone(L, arg + i)) {
+                break;
+            }
+
+            v[i] = luaL_checknumber(L, arg + i);
+        }
+    }
+
+    return v;
+}
+
+#define DEFINE_COLOR_OPERATION(FUNC, OP)                                \
+static int FUNC(lua_State *L)                                           \
+{                                                                       \
+    std::array<FT, 4> v = checkcolor(L, 2);                             \
+                                                                        \
+    if (luaL_testudata(L, 1, "polygon")) {                              \
+        std::visit(                                                     \
+            [&L, &v](auto &&x) {                                        \
+                tolua<Boxed_polyhedron>(                                \
+                    L, OP(x, v[0], v[1], v[2], v[3]));                  \
+            },                                                          \
+            fromlua<Boxed_polygon>(L, 1));                              \
+    } else if (luaL_testudata(L, 1, "polyhedron")) {                    \
+        std::visit(                                                     \
+            [&L, &v](auto &&x) {                                        \
+                tolua<Boxed_polyhedron>(                                \
+                    L, OP(x, v[0], v[1], v[2], v[3]));                  \
+            },                                                          \
+            fromlua<Boxed_polyhedron>(L, 1));                           \
+    } else {                                                            \
+        luaL_argerror(L, 1, "expected polyhedron or polygon");          \
+    }                                                                   \
+                                                                        \
+    return 1;                                                           \
+}
+
+DEFINE_COLOR_OPERATION(color_vertices, COLOR_VERTICES)
+DEFINE_COLOR_OPERATION(color_faces, COLOR_FACES)
+
+#undef DEFINE_COLOR_OPERATION
+
 static int color_selection(lua_State *L)
 {
     std::variant<std::shared_ptr<Face_selector>,
@@ -955,22 +1009,27 @@ static int color_selection(lua_State *L)
         luaL_argerror(L, 2, "expected face or vertex selector");
     }
 
-    FT v[4] = {0, 0, 0, 1};
+    std::array<FT, 4> v = checkcolor(L, 3);
 
-    if (!lua_isnoneornil(L, 3)) {
-        int n = luaL_checkinteger(L, 3);
-
-        for (int i = 0; i < 3; i++) {
-            v[i] = (n >> i) & 1;
-        }
+    if (luaL_testudata(L, 1, "polygon")) {
+        std::visit(
+            [&L, &v](auto &&x, auto &&y) {
+                tolua<Boxed_polyhedron>(
+                    L, COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+            },
+            fromlua<Boxed_polygon>(L, 1), p);
+    } else if (luaL_testudata(L, 1, "polyhedron")) {
+        std::visit(
+            [&L, &v](auto &&x, auto &&y) {
+                tolua<Boxed_polyhedron>(
+                    L, COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+            },
+            fromlua<Boxed_polyhedron>(L, 1), p);
+    } else {
+        luaL_argerror(L, 1, "expected polyhedron or polygon");
     }
 
-    return std::visit(
-        [&L, &v](auto &&x, auto &&y) {
-            return tolua<Boxed_polyhedron>(
-                L, COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
-        },
-        fromlua<Boxed_polyhedron>(L, 1), p);
+    return 1;
 }
 
 #define DEFINE_SIMPLE_MESH_OPERATION(NAME, OP, T)               \
@@ -1385,6 +1444,8 @@ static int open_operations(lua_State *L)
         {"hull", hull},
 
         {"color_selection", color_selection},
+        {"color_vertices", color_vertices},
+        {"color_faces", color_faces},
         {"refine", refine},
         {"perturb", perturb},
         {"remesh", remesh},
