@@ -169,7 +169,7 @@ static void mouse_button_callback(
 // automatically print out any GL errors as they are generated.
 // Useful to ensure everything is spick and span GL-wise.
 
-#ifdef DEBUG
+#ifndef NDEBUG
 static void APIENTRY debug_message_callback(
     GLenum source,
     GLenum type,
@@ -650,7 +650,7 @@ struct window *find_window(const char *name)
     // If enabled, we set up a debug message callback, to be notified
     // about any GL errors.
 
-#ifdef DEBUG
+#ifndef NDEBUG
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     glDebugMessageCallback(debug_message_callback, nullptr);
@@ -1329,6 +1329,16 @@ void print_window(struct window *w, GLint format, FILE *fp)
                 / w_ * s + b);                                          \
         }
 
+        // If there are more than one viewports in the window, we
+        // begin a new viewport for each, otherwise contents from one
+        // viewport will be able to spill over into the others.
+
+        if (w->viewports->next) {
+            safely_assert(
+                gl2psBeginViewport((GLint []){o_x, o_y, p_x, p_y})
+                == GL2PS_SUCCESS);
+        }
+
         // We now map the object's VBO and transform its vertices (and
         // also simply copy the vertex colors).
 
@@ -1350,7 +1360,26 @@ void print_window(struct window *w, GLint format, FILE *fp)
 
 #undef PROJECT
 
-        // Moving on, we map the EBO and:
+        // Since we can't handle transparency very well anyway^[Only
+        // the SVG and PDF formats support it, the latter not too
+        // well], we instead use it to request that the edges be
+        // stippled more or less densly, according to the alpha value.
+        // We also leave triangles with the same color as the edge
+        // color unfilled by convention, unless they have a zero alpha
+        // value.  We use this to draw plain lines in digrams.
+
+        // For this purpose, we set up the stipple patterns below,
+        // with 1 - 16 evenly spaced bits set.
+
+        GLushort patterns[16] = {};
+
+        for (int i = 1; i <= 16; i++) {
+            for (int j = 1; j <= i ; j++) {
+                patterns[i - 1] |= (1 << ((int)(round(16.0 / i * j)) - 1));
+            }
+        }
+
+        // We're now ready to map the EBO and:
 
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, o->ebo);
 
@@ -1358,13 +1387,26 @@ void print_window(struct window *w, GLint format, FILE *fp)
             //   1. assemble and draw the triangles that make up the
             //   object^[These will be filled wihtout a border, so we
             //   needn't worry about the fact that they're potentially
-            //   triangulations of larger polygons.], followed by
+            //   triangulations of larger polygons.], unless they're
+            //   "transparent"^[We need only support the case where
+            //   the whole shape has uniform alpha value, so we just
+            //   look at the first vertex.], followed by
 
             GL2PSvertex v[3];
             GLuint *p = glMapBuffer(GL_ELEMENT_ARRAY_BUFFER, GL_READ_ONLY);
 
             for (GLsizei i = 0; i < o->counts[1]; i++) {
                 memcpy(v + (i % 3), vertices + p[i], sizeof(GL2PSvertex));
+
+                if (i % 3 == 0
+                    && v[0].rgba[0] == settings.edge_color[0]
+                    && v[0].rgba[1] == settings.edge_color[1]
+                    && v[0].rgba[2] == settings.edge_color[2]
+                    && v[0].rgba[3] > 0) {
+                     i += 2;
+                     continue;
+                }
+
                 if (i % 3 == 2) {
                     gl2psAddPolyPrimitive(
                         GL2PS_TRIANGLE, 3, v,
@@ -1377,11 +1419,13 @@ void print_window(struct window *w, GLint format, FILE *fp)
                 }
             }
 
-            //   2. the edges.
+            //   2. the possibly stippled edges, drawn in the edge
+            //   color.
 
             const GLuint *q = p + o->counts[1];
             for (GLsizei i = 0; i < o->counts[2]; i++) {
-                memcpy(&v[i % 2].xyz, vertices + q[i], sizeof(GL2PSxyz));
+                const GL2PSvertex *v_qi = vertices + q[i];
+                memcpy(&v[i % 2].xyz, v_qi, sizeof(GL2PSxyz));
                 memcpy(
                     &v[i % 2].rgba,
                     (GL2PSrgba) {
@@ -1396,7 +1440,7 @@ void print_window(struct window *w, GLint format, FILE *fp)
                     gl2psAddPolyPrimitive(
                         GL2PS_LINE, 2, v,
                         0, 0.0f, 0.0f,
-                        0xffff, 1,
+                        patterns[(int)round(v_qi->rgba[3] * 16.0) - 1], 1,
                         1.0f,
                         GL2PS_LINE_CAP_ROUND,
                         GL2PS_LINE_JOIN_MITER,
@@ -1405,8 +1449,14 @@ void print_window(struct window *w, GLint format, FILE *fp)
             }
         }
 
+        // We can now clean up and move on the the next viewport.
+
         glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+        if (w->viewports->next) {
+            safely_assert(gl2psEndViewport() == GL2PS_SUCCESS);
+        }
     }
 
     unlock_window(w);

@@ -12,7 +12,14 @@
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 
-#define DEBUG
+/* This macro ensures that the asserted expression does get executed,
+ * no matter the build type, along with any side-effects. */
+
+#ifdef NDEBUG
+#define safely_assert(...) (void)(__VA_ARGS__)
+#else
+#define safely_assert(...) assert(__VA_ARGS__)
+#endif
 
 #define print_error(...) fprintf(stderr, __VA_ARGS__)
 #define print_output(...)                       \

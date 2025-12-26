@@ -266,13 +266,13 @@ $0 ~ "^[[:space:]]*" prefix {
     in_print = (in_print                                \
                 " -c \"set args -x scheme /dev/stdin\"" \
                 " -c \"run\""                           \
-                " -c \"print " a ".pdf\"")
+                " -c \"print " a ".eps\"")
 
   } else if (/^```graph/) {
     a = path "." ++figures
     text = text "@noindent\n@center @image {" a "}\n"
 
-    in_graph = (/,neato/ ? "neato" : "dot") " -Tpdf -o " a ".pdf"
+    in_graph = (/,neato/ ? "neato" : "dot") " -Teps -o " a ".eps"
     print "digraph {" | in_graph
 
     if (/,lr/) {

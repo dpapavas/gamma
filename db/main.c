@@ -542,7 +542,7 @@ int main(int argc, char *argv[])
 
     glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
     glfwWindowHint(GLFW_SAMPLES, 16);
-#ifdef DEBUG
+#ifndef NDEBUG
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, true);
 #endif
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
