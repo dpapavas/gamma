@@ -1,9 +1,4 @@
 BEGINFILE {
-  # Substitutions to "parse" arguments to ```print.
-
-  printsubs["^z:(-?[[:digit:].]+)$"] = "zoom \\1"
-  printsubs["^rx:(-?[[:digit:].]+)$"] = "rotate \\1"
-  printsubs["^ry:(-?[[:digit:].]+)$"] = "rotate 0 \\1"
 }
 
 function print_program()
@@ -231,7 +226,7 @@ $0 ~ "^[[:space:]]*" prefix {
     text = text gensub(/^Concept:[[:space:]]*(.*)$/, "@cindex \\1\n", 1)
   } else if (/^```print/) {
     a = path "." ++figures
-    n = split($0, v, ";")
+    n = split($0, v, ",")
 
     text = text "@center @image {" a ",145mm}\n"
 
@@ -241,33 +236,35 @@ $0 ~ "^[[:space:]]*" prefix {
       in_print = (in_print                                      \
                   " -c \"resize " ((n - 1) * 500) " 500\""      \
                   " -c \"split horizontally " (n - 1) "\"")
+    }
 
-      for (i = 2; i <= n; i++) {
-        in_print = (in_print \
-                    " -c \"focus " (i - 1) "\""                  \
-                    " -c \"target " (i - 1) "\""                 \
-                    " -c \"view orthographic\"")
+    for (i = 2; i <= n; i++) {
+      in_print = (in_print \
+                  " -c \"focus " (i - 1) "\""                  \
+                  " -c \"view orthographic\"")
 
-        m = split(v[i], u, ",")
+      m = split(v[i], u, ";")
 
-        for (j = 1; j <= m; j++) {
-          for (r in printsubs) {
-            s = gensub(r, printsubs[r], 1, u[j])
-
-            if (s != u[j]) {
-              in_print = in_print " -c \"" s "\""
-              break
-            }
-          }
+      for (j = 1; j <= m; j++) {
+        if (u[j]) {
+          in_print = in_print " -c \"" u[j] "\""
         }
       }
     }
 
+    sub(/^```print[[:space:]]*/, "", v[1])
+
     in_print = (in_print                                \
-                " -c \"set args -x scheme /dev/stdin\"" \
+                " -c \"set args -x scheme --no-store-threshold " (v[1] ? srcdir "/" v[1] : "/dev/stdin") "\"" \
                 " -c \"run\""                           \
                 " -c \"print " a ".eps\"")
 
+    # When reading from a file, we expect nothing to be piped to
+    # `in_print`.  Send dummy input to ensure the command is run.
+
+    if (v[1]) {
+      print | in_print
+    }
   } else if (/^```graph/) {
     a = path "." ++figures
     text = text "@noindent\n@center @image {" a "}\n"
@@ -305,7 +302,18 @@ $0 ~ "^[[:space:]]*" prefix {
         text = text "\n@end example\n"
         in_example = 0
       } else if ($0 != "```") {
-        text = text "\n@latex\n\\begin{lstlisting}[style=" substr($0, 4) "]"
+        split($0, v)
+        text = text "\n@latex\n\\begin{lstlisting}[style=" substr(v[1], 4) "]"
+
+        if (v[2]) {
+          text = text "\n"
+          while ((getline x < (srcdir "/" v[2])) > 0) {
+            text = text x "\n"
+          }
+
+          close(file)
+        }
+
         in_listing = 1
       } else {
         text = text "@example"
