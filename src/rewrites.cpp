@@ -417,7 +417,7 @@ static bool try_fold_difference_operation(Operation *op)
         q->first->link_to(q.get());
         q->second->link_to(q.get());
 
-        assert(q->predecessors.size() == 2);
+        assert(q->predecessors.size() == 1 + std::size_t(q->first != q->second));
         assert(q->successors.size() == 0);
 
         insert_operation(q);
