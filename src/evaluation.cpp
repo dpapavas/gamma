@@ -342,6 +342,7 @@ void Worker::work()
         }
 
         Operation *op = *it;
+        assert(op->selected);
 
         // At this point we have found an operation to evaluate.  We
         // increment the `working` counter to signal that we took on
@@ -594,7 +595,12 @@ void Worker::work()
         // still needed to be evaluated.
 
         for (Operation *x: op->successors) {
-            if (!x->selected) {
+            // We skip successors that are not selected, which means
+            // that their result is not of interest in the current
+            // evaluation.  We also skip loadable operations as they
+            // will already have been put in the ready list.
+
+            if (!x->selected || x->loadable) {
                 continue;
             }
 
