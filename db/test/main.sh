@@ -64,9 +64,14 @@ test_set() {
     program hello world
     args --hello --world
     present-on-reload no
+    resize-on-split yes
     default-color 0.1 0.2 0.3 0.4
     edge-color 0.1 0.2 0.3 0.4
     mouse-sensitivity 0.123
+    default-view 100
+    default-zoom 0.5
+    default-rotation 10 20 30
+    default-translation 50 60 70
 EOF
 }
 

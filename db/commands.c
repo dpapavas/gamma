@@ -247,6 +247,8 @@ static int compare_edges(const void *a, const void *b)
 struct settings settings = {
     .present_on_reload = true,
     .edge_color = {0, 0, 0, 1},
+    .default_zoom = 0.7f,
+    .default_view = 50.0f,
     .default_color = {1, 1, 1, 1},
     .mouse_sensitivity = 0.01
 };
@@ -761,6 +763,18 @@ int read_commands(FILE *fp)
             PARSING_FINISHED;
             NEEDS_WINDOW;
 
+            if (settings.resize_on_split) {
+                int a, b;
+
+                glfwGetFramebufferSize(w->window, &a, &b);
+
+                if (dir == HORIZONTALLY) {
+                    resize_window(w, q * a, b);
+                } else {
+                    resize_window(w, a, q * b);
+                }
+            }
+
             struct viewport *v = w->focus;
             for (size_t j = q; j > n + 1; j--) {
                 struct viewport *u =
@@ -936,11 +950,11 @@ int read_commands(FILE *fp)
         //   updating the field of view angle.
 
         else if (!strcmp(s, "view")) {
-            float f = NAN;
+            float f = 0;
             enum projection mode;
             bool p = false;
 
-            if (try_scan(fp, "%f", &f) == 1) {
+            if (try_scan(fp, "%f", &f) == 1 && f > 0.0f) {
                 mode = PERSPECTIVE;
             } else if (try_scan(fp, "%63[a-z]", s) == 1) {
                 if (!strcmp(s, "orthographic")) {
@@ -972,7 +986,7 @@ int read_commands(FILE *fp)
                 v->projection = mode;
             }
 
-            if (!isnan(f)) {
+            if (f > 0.0f) {
                 v->angle = f / 2.0f / 180.0f * M_PI;
             }
 
@@ -1787,7 +1801,7 @@ int read_commands(FILE *fp)
                                                                 \
             PARSING_FINISHED;                                   \
             while (i_-- > 0) {                                  \
-                SETTING[i_] = d_[i_];                           \
+                (SETTING)[i_] = d_[i_];                         \
             }                                                   \
         } while(false);
 
@@ -1819,10 +1833,10 @@ int read_commands(FILE *fp)
                                                         \
             size_t n_ = N;                              \
             for (size_t i = 0; i < n_ - 1; i++) {       \
-                print_output(SPEC " ", SETTING[i]);           \
+                print_output(SPEC " ", (SETTING)[i]);   \
             }                                           \
                                                         \
-            print_output(SPEC "\n", SETTING[n_ - 1]);         \
+            print_output(SPEC "\n", (SETTING)[n_ - 1]); \
         } while(false);
 
         // `set setting value`
@@ -1863,6 +1877,49 @@ int read_commands(FILE *fp)
                 SET_BOOLEAN(fp, settings.present_on_reload);
             }
 
+            //   `resize-on-split` := Resize the window accordingly
+            //   when splitting viewports.
+
+            else if (!strcmp(s, "resize-on-split")) {
+                SET_BOOLEAN(fp, settings.resize_on_split);
+            }
+
+            //   `print-frames` := Resize the window accordingly
+            //   when splitting viewports.
+
+            else if (!strcmp(s, "print-frames")) {
+                SET_BOOLEAN(fp, settings.print_frames);
+            }
+
+            //   `default-view` := The default view angle of newly
+            //   created viewports.  Set this to zero to select
+            //   orthographic projection.
+
+            else if (!strcmp(s, "default-view")) {
+                SET_VALUES(fp, &settings.default_view, "%lf", 1);
+            }
+
+            //   `default-zoom` := The default zoom of newly created
+            //   viewports.
+
+            else if (!strcmp(s, "default-zoom")) {
+                SET_VALUES(fp, &settings.default_zoom, "%lf", 1);
+            }
+
+            //   `default-rotation` := The default rotation of newly
+            //   created viewports.
+
+            else if (!strcmp(s, "default-rotation")) {
+                SET_VALUES(fp, settings.default_rotation, "%lf", 3);
+            }
+
+            //   `default-translation` := The default translation of
+            //   newly created viewports.
+
+            else if (!strcmp(s, "default-translation")) {
+                SET_VALUES(fp, settings.default_translation, "%lf", 3);
+            }
+
             //   `default-color` := The color assigned to vertices
             //   that do not have a color associated with them.  It is
             //   given as four RGBA floating point values.
@@ -1883,7 +1940,7 @@ int read_commands(FILE *fp)
             //   the viewport is rotated, zoomed, etc. with the mouse.
 
             else if (!strcmp(s, "mouse-sensitivity")) {
-                SET_VALUES(fp, (&settings.mouse_sensitivity), "%lf", 1);
+                SET_VALUES(fp, &settings.mouse_sensitivity, "%lf", 1);
             }
 
             else {
@@ -1911,12 +1968,24 @@ int read_commands(FILE *fp)
                 SHOW_BOOLEAN(settings.quiet);
             } else if (!strcmp(s, "present-on-reload")) {
                 SHOW_BOOLEAN(settings.present_on_reload);
+            } else if (!strcmp(s, "resize-on-split")) {
+                SHOW_BOOLEAN(settings.resize_on_split);
+            } else if (!strcmp(s, "print-frames")) {
+                SHOW_BOOLEAN(settings.print_frames);
+            } else if (!strcmp(s, "default-view")) {
+                SHOW_VALUES(&settings.default_view, "%lg", 1);
+            } else if (!strcmp(s, "default-zoom")) {
+                SHOW_VALUES(&settings.default_zoom, "%lg", 1);
+            } else if (!strcmp(s, "default-rotation")) {
+                SHOW_VALUES(settings.default_rotation, "%lg", 3);
+            } else if (!strcmp(s, "default-translation")) {
+                SHOW_VALUES(settings.default_translation, "%lg", 3);
             } else if (!strcmp(s, "default-color")) {
                 SHOW_VALUES(settings.default_color, "%lg", 4);
             } else if (!strcmp(s, "edge-color")) {
                 SHOW_VALUES(settings.edge_color, "%lg", 4);
             } else if (!strcmp(s, "mouse-sensitivity")) {
-                SHOW_VALUES((&settings.mouse_sensitivity), "%lg", 1);
+                SHOW_VALUES(&settings.mouse_sensitivity, "%lg", 1);
             } else {
                 print_error("error: no such setting\n");
                 goto error;

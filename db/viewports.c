@@ -96,7 +96,7 @@ void translate_viewport(struct viewport *v, float x, float y, float z)
 void zoom_viewport(struct viewport *v, float zeta)
 {
     if (isnan(zeta)) {
-        v->zoom = DEFAULT_VIEWPORT_ZOOM;
+        v->zoom = settings.default_zoom;
     } else {
         v->zoom += zeta;
     }

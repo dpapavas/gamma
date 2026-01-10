@@ -594,9 +594,11 @@ struct window *find_window(const char *name)
         strdup("1"),
         {true, true},
         0, width - 1, 0, height - 1,
-        PERSPECTIVE, 0.1f, 100.0f,
-        DEFAULT_VIEWPORT_ANGLE / 2.0f / 180.0f * M_PI,
-        DEFAULT_VIEWPORT_ZOOM,
+        (settings.default_view > 0.0f ? PERSPECTIVE : ORTHOGRAPHIC),
+        0.1f, 100.0f,
+        ((settings.default_view > 0.0f ? settings.default_view : 50.0f) / 2.0f
+         / 180.0f * M_PI),
+        settings.default_zoom,
         {0.0f, 0.0f, 0.0f},
         EYE, EYE,
         0,
@@ -604,6 +606,18 @@ struct window *find_window(const char *name)
         nullptr,
         nullptr
     };
+
+    translate_viewport(
+        w->viewports,
+        settings.default_translation[0],
+        settings.default_translation[1],
+        settings.default_translation[2]);
+
+    rotate_viewport(
+        w->viewports,
+        settings.default_rotation[0],
+        settings.default_rotation[1],
+        settings.default_rotation[2]);
 
 #undef EYE
 
@@ -1275,27 +1289,11 @@ void print_window(struct window *w, GLint format, FILE *fp)
     lock_window(w);
 
     for (struct viewport *v = w->viewports; v; v = v->next) {
-        struct object *o = v->object;
-
-        if (!o) {
-            continue;
-        }
-
         // GL2PS was designed to use the legacy GL feedback render
         // mode to retrieve the to-be-drawn geometry.  This no longer
         // works with core profile GL and, although we could implement
         // a similar approach using transform feedback, it is
         // probabaly easier to just project the geometry ourselves.
-
-        // We do so below, but first we need to make sure the
-        // viewport's projection matrix is up-to-date, since such
-        // print commands are likely to be part of batch jobs, so that
-        // the window might not have been presented yet.
-
-        if (v->stale.projection) {
-            refresh_viewport(v);
-            v->stale.projection = false;
-        }
 
         // The macro below carries out the standard GL coordinate
         // transformations from object to clip coordinates by applying
@@ -1327,6 +1325,47 @@ void print_window(struct window *w, GLint format, FILE *fp)
             u_[2] = (                                                   \
                 (M_[8] * v_[0] + M_[9] * v_[1] + M_[10] * v_[2] + M_[11]) \
                 / w_ * s + b);                                          \
+        }
+
+        //   If selected, we first draw the viewport frames.  We draw
+        //   these on the far plane.  Although it should not matter,
+        //   it seems to throw off GL2PS's depth sorting if it's not
+        //   behind all geometry.
+
+        if (settings.print_frames) {
+            GL2PSvertex v[] = {
+                {{o_x, o_y, s + b}, {0.0f, 0.0f, 0.0f, 0.0f}},
+                {{o_x + p_x, o_y, s + b}, {0.0f, 0.0f, 0.0f, 0.0f}},
+                {{o_x + p_x, o_y + p_y, s + b}, {0.0f, 0.0f, 0.0f, 0.0f}},
+                {{o_x, o_y + p_y, s + b}, {0.0f, 0.0f, 0.0f, 0.0f}},
+                {{o_x, o_y, s + b}, {0.0f, 0.0f, 0.0f, 0.0f}}};
+
+            for (size_t i = 0; i < 4; i++) {
+                gl2psAddPolyPrimitive(
+                    GL2PS_LINE, 2, v + i,
+                    0, 1.0f, 1.0f,
+                    0xffff, 1,
+                    1.0f,
+                    GL2PS_LINE_CAP_ROUND,
+                    GL2PS_LINE_JOIN_MITER,
+                    0);
+            }
+        }
+
+        struct object *o = v->object;
+
+        if (!o) {
+            continue;
+        }
+
+        // Before transforming the object, we need to make sure the
+        // viewport's projection matrix is up-to-date, since such
+        // print commands are likely to be part of batch jobs, so that
+        // the window might not have been presented yet.
+
+        if (v->stale.projection) {
+            refresh_viewport(v);
+            v->stale.projection = false;
         }
 
         // If there are more than one viewports in the window, we
@@ -1440,7 +1479,7 @@ void print_window(struct window *w, GLint format, FILE *fp)
                     gl2psAddPolyPrimitive(
                         GL2PS_LINE, 2, v,
                         0, 0.0f, 0.0f,
-                        patterns[(int)round(v_qi->rgba[3] * 16.0) - 1], 1,
+                        patterns[(int)round(v_qi->rgba[3] * 16.0f) - 1], 1,
                         1.0f,
                         GL2PS_LINE_CAP_ROUND,
                         GL2PS_LINE_JOIN_MITER,
@@ -1454,9 +1493,7 @@ void print_window(struct window *w, GLint format, FILE *fp)
         glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-        if (w->viewports->next) {
-            safely_assert(gl2psEndViewport() == GL2PS_SUCCESS);
-        }
+        safely_assert(gl2psEndViewport() == GL2PS_SUCCESS);
     }
 
     unlock_window(w);

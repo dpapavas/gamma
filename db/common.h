@@ -43,9 +43,11 @@ struct settings {
     char *program;
 
     bool quiet;
-    bool present_on_reload;
+    bool present_on_reload, resize_on_split, print_frames;
 
     double default_color[4], edge_color[4];
+    double default_view, default_zoom;
+    double default_rotation[3], default_translation[3];
     double mouse_sensitivity;
 };
 
@@ -120,9 +122,6 @@ void printf_text(struct text *t, size_t size, const char *fmt, ...);
 // ## Viewports Definitions
 
 // Ref: Viewports.
-
-#define DEFAULT_VIEWPORT_ANGLE 50.0f
-#define DEFAULT_VIEWPORT_ZOOM 0.7f
 
 enum projection {ORTHOGRAPHIC, PERSPECTIVE};
 

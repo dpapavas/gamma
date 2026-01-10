@@ -230,8 +230,10 @@ static char **completion_function(const char *text, int start, int end)
 
     {
         char *v[] = {
-            "program", "args", "quiet", "present-on-reload", "default-color",
-            "edge-color", "mouse-sensitivity", nullptr};
+            "program", "args", "quiet", "present-on-reload", "resize-on-split",
+            "print-frames", "default-color", "default-view", "default-zoom",
+            "default-rotation", "default-translation", "edge-color",
+            "mouse-sensitivity", nullptr};
 
         WHEN_IN_1("set", {
                 return MATCHES(nullptr, v);

@@ -225,51 +225,45 @@ $0 ~ "^[[:space:]]*" prefix {
   } else if (/^Concept:/) {
     text = text gensub(/^Concept:[[:space:]]*(.*)$/, "@cindex \\1\n", 1)
   } else if (/^```print/) {
-    a = path "." ++figures
-    n = split($0, v, ",")
+    sub(/^```print[[:space:]]*/, "")
 
+    a = path "." ++figures
+    b = "/dev/stdin"
     text = text "@center @image {" a ",145mm}\n"
 
-    in_print = (bindir "/db/gammadb -q --batch " " -c \"window " a "\"")
-
-    if (n > 2) {
-      in_print = (in_print                                      \
-                  " -c \"resize " ((n - 1) * 500) " 500\""      \
-                  " -c \"split horizontally " (n - 1) "\"")
+    if ($0) {
+      b = srcdir "/" $0 " " b
     }
 
-    for (i = 2; i <= n; i++) {
-      in_print = (in_print \
-                  " -c \"focus " (i - 1) "\""                  \
-                  " -c \"view orthographic\"")
-
-      m = split(v[i], u, ";")
-
-      for (j = 1; j <= m; j++) {
-        if (u[j]) {
-          in_print = in_print " -c \"" u[j] "\""
-        }
-      }
-    }
-
-    sub(/^```print[[:space:]]*/, "", v[1])
-
-    in_print = (in_print                                \
-                " -c \"set args -x scheme --no-store-threshold " (v[1] ? srcdir "/" v[1] : "/dev/stdin") "\"" \
+    in_print = (bindir "/db/gammadb -q --batch"  \
+                " -c \"set resize-on-split yes\"" \
+                " -c \"set default-zoom 0.85\"" \
+                " -c \"window " a "\"" \
+                " -c \"set args -x scheme -Ddraft --no-store-threshold " b "\"" \
                 " -c \"run\""                           \
-                " -c \"print " a ".eps\"")
+                " -c \"print " a ".pdf\"")
 
-    # When reading from a file, we expect nothing to be piped to
-    # `in_print`.  Send dummy input to ensure the command is run.
+    while ((getline x) > 0) {
+      if (x ~ /^#/) {
+        in_print = in_print " -c \"" substr(x, 2) "\""
+      } else {
+        in_print = in_print " -c \"run\" -c \"print " a ".pdf\""
+        if (x == "```") {
+          print "" | in_print
+          close(in_print)
+          in_print = ""
+        } else {
+          print x | in_print
+        }
 
-    if (v[1]) {
-      print | in_print
+        break
+      }
     }
   } else if (/^```graph/) {
     a = path "." ++figures
     text = text "@noindent\n@center @image {" a "}\n"
 
-    in_graph = (/,neato/ ? "neato" : "dot") " -Teps -o " a ".eps"
+    in_graph = (/,neato/ ? "neato" : "dot") " -Tpdf -o " a ".pdf"
     print "digraph {" | in_graph
 
     if (/,lr/) {
