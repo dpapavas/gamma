@@ -203,7 +203,7 @@ static char **completion_function(const char *text, int start, int end)
                 "quit", "exit", "window", "hide", "present", "resize", "focus",
                 "split", "target", "rotate", "translate", "pan", "zoom", "view",
                 "load", "run", "info", "set", "show", "bind", "unbind", "print",
-                nullptr});
+                "define", "undefine", nullptr});
     });
 
     //   2. completing keyword arguments for certain commands, or
@@ -225,7 +225,9 @@ static char **completion_function(const char *text, int start, int end)
     WHEN_IN_1("info", {
         return MATCHES(
             nullptr,
-            (char *[]) {"windows", "viewports", "objects", "bindings", nullptr});
+            (char *[]) {
+                "windows", "viewports", "objects", "bindings",
+                "definitions", nullptr});
     });
 
     {

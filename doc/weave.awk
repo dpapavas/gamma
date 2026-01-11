@@ -238,8 +238,9 @@ $0 ~ "^[[:space:]]*" prefix {
     in_print = (bindir "/db/gammadb -q --batch"  \
                 " -c \"set resize-on-split yes\"" \
                 " -c \"set default-zoom 0.85\"" \
+                " -c \"define draft\"" \
                 " -c \"window " a "\"" \
-                " -c \"set args -x scheme -Ddraft --no-store-threshold " b "\"" \
+                " -c \"set args -x scheme --no-store-threshold " b "\"" \
                 " -c \"run\""                           \
                 " -c \"print " a ".pdf\"")
 

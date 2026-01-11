@@ -253,6 +253,18 @@ struct settings settings = {
     .mouse_sensitivity = 0.01
 };
 
+// ## Definitions
+
+// Definitions are arbitrary key-value pairs that are supplied to the
+// inferior as `-Dkey=value` options.  They can be set with the
+// `define` command and cleared with the `undefine` command.
+
+struct definition {
+    char *name, *value;
+};
+
+static BUFFER_TYPE(struct definition) definitions;
+
 // ## Key Bindings
 
 // Key bindings map keystrokes in any of the windows to commands,
@@ -1384,10 +1396,10 @@ int read_commands(FILE *fp)
             MAYBE_GROW_TO(buffer, (n += strlen(settings.program)) + 1);
             p = stpcpy(buffer.p, settings.program);
 
-            //   2. the output, which needs to precede other
+            //   2. the outputs, which need to precede other
             //   options^[Order is important since the output selected
-            //   by an option only affects the sources following it.]
-            //   and finally
+            //   by an option only affects the source files following
+            //   it.], then
 
             if (w) {
                 for (struct viewport *v = w->viewports; v; v = v->next) {
@@ -1405,12 +1417,40 @@ int read_commands(FILE *fp)
                 }
             }
 
-            //   3. any arguments specified by the user.
+            //   3. the parameter definitions and finally
+
+            for (size_t i = 0; i < definitions.n; i++) {
+                const struct definition *q = definitions.p + i;
+
+                if (!q->name) {
+                    continue;
+                }
+
+                const size_t n_0 = n;
+
+                if (q->value) {
+                    MAYBE_GROW_TO(
+                        buffer,
+                        (n += (strlen(q->name) + strlen(q->value) + 4)) + 1);
+
+                    p = stpcpy(buffer.p + n_0, " -D");
+                    p = stpcpy(p, q->name);
+                    p = stpcpy(p, "=");
+                    p = stpcpy(p, q->value);
+                } else {
+                    MAYBE_GROW_TO(buffer, (n += (strlen(q->name) + 3)) + 1);
+
+                    p = stpcpy(buffer.p + n_0, " -D");
+                    p = stpcpy(p, q->name);
+                }
+            }
+
+            //   4. any arguments specified by the user.
 
             if (settings.args) {
                 const size_t n_0 = n;
 
-                MAYBE_GROW_TO(buffer, (n += strlen(settings.args)) + 2);
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.args) + 1) + 1);
                 p = stpcpy(buffer.p + n_0, " ");
                 p = stpcpy(p, settings.args);
             }
@@ -1732,6 +1772,40 @@ int read_commands(FILE *fp)
                 }
             }
 
+            //   `definitions` := List defined parameters.
+
+            else if (!strcmp(s, "definitions")) {
+                PARSING_FINISHED;
+
+                size_t i;
+                for (i = 0;
+                     i < definitions.n && !definitions.p[i].name;
+                     i++);
+
+                if (i == definitions.n) {
+                    print_output("No existing definitions.\n");
+                } else {
+                    PRINT_TABLE(
+                        2, {
+                            COLUMN("%s", "Name");
+                            COLUMN("%s", "Value");
+
+                            for (size_t j = i; j < definitions.n; j++) {
+                                if (!definitions.p[j].name) {
+                                    continue;
+                                }
+
+                                COLUMN("%s", definitions.p[j].name);
+                                if (definitions.p[j].value) {
+                                    COLUMN("%s", definitions.p[j].value);
+                                } else {
+                                    COLUMN("%s", "");
+                                }
+                            }
+                        });
+                }
+            }
+
             else {
                 PARSING_FINISHED;
 
@@ -1995,6 +2069,63 @@ int read_commands(FILE *fp)
 #undef SET_VALUES
 #undef SHOW_STRING
 #undef SHOW_VALUES
+        }
+
+        // `define name [value]`
+
+        // Change the value of a parameter.  When no value is
+        // specified, the parameter is passed to the inferior as a
+        // boolean, via the command line option o`-Dname`.  Otherwise
+        // the parameter is defined with the option o`-Dname=value`.
+
+        // In the latter case the value should be quoted and escaped
+        // as necessary.
+
+        else if (!strcmp(s, "define") || !strcmp(s, "undefine")) {
+            const bool p = (s[0] == 'u');
+
+            if (try_scan(fp, "%63s", s) != 1) {
+                print_error("error: no parameter specified\n");
+                goto error;
+            }
+
+            size_t j = definitions.n;
+            for (size_t i = 0; i < definitions.n; i++) {
+                if (!definitions.p[i].name) {
+                    j = i;
+                } else if (!strcmp(definitions.p[i].name, s)) {
+                    j = i;
+                    goto defined;
+                }
+            }
+
+            if (p) {
+                print_error("error: parameter %s has not been defined\n", s);
+                goto error;
+            }
+
+            if (j == definitions.n) {
+                MAYBE_GROW_TO(definitions, j + 1);
+                memset(
+                    definitions.p + j,
+                    0,
+                    (definitions.n - j) * sizeof(definitions.p[0]));
+            }
+
+            definitions.p[j].name = strdup(s);
+
+          defined:
+            if (p) {
+                free(definitions.p[j].name);
+                definitions.p[j].name = nullptr;
+            } else {
+                if (definitions.p[j].value) {
+                    free(definitions.p[j].value);
+                    definitions.p[j].value = nullptr;
+                }
+
+                try_scan(fp, " %m[^\n]", &definitions.p[j].value);
+            }
         }
 
         else {
