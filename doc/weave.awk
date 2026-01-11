@@ -147,6 +147,16 @@ $0 ~ "^[[:space:]]*" prefix {
     sub("^[[:space:]]*" prefix "[[:space:]]?", "")
   }
 
+  if (/^Alias:/) {
+    match($0, /^Alias:[[:space:]]*([^[:space:]]+)[[:space:]]*(.*)$/, v)
+    aliases[v[1]] = v[2]
+    next
+  } else if (/^Unalias:/) {
+    match($0, /^Unalias:[[:space:]]*([^[:space:]]+)[[:space:]]*$/, v)
+    delete aliases[v[1]]
+    next
+  }
+
   for (a in aliases) {
     n = index($0, a)
     if (n > 0) {
@@ -213,13 +223,7 @@ $0 ~ "^[[:space:]]*" prefix {
     close_list()
   }
 
-  if (/^Alias:/) {
-    match($0, /^Alias:[[:space:]]*([^[:space:]]+)[[:space:]]*(.*)$/, v)
-    aliases[v[1]] = v[2]
-  } else if (/^Unalias:/) {
-    match($0, /^Unalias:[[:space:]]*([^[:space:]]+)[[:space:]]*$/, v)
-    delete aliases[v[1]]
-  } else if (/^(Figure|Program):/) {
+  if (/^(Figure|Program):/) {
     text = text gensub(/^([^:]+):[[:space:]]*(.*)$/, "@float \\1,\\2\n", 1)
     in_figure = 1
   } else if (/^Concept:/) {
