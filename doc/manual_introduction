@@ -1,0 +1,581 @@
+-*- mode: weave; -*-
+
+Document: manual
+
+# Introduction
+
+Gamma can perhaps best be described as CAD modeling software posing as
+a compiler collection.  It produces 3D or 2D objects from programs
+written in one of its supported languages^[These currently include
+Scheme and Lua.].  Being based on CGAL, the Computational Geometry
+Algorithms Library, it can generate geometric models that are accurate
+and free of defects using a wide range of techniques, such as CSG
+modeling, generalized 2D to 3D extrusion, subdivision methods or
+mesh-based techniques, such as surface fairing and deformation.
+
+Gamma would typically be used by the programmer who has grown weary of
+hacking only software and wants to try their hand at something more
+tangible, without having to learn to use a traditional graphical
+modeling application.  Nevertheless, it also posseses qualities that
+might appeal to the more traditional designer, as it can be an
+attractive option for the design of objects that are best described in
+mathematical terms, or need to be parametric.
+
+It can be used like a traditional compiler, by invoking it on the
+command line, to "compile" geometry out of a program composed using an
+editor, or it can be used as a graphical application through Gamma
+Debugger, its accompanying geometry inspection tool.
+
+Gamma is freely redistributable software. You may redistribute it
+and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation. Ref: GNU General Public
+License.
+
+This manual provides comprehensive documentation on how to install,
+run and use Gamma and the Gamma Debugger.  It is covered by the GNU
+Free Documentation License. Ref: GNU Free Documentation License.
+
+Separate editions of this manual exist for each language supported by
+Gamma.
+Document: manual/scheme
+This edition is for the Scheme language.
+Document: manual/lua
+This edition is for the Lua language.
+Document: manual
+
+## Running Gamma
+
+Document: manual/scheme
+Alias: cube.ext cube.scm
+Document: manual/lua
+Alias: cube.ext cube.lua
+Document: manual
+
+The simplest way to use Gamma, is by invoking it much like one would a
+compiler on the command line^[In fact the command line interface was
+designed to resemble that of the GNU Compiler Collection.].  For
+example, consider the following simple program:
+Document: manual/scheme
+```scheme
+(import (gamma polyhedra) (gamma operations))
+
+(set-curve-tolerance! 1/1000)
+
+(define-output cube
+  (intersection (cuboid 1 1 1) (sphere 7/10)))
+```
+Document: manual/lua
+```lua
+local polyhedra = require 'gamma.polyhedra'
+local operations = require 'gamma.operations'
+
+set_curve_tolerance(0.001)
+
+output(
+   "cube",
+   operations.intersection(
+      polyhedra.cuboid(1, 1, 1),
+      polyhedra.sphere(0.7)))
+```
+Document: manual/all
+Place it in a file called f`cube.ext` in the current directory, then
+run Gamma with s`gamma -o cube.stl cube.ext`.  This will produce a
+model of a cube with rounded edges in STL format, as a file named
+f`cube.stl`. If you opened it in a model viewer, you should see what
+is shown in ref:rounded-cube.
+
+Figure: rounded-cube
+```print
+# split horizontally
+# focus 2
+# rotate 51 24 26
+# view 30
+
+(import (gamma polyhedra) (gamma operations))
+(set-curve-tolerance! 1/1000)
+
+#>1 (intersection (cuboid 1 1 1) (sphere 7/10))
+#>2 (intersection (cuboid 1 1 1) (sphere 7/10))
+```
+  The result produced by a simple program taking the intersection of a
+  sphere and a cube.
+
+This can often be a convenient way to work and the usual techniques
+used when programming in traditional languages can be applied.  For
+instance, you can place the invocation shown above in a Makefile, so
+that only running c`make` is needed to produce the result.
+
+Concept: debugger
+
+If you prefer a more graphical user interface, you can use the Gamma
+Debugger, henceforth referred to as the def:Debugger.  The Debugger is
+in essence a geometry viewing application, but it posseses some
+features more common to a debugger, which make it particularly
+convenient to use with a system like Gamma.  It also posseses a
+similar interface.
+
+Using the Debugger is more appropriate when developing a model, where
+you would typically want to inspect the current results of your
+program, make neccessary changes and repeat until the desired output
+is achieved.  The simplest way to run the program contained in
+f`cube.ext` through the Debugger, is by starting it as shown below.
+
+```
+gammadb --target cube --args cube.ext
+```
+
+This will start the debugger, which will print some introductory
+messages, followed by the prompt s`#`.  The o`--target` and o`--args`
+options provide the minimal configuration needed to run the program
+and display the single output contained in it and will be fully
+explained later.
+
+You can now type the command c`run` at the prompt, which will invoke
+Gamma as needed to compile the model and send it to the Debugger,
+where it will be loaded and displayed in a window. Use the mouse to
+rotate, pan, or zoom it by dragging on the window with the left, right
+and middle mouse buttons respectively.
+
+If you were now to decide that the cube isn't rounded quite enough,
+you could simply edit f`cube.ext` and change the sphere radius from
+s`7/10` to s`2/3` and repeat the run command^[You can do this by
+simply pressing return, which is equivalent to entering the last
+command again.].  The displayed model should change accordingly.
+
+When you've finished working, enter the command c`exit`, or c`quit`,
+or press k`Ctrl-D` to exit the Debugger.
+
+Unalias: cube.ext
+
+## A Program in Broad Strokes
+
+Although very simple, the program shown in the previous section
+illustrates the basic structure of most programs.  After importing
+functions from one or more libraries, they are first used to create
+def:primitive geometry, that is, geometry that isn't based on some
+previous result, but is produced from scratch.  These are typically
+simple geometric objects and are therefore rarely the intended output
+of the program. Instead, they serve as basic building blocks which are
+combined and further processed by functions that operate on them.
+
+Here sphere and cube primitives are produced using the `sphere` and
+`cuboid` functions imported from the `polyhedra` library and then
+intersected using the `intersection` function imported from the
+`operations` library.  By carefully chosing the sphere radius^[The
+value s`7/10` is close to $\frac{\sqrt{2}}{2}$, so that the sphere
+barely extends to the midpoints of the cube's faces.  Try changing
+s`intersection` to s`union` and rerunning the program for an
+illustration.]  most of the cube is inside the sphere; only its
+corners extend out of it and are rounded off by the intersection.
+
+Concept: outputs
+
+Even though the program calls three functions, each of which adds an
+def:operation that produces geometry, not all results are of immediate
+interest.  The sphere and cube geometry are only needed to take their
+intersection and produce the rounded cube, which is the intended
+result of a program.  This result^[More correctly, the operation which
+will produce the result.  In terms of the program, operations are
+represented by the values returned by most, but not all, function
+calls imported from Gamma's libraries.  Gamma keeps track of the
+operations created by the program and subsequently evaluates them to
+produce the desired outputs.] is therefore designated as an
+def:output.  There can be more than one outputs and each can be saved
+to disk or sent to the Debugger for inspection.
+
+## A Few Examples
+
+The following chapters describe all of Gamma's features in detail, but
+before doing that, it might be helpful to give a few examples of
+practical programs.  If you're new to Gamma, don't worry if you don't
+understand them in detail.  Their purpose is to give you an idea of
+how Gamma is used in practice and what you'll be able to do with it.
+They will also serve as a more concrete basis for the introduction of
+some of the fundamental concepts and techniques involved.
+
+It is still recommended that you try to follow along by copying the
+code and trying it out.  If you want to do so, you should create a
+directory dedicated to the purpose, as you would for any program.
+Besides keeping things organized, it will avoid flooding your home
+directory (or the directory from which you would run Gamma) with a
+multitude of files that Gamma often creates during compilation.
+
+Concept: debugger,init files
+Document: manual/scheme
+Alias: .ext .scm
+Document: manual/lua
+Alias: .ext .lua
+Document: manual
+
+Inside this directory, place a file named f`.gammadbinit` with the
+following contents:
+
+```init
+# Set up the window.
+
+window examples
+resize 1500 1000
+split horizontally 3 1
+split vertically 2
+focus 3
+target sprocket
+
+# Bind some keys to commands.
+
+bind r run single
+bind R run all
+bind q quit
+
+# Set the compilation command and run it.
+
+set args --dump-list=- *.ext
+define draft
+run
+```
+
+This file is called an def:{initialization file} and when the Debugger
+starts, it will look for it in the current directory, read it and
+execute any commands it finds inside.^[Lines starting with a s`#` are
+comments and are ignored.  So are blank lines.]
+
+This illustrates the most convenient way to use the Debugger in
+practice. Once you've set up the initialization file according to the
+needs of your program, you then only need to run s`gammadb` on the
+shell to start it, ready for use.
+
+The commands in the init file shown above will:
+
+  1. Create a window and divide it into three viewports.  You can have
+  as many windows as you need and each can be split arbitrarily into
+  def:viewports: separate sections of the window, each dedicated to
+  showing geometry generated by the output whose name matches its
+  target.
+
+  2. Set up some basic key bindings so that you don't have to run
+  commands in the terminal.  Pressing the k`r` key while the mouse is
+  over a viewport^[The viewport is then highlighted and is said to be
+  def:focused.] will run the needed compilation command to rebuild and
+  reload the particular object shown in the viewport.  Conversely,
+  pressing k`R`, which is to say k`Shift-r`, will rebuild and reload
+  all viewports.  Finally, pressing k`q` will quit the Debugger.
+
+  3. Set up the command line that will be used to run Gamma, so that
+  it will execute all files ending with f`.ext` and print out each
+  operation of the computation as it evaluates it, to give you an idea
+  of where and how it spends its time.  The s`define draft` command
+  also affects the compilation command and its purpose will be made
+  clear shortly.
+
+  4. Run Gamma as required to refresh all viewports.  Windows normally
+  start out hidden, so that they're out of the way until they have
+  something to show.  Once some geometry is loaded for one or more of
+  their viewports, they're presented to the user.  Here, this will
+  happen when the final c`run all` command is executed.
+
+Now, any file inside your working directory having a name ending in
+f`.ext`, will be executed as soon as you start the Debugger from a
+terminal inside this directory.  No special switches are necessary.
+
+Try creating a file called f`sprocket.ext`, containing the code shown
+below.  It produces a sprocket^[The design is according to the ISO
+606-2015 standard, at least as far as the tooth gap forms are
+concerned, although no guarantees of conformance are made.  It is
+merely meant to serve as an example after all.], a toothed wheel
+typically used along with a chain to transmit motion.  If you now
+start the Debugger, you should see a window similar to the one shown
+in ref:sprocket.
+
+Document: manual/scheme
+```scheme sprocket.scm
+```
+Document: manual/lua
+```lua sprocket.lua
+```
+Document: manual/all
+This program is relatively complex, but the details of its operation
+are presently not important.  In general terms, it works as follows.
+
+Unalias: .ext
+
+Concept: parameters
+Document: manual/scheme
+Alias: _p ?
+Document: manual/lua
+Alias: _p
+Document: manual
+
+## Program Parameters
+
+After the obligatory library imports, the initial portion of the
+program consists in the definition of def:parameters.  Functionally,
+these are normal variables, used much like configuration variables are
+used in any program to represent parameters or quantities that might
+need to change from one build to the next.
+
+To avoid having to edit the source file to do so, their values can be
+overriden on the command line, by passing the o`-D` option to Gamma.
+They also highlight one of the most attractive features of this
+approach to modeling.  While it might have been easier to design the
+sprocket interactively in a graphical application, your effort to do
+it in the form of a program is paid off by your ability to vary the
+design arbitrarily.  Instead of one sprocket, you get any sprocket.
+
+For instance, to produce a sprocket with 9 teeth you only need to run
+Gamma with the o`-Dz=9` option, to redefine the variable `z` which
+represents the number of teeth to 9.  You can also instruct the
+Debugger to do this for you with the command s`define z 9`.  Try
+entering it at the prompt and re-running the program.
+
+## Working Interactively
+
+The geometric calculations needed to produce the final model can be
+quite intensive^[They sacrifice computational speed in favor of
+correctness and robustness.  For instance, they're carried out in
+exact arithmetic on rational numbers, instead of the floating-point
+arithmetic supported in hardware.] and can therefore take some time to
+carry out.  When working on a design, making repeated changes to the
+program and re-running, this can quickly become tiresome.  To avoid
+testing your patience, Gamma has a couple of tricks to speed things
+up.
+
+Figure: sprocket
+```print sprocket.scm
+# set print-frames yes
+# split horizontally 3 1
+# split vertically 2
+# focus 3
+# target sprocket
+# rotate 50 -50 -40
+```
+  The output of the program, as seen in the Debugger.  The upper left
+  viewport shows the tooth tips, as produced by taking the
+  intersectons of the tooth flank curves and the sprocket rim circle,
+  while the lower left viewport shows the central plate.  Finally, the
+  right viewport shows the final part; the extruded union of the other
+  two.
+
+Firstly, only the necessary computations for the selected outputs are
+carried out in a given run, as you can see for yourself in the
+Debugger.  When you start it, the c`run` command inside the
+initialization file will build all outputs.  Note the number of
+required evaluation steps shown in the printed operations listing and
+then place the mouse cursor in one of the viewports and press the k`r`
+key.  Now only this output is rebuilt and the number of steps in the
+listing should have gone down, along with the time needed to carry
+them out.  As you will typically work on a small part of the design at
+a time, this can be a big help.
+
+Another feature that can help, is caching of the results of
+intermediate operations.  When the cummulative evaluation time needed
+to produce a result exceeds a certain threshold, it is written to
+disk, in the current directory, so that it can be reloaded during a
+future build instead computing it again from scratch.  This does not
+apply only to the final result; every intermediate operation can be
+cached in this way, so that if you only change a small part of your
+design, much of the work needed to rebuild it can be avoided.
+
+The current design can be evaluated relatively quickly, so you will
+probably not see any files containing cached results if you list the
+files in your directory.  This is in part due to the following trick.
+
+The first defined parameter variable, `draft_p`, is a boolean which is
+used to select the def:{curve tolerance}, a built-in parameter that
+determines the tolerance used when approximating circles or circular
+segments as polygons.  A lower tolerance will lead to more vertices in
+the polygonal approximation and consequently more faces in their
+extrusions.
+
+The approach followed in the example, illustrates a sensible strategy
+in selecting the curve tolerance.  Although `draft_p` is initially
+false, the s`define draft` command inside the initialiazitaion file
+f`.gammadbinit` instructs the Debugger to set it to true when
+executing the program.  This selects a large tolerance, affording only
+the detail necessary to determine whether the intended result has been
+achieved, but it also keeps the geometric complexity and with it the
+build time low.
+
+When you want to produce the final model, you can re-run the program
+with `draft_p` left false, to select a smaller tolerance and hence
+more detail.  Try entering the command s`undefine draft` at the
+Debugger's prompt and re-running the program.  You will notice that
+the shapes of the teeth are now smoother, but the build time was
+substantially longer than before. If you now list the files in your
+directory once more, you may notice that new files have been created
+to cache some of the results of the more detailed build.  Their names
+will be a long string of random-looking numbers and letters, ending in
+the extension f`.zo`.
+
+Of course the curve tolerance is just one parameter that influences
+the geometric complexity of the produced model, but the same selection
+strategy can be applied more broadly.  For instance, you could use
+`draft_p` to set the parameter determining the number of teeth, `z`,
+to a lower number while working on the sprocket.
+
+Unalias: _p
+
+## Designing a Sprocket
+
+Being a toothed wheel, a sprocket is defined in terms of the disk from
+which it is machined and the geometry of the parts that need to be cut
+out from its rim to form the teeth.  These are called the "tooth gap
+forms" in the standard and are based on two curves.
+
+The roots of the gaps are formed by segments of the small circles
+shown in ref:sprocket-diagram, subtending a specified angle, called
+the "roller-seating angle" in the standard.  From there, arcs along
+the larger circles are followed to form the flanks of the teeth, up to
+the tips.
+
+After calculating a number of derived quantities following the
+formulas laid out in the standard^[For the tip diameter, a value
+halfway between the smallest and largest diameters allowed in the
+standard is used.] the program defines a utlity function that places
+its argument relative to the roller seating curves.  Such placement
+functions are very useful in practice, because they exploit symmetries
+in a design.  This one first rotates the given shape to align it with
+tooth `n`, then translates it `r` units below the center of the
+corresponding roller seating circle and rotates it by a fraction `c`
+of the roller-seating angle relative to that center.  It is used to
+make a polygon out of the seat-to-flank transition points of each
+tooth, by taking the convex hull of these points.  The result is shown
+in dotted lines in ref:sprocket-diagram.
+
+From it the roller seats are cut out, by taking the difference with
+circles placed using the same function.  This produces the central
+part of the sprocket, shown in the bottom left frame of fig: sprocket.
+
+The circles forming the flanks are tangent to the roller seating
+curves, so the placement function can be used once more to transform
+them into place^[The circle is translated vertically until its top is
+tangent with the bottom of the corresponing roller seat curve and then
+rotated by half the roller-seating angle.].  The sprocket teeth can
+then be formed by taking appropriate intersections of these circles
+and the sprocket's rim circle.  They are shown in the top left frame
+of fig: sprocket.
+
+Figure: sprocket-diagram
+```print sprocket_diagram.scm
+# resize 500 250
+# translate 0.3 10
+# zoom 1.3
+```
+  The curves determining the form of a sprocket.  The roller seating
+  curves are made from the small dotted circles, while the larger
+  circles form the tooth flank curves.  Together, they determine the
+  tooth gap forms, the parts that are cut away from a disk, to produce
+  the sprocket.
+
+Concept: outputs
+
+## Program Outputs
+
+The final result is the union of these components, extruded^[Extrusion
+is a manufacturing process that creates objects of a fixed
+cross-sectional profile, as is the case here.  In Gamma this is the
+simplest case of extrusion, but the operation is much more general.]
+to the specified width. This would normally be followed by further
+processing to give the sprocket a proper rim profile as the
+specification demands, but this is not done here, to keep the example
+from becoming more complicated.
+
+Since this is the end result of the program, it is designated as an
+ouput.  This makes it possible to produce a spocket of any
+configuration and save it to a file in one of the supported formats.
+For example, the following invocation will produce a sprocket with 9
+teeth, matching a chain with 4mm diameter rollers and a pitch of 6mm.
+
+```
+gamma -Dz=9 -Dd_1=4 -Dp=6 -o sprocket.stl sprocket.scm
+```
+
+Besides being written to disk, outputs can also be inspected in the
+Debugger.  When the c`run` command is invoked, the Debugger will run
+Gamma with outputs enabled for each of the current window's viewport
+targets.  If matching outputs are defined in the program, their
+geometry is loaded in the corresponding viewports.  Since the window
+is divided into three viewports, two of which have their default
+targets, "1" and "2", while the third's target is "sprocket", these
+are the outputs that will be loaded on each run.
+
+The outputs "1" and "2" are meant for debugging.  In this example,
+they are set to the two components that make up the sprocket's
+cross-section, but in general you would set them to output the part of
+the design you're currently working on.  The `output` function returns
+its first argument, so you can usually just wrap any expression that
+returns geometry that you'd like to inspect inside an `output` call
+and press the k`r` key on the respective viewport.  This is
+essentially analogous to "`printf()` debugging".
+
+Document: manual/scheme
+
+In Scheme, there is a more convenient way to insert the `output` call,
+by simply adding s`#>@var{target}` before the form whose results you
+wish to inspect.  This syntax has been used to output the result of
+the intersections forming the teeth flanks to viewport "2", by
+preceding the call to `intersection` with `#>2`.
+
+Document: manual/all
+
+## A Threaded Fastener
+
+The previous example involved a trivial extrusion of a complex
+polygon, assembled from boolean operations on simple shapes.  This
+example showcases the flexibility of the extrusion operation by doing
+the reverse.  A simple shape, the basic ISO metric screw thread
+profile, is extruded along a helical path to form the threads of a
+bolt.  To that is added a cylinder to complete the shaft and a
+chamfered hex head.
+
+Document: manual/scheme
+```scheme bolt.scm
+```
+Document: manual/lua
+```lua bolt.lua
+```
+Document: manual/all
+
+Figure: bolt
+```print bolt.scm
+# set print-frames yes
+# split horizontally 3 1
+# split vertically 2
+# focus 2
+# zoom -0.2
+# rotate 80 -45 45
+# focus 3
+# target bolt
+# rotate 45 -45 -45
+```
+  The output, as seen in the Debugger.  The lower left viewport shows
+  the thread profile polygon, which is extruded along a helical path,
+  forming the threads shown in the upper left viewport.  A shaft and a
+  chamfered hexagonal head is added, to form the final bolt shown in
+  the right viewport.
+
+The extrusion operation takes a polygon and a list of arbitrary
+transformations.  It transforms the polygon with each of the
+transformations in order and connects the corresponding vertices to
+form a solid.  Here, each copy of the thread profile polygon is first
+translated `r` units away from the central axis of the bolt and also
+progressively further along the axis, based on the pitch `P`.  To that
+is added a rotation around the axis, so that the composition of these
+transformations forms a helix along which the thread profile is
+extruded.
+
+The final^[A concatenation of three transformations $A$, $B$, $C$ is
+applied to each vertex $v$ of a polygon or polyhedron as $A \cdot B
+\cdot C \cdot v$, so that the order of application is reversed.]
+$90^\circ$ rotation merely serves to rotate the threads as a whole and
+could just as well have been applied to the result of the extrusion
+operation.  To illustrate that any transformation can be used in the
+extrusion, a gradual scaling is included in the first revolution.
+This tapers the thread towards the end of the bolt, to ease threading
+into a nut.
+
+The `draft` parameter is used here to select the number of steps for
+each revolution of the thread, but its purpose and effect is much the
+same as before.  Also, here too you can vary the diameter `d`, pitch
+`P` and length `L`, to get any metric thread, or vary the profile
+polygon to get other kinds of threads.  Obtaining a nut, is just a
+matter of taking a difference with the hexagonal head instead of a
+union.

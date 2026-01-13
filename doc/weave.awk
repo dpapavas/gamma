@@ -244,9 +244,7 @@ $0 ~ "^[[:space:]]*" prefix {
                 " -c \"set default-zoom 0.85\"" \
                 " -c \"define draft\"" \
                 " -c \"window " a "\"" \
-                " -c \"set args -x scheme --no-store-threshold " b "\"" \
-                " -c \"run\""                           \
-                " -c \"print " a ".pdf\"")
+                " -c \"set args -x scheme --no-store-threshold " b "\"")
 
     while ((getline x) > 0) {
       if (x ~ /^#/) {
@@ -386,8 +384,12 @@ $0 ~ "^[[:space:]]*" prefix {
     substitute_weight("\\*", "@emph", "[[:alnum:]]")
     substitute_weight("\\$", "@math", "[[:graph:]]")
 
-    if (in_directive && sub("[" in_directive_post "]", "}" in_directive_post)) {
-      in_directive = 0
+    if (in_directive) {
+      s = gensub("([" in_directive_post "])", "}\\1", 1)
+      if ($0 != s) {
+        $0 = s
+        in_directive = 0
+      }
     }
 
     if (sub(/[[:space:]]*\^\[/, "@footnote{")) {
@@ -462,6 +464,7 @@ END {
   if (in_program) {
     print_program()
   } else {
+    close_list()
     flush_text()
   }
 }

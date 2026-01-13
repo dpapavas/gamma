@@ -5,7 +5,7 @@
           set-projection-tolerance! set-curve-tolerance! set-sine-tolerance!
           point plane
 
-          λ case-λ assert tile range linear-partition with-curve-tolerance
+          λ case-λ assert tile roll range linear-partition with-curve-tolerance
           with-sine-tolerance list-for match-for partial ~> when~> lambda~>
           λ~>)
 
@@ -15,12 +15,41 @@
           (ice-9 match))
 
   (begin
+    (define tile
+      (case-lambda
+       ((x n m) (let recur ((x x) (l (length x)))
+                  (if (< l n)
+                      '()
+                      (cons
+                       (take x n)
+                       (if (< l m) '() (recur (drop x m) (- l m)))))))
+       ((x n) (tile x n n))))
+
+    (define (roll x i)
+      (let recur ((head '()) (lis x) (j (modulo i (length x))))
+        (if (zero? j)
+            (append lis (reverse head))
+            (recur (cons (car lis) head) (cdr lis) (- j 1)))))
+
+    (define range
+      (case-lambda
+       ((a b delta) (if (eq? (< a b) (positive? delta))
+                        (cons a (range (+ a delta) b delta))
+                        (list b)))
+       ((b delta) (range 0 b delta))))
+
+    (define linear-partition
+      (case-lambda
+       ((a b n) (range a b (/ (- b a) n)))
+       ((b n) (range 0 b (/ b n)))))
+
     (define-syntax alias-syntax
       (syntax-rules ()
         ((_ x) (syntax-rules () ((_ . rest) (x . rest))))))
 
     (define-syntax define-option
       (syntax-rules ()
+        ((_ sym) (%define-option (quote sym) #false))
         ((_ sym exp) (%define-option (quote sym) exp))))
 
     (define-syntax define-parameter (alias-syntax define-option))
@@ -38,28 +67,6 @@
          (begin
            (or expr (error "assertion failure: ~s" `expr))
            ...))))
-
-    (define tile
-      (case-lambda
-       ((l n m) (cond ((null? l) l)
-                      ((< (length l) n) '())
-                      (else
-                       (let ((a (take l n))
-                             (b (drop l m)))
-                         (cons a (tile b n m))))))
-       ((l n) (tile l n n))))
-
-    (define range
-      (case-lambda
-       ((a b delta) (if (eq? (< a b) (positive? delta))
-                        (cons a (range (+ a delta) b delta))
-                        (list b)))
-       ((b delta) (range 0 b delta))))
-
-    (define linear-partition
-      (case-lambda
-       ((a b n) (range a b (/ (- b a) n)))
-       ((b n) (range 0 b (/ b n)))))
 
     (define-syntax with-curve-tolerance
       (syntax-rules ()

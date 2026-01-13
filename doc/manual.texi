@@ -1,14 +1,56 @@
 \input texinfo.tex
+
 @afourpaper
 @fonttextsize 11
 
 @latex
+\renewcommand{\topfraction}{.85}
+\renewcommand{\bottomfraction}{.75}
+\renewcommand{\textfraction}{.15}
+\renewcommand{\floatpagefraction}{.7}
+\geometry{margin=1.25in}
+
 \overfullrule=1mm
+\usepackage[width=.75\textwidth,indention=.5cm]{caption}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\definecolor{gray1}{gray}{0.75}
+\definecolor{gray2}{gray}{0.4}
+\definecolor{gray3}{gray}{0.25}
+
+\lstset{
+        showstringspaces=false,
+        @c Frame
+        framexleftmargin=1em,
+        framexrightmargin=1em,
+        framextopmargin=4pt,
+        xleftmargin=1em,
+        xrightmargin=1em,
+        @c Style
+        rulecolor=\color{gray1},
+        basicstyle=\ttfamily\small\color{gray2},
+        identifierstyle=\color{black}\bfseries,
+        keywordstyle=\color{gray3},
+        commentstyle=\slshape,
+}
+
+\lstdefinestyle{lua} {
+        language={[5.3]Lua}
+}
+
+\lstdefinestyle{scheme} {
+        language={Lisp}
+}
+
+\lstdefinestyle{init} {
+        language={sh}
+}
 @end latex
 
 @contents
 
-@include src_main_cpp.texi
+@include doc_manual_introduction.texi
 
 @node @acronym{GNU} General Public License
 @appendix @acronym{GNU} General Public License
@@ -17,3 +59,9 @@
 @node @acronym{GNU} Free Documentation License
 @appendix @acronym{GNU} Free Documentation License
 @include fdl-1.3.texi
+
+@node Concept Index
+@unnumbered Concept Index
+
+@printindex cp
+@bye

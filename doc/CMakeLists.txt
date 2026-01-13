@@ -10,7 +10,7 @@ set(program_SOURCES src/operation.h src/operation.cpp src/evaluation.cpp
 
   doc/program_frontend_introduction)
 
-set(manual_SOURCES src/main.cpp)
+set(manual_SOURCES doc/manual_introduction)
 
 foreach(WHAT "program;program" "manual;scheme" "manual;lua")
   list(POP_FRONT WHAT DOCUMENT VARIANT)
@@ -35,6 +35,7 @@ foreach(WHAT "program;program" "manual;scheme" "manual;lua")
     add_custom_command(
       OUTPUT ${WEAVE_DIR}/${NAME}.texi
       DEPENDS ${PROJECT_SOURCE_DIR}/${SOURCE}
+              ${CMAKE_CURRENT_SOURCE_DIR}/*.scm
               ${CMAKE_CURRENT_SOURCE_DIR}/weave.awk
               ${WEAVE_DIR}/.file
       WORKING_DIRECTORY ${WEAVE_DIR}
@@ -42,6 +43,7 @@ foreach(WHAT "program;program" "manual;scheme" "manual;lua")
                   -v prefix="${PREFIX}"
                   -v target=${DOCUMENT}/${VARIANT}
                   -v path=${NAME}
+                  -v srcdir=${CMAKE_CURRENT_SOURCE_DIR}
                   -v bindir=${PROJECT_BINARY_DIR}
                   -- ${PROJECT_SOURCE_DIR}/${SOURCE} > ${NAME}.texi
     )
@@ -51,7 +53,8 @@ foreach(WHAT "program;program" "manual;scheme" "manual;lua")
 
   add_custom_command(
     OUTPUT ${VARIANT}.pdf
-    DEPENDS ${${DOCUMENT}_${VARIANT}_TEXINFOS} ${CMAKE_CURRENT_SOURCE_DIR}/${DOCUMENT}.texi
+    DEPENDS ${${DOCUMENT}_${VARIANT}_TEXINFOS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/${DOCUMENT}.texi
     WORKING_DIRECTORY ${WEAVE_DIR}
     COMMAND texi2any --latex ${CMAKE_CURRENT_SOURCE_DIR}/${DOCUMENT}.texi -o ${DOCUMENT}.tex
     COMMAND texi2pdf --build=local ${DOCUMENT}.tex -o ${CMAKE_CURRENT_BINARY_DIR}/${VARIANT}.pdf
