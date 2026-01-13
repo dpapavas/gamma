@@ -125,7 +125,7 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
 
   # Lists and tables
 
-  if (/^ {2,}/ && (in_indent || !(in_example || in_graph))) {
+  if (/^ {2,}/ && (in_indent || !(in_example || in_listing || in_graph))) {
     in_indent = 1
 
     sub(/^ */, "")
@@ -182,9 +182,11 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
     close_list()
   }
 
-  if (/^Figure:/) {
-    text = text gensub(/^Figure:[[:space:]]*(.*)$/, "@float Figure,\\1\n", 1)
+  if (/^(Figure|Program):/) {
+    text = text gensub(/^([^:]+):[[:space:]]*(.*)$/, "@float \\1,\\2\n", 1)
     in_figure = 1
+  } else if (/^Concept:/) {
+    text = text gensub(/^Concept:[[:space:]]*(.*)$/, "@cindex \\1\n", 1)
   } else if (/^```print/) {
     a = prefix "." ++figures
     n = split($0, v, ";")
@@ -254,13 +256,19 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
       close(in_print)
       in_print = ""
     } else {
-      if (in_example) {
-        text = text "\n" "@end example" "\n"
+      if (in_listing) {
+        text = text "\\end{lstlisting}\n@end latex\n"
+        in_listing = 0
+      } else if (in_example) {
+        text = text "\n@end example\n"
+        in_example = 0
+      } else if ($0 != "```") {
+        text = text "\n@latex\n\\begin{lstlisting}[language=" substr($0, 4) "]"
+        in_listing = 1
       } else {
         text = text "@example"
+        in_example = 1
       }
-
-      in_example = !in_example
     }
   } else if (in_graph) {
     if (match($0, /^edge:[[:space:]]/)) {
@@ -280,7 +288,7 @@ $0 ~ "^[[:space:]]*// ---[[:space:]]*" {
     print $0 | in_graph
   } else if (in_print) {
     print $0 | in_print
-  } else if (in_example) {
+  } else if (in_example || in_listing) {
     text = text "\n" $0
   } else  {
     # Structure
