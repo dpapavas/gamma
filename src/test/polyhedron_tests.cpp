@@ -925,6 +925,30 @@ BOOST_AUTO_TEST_CASE(write_off)
     std::filesystem::remove("test.off");
 }
 
+BOOST_AUTO_TEST_CASE(merge_writes)
+{
+    {
+        sink_operation(
+            std::move(
+                WRITE_OFF(
+                    "test.off", {CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON)})));
+
+        sink_operation(
+            std::move(
+                WRITE_OFF(
+                    "test.off", {CONVERT_TO<Surface_mesh>(
+                            TETRAHEDRON(-1, 1, 1))})));
+    }
+
+    evaluate_operations();
+
+    Polyhedron P;
+    std::ifstream("test.off") >> P;
+    test_polyhedron(P, 8, 24, 8, FT(FT::ET(1, 3)));
+
+    std::filesystem::remove("test.off");
+}
+
 BOOST_AUTO_TEST_CASE(write_stl)
 {
     {

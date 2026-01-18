@@ -23,11 +23,8 @@
 
 class Write_operation:
     public Nary_operation<Polyhedron_operation<Surface_mesh>, Operation> {
-
-protected:
-    const std::string filename;
-
 public:
+    const std::string filename;
     Write_operation(
         const char *s,
         std::vector<std::shared_ptr<Polyhedron_operation<Surface_mesh>>> &&v):

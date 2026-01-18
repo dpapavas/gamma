@@ -28,8 +28,9 @@
 #include "assertions.h"
 #include "options.h"
 #include "rewrites.h"
-#include "basic_operations.h"
 #include "kernel.h"
+#include "basic_operations.h"
+#include "sink_operations.h"
 
 // Document: program
 
@@ -1001,6 +1002,64 @@ void evaluate_operations()
         operations_map.clear();
     }
 
+    // ### Merging Write Operations
+
+    // We want to allow multiple output operations with the same
+    // target.  These are useful when placing temporary debugging
+    // outputs inside loops, and also for piecemeal creation of an
+    // output.
+
+    {
+        // We look for such outputs and merge them, by accumulating
+        // into the first output to a given target, the operands of
+        // any that follow.  We do this based on the output file name,
+        // as this fully determines the both the type of the operation
+        // and its target.
+
+        auto compare = [](Write_operation *a, Write_operation *b) {
+            return a->filename < b->filename;
+        };
+
+        std::set<Write_operation *, decltype(compare)> set(compare);
+
+        for (auto it = sink_operations_set.begin();
+             it != sink_operations_set.end();) {
+            auto *p = dynamic_cast<Write_operation *>(it->get());
+
+            // When not eliminating dead operations, any type of
+            // operation may end up sunk.  We only want to merge write
+            // operations.
+
+            if (p) {
+                // We try to insert the operation into the set, and if
+                // another one with the same file name already exists, we:
+
+                if (const auto [it_1, q] = set.insert(p); !q) {
+                    auto p_1 = *it_1;
+
+                    //   1. merge its operands and
+
+                    for (auto &x: p->operands) {
+                        if (std::find(
+                                p_1->operands.begin(), p_1->operands.end(), x)
+                            == p_1->operands.end()) {
+                            p_1->push_back(x);
+                        }
+                    }
+
+                    p_1->tag = p_1->describe();
+
+                    //   2. delete it.
+
+                    it = sink_operations_set.erase(it);
+                    continue;
+                }
+            }
+
+            it++;
+        }
+    }
+
     // ### Rewriting the Graph
 
     // We now attempt to rewrite parts of the graph, so as to
@@ -1040,7 +1099,7 @@ void evaluate_operations()
 
     // In changing the graph, rewriting will have changed the tags of
     // the affected operations and of with those, the tags of their
-    // entire ancestor subgraphs (since an operation's tag is present
+    // entire successor subgraphs (since an operation's tag is present
     // in the argument list of all successor operations).
 
     // Since the tag of the successors will depend on the rewritten

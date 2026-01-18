@@ -77,7 +77,7 @@ void insert_output_operations(
     // checks whether the output is enabled and if so, creates one or more
     // output operations and "sinks" them (ref: Sunk Operations).
 
-    // It can be more than one, because a give output may have been
+    // It can be more than one, because a given output may have been
     // requested in more than one formats by the user.  We gather all
     // output operations to be created into the following list.
 
@@ -115,9 +115,10 @@ void insert_output_operations(
             //   1. `foo.ext:bar`, in which case explicitly selected
             //   output named `bar` is written to the file `foo.ext`,
             //   with a format determined by the extension.  If the
-            //   `foo.ext` part is omitted, the output is piped to the
-            //   debugger.  If the `bar` part is omitted, the unnamed
-            //   output is selected.
+            //   `foo.ext` part is omitted, or if it does not
+            //   correspond to a supported format, the output is piped
+            //   to the debugger.  If the `bar` part is omitted, the
+            //   unnamed output is selected.
 
             if (x.compare(j + 1, std::string::npos, name)) {
                 continue;
