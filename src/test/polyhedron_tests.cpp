@@ -994,4 +994,67 @@ BOOST_AUTO_TEST_CASE(write_wrl)
     std::filesystem::remove("test.wrl");
 }
 
+#if defined(__unix__) && defined(__GNUG__)
+#include <ext/stdio_filebuf.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
+BOOST_AUTO_TEST_CASE(inspect)
+{
+    auto f = [](Polyhedron &P) {
+        const int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        assert(fd != -1);
+
+        struct sockaddr_un addr;
+
+#define NAME "inspector"
+        memset(&addr, 0, sizeof(struct sockaddr_un));
+        addr.sun_family = AF_UNIX;
+        strcpy(addr.sun_path + 1, NAME);
+
+        assert(
+            bind(fd, (const struct sockaddr *)&addr,
+                 offsetof(struct sockaddr_un, sun_path) + sizeof(NAME)) != -1);
+#undef NAME
+
+        assert(listen(fd, 1) != -1);
+
+        const int fd_1 = accept(fd, nullptr, nullptr);
+        assert(fd_1 != -1);
+
+        __gnu_cxx::stdio_filebuf<char> buf(fd_1, std::ios::in);
+        std::istream is(&buf);
+
+        // We skip the first line, which is a load command for the
+        // Debugger and read the rest, which should be an OFF file
+        // into the polyhedron.
+
+        while (is.get() != '\n');
+        is >> P;
+
+        close(fd_1);
+        close(fd);
+    };
+
+    {
+        auto p = INSPECT(
+            "test", {CONVERT_TO<Surface_mesh>(UNIT_TETRAHEDRON)});
+
+        BOOST_TEST(
+            p->describe()
+            == "inspect(\"test\",mesh(tetrahedron(1,1,1)))");
+
+        sink_operation(std::move(p));
+    }
+
+    Polyhedron P;
+    std::thread t(f, std::ref(P));
+
+    evaluate_operations();
+    t.join();
+
+    test_unit_tetrahedron(P);
+}
+#endif
+
 BOOST_AUTO_TEST_SUITE_END()
