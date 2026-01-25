@@ -36,12 +36,22 @@
 #include "fixtures.h"
 #include "polyhedron_tests.h"
 
-namespace CGAL {
-    FT exact(FT d)
-    {
-        return d;
-    }
-}
+// The following headers are only needed for the `inspecct` test.  We
+// would have preferred to include them there, but we can't do so,
+// because `BOOST_FIXTURE_TEST_SUITE` introduces a namespace which
+// interferes.
+
+#if defined(__unix__) && defined(__GNUG__)
+
+#include <ext/stdio_filebuf.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+
+#endif
 
 typedef boost::mpl::list<
     Polyhedron, Nef_polyhedron, Surface_mesh> polyhedron_types;
@@ -995,29 +1005,35 @@ BOOST_AUTO_TEST_CASE(write_wrl)
 }
 
 #if defined(__unix__) && defined(__GNUG__)
-#include <ext/stdio_filebuf.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 
 BOOST_AUTO_TEST_CASE(inspect)
 {
-    auto f = [](Polyhedron &P) {
+    std::mutex m;
+    std::condition_variable cv;
+    bool q;
+
+    auto f = [&m, &cv, &q](Polyhedron &P) {
         const int fd = socket(AF_UNIX, SOCK_STREAM, 0);
         assert(fd != -1);
 
         struct sockaddr_un addr;
 
-#define NAME "inspector"
         memset(&addr, 0, sizeof(struct sockaddr_un));
         addr.sun_family = AF_UNIX;
-        strcpy(addr.sun_path + 1, NAME);
+        strcpy(addr.sun_path + 1, "gammadb-test");
 
         assert(
             bind(fd, (const struct sockaddr *)&addr,
-                 offsetof(struct sockaddr_un, sun_path) + sizeof(NAME)) != -1);
-#undef NAME
+                 offsetof(struct sockaddr_un, sun_path)
+                 + sizeof("gammadb-test")) != -1);
 
         assert(listen(fd, 1) != -1);
+
+        {
+            std::lock_guard l(m);
+            q = true;
+        }
+        cv.notify_one();
 
         const int fd_1 = accept(fd, nullptr, nullptr);
         assert(fd_1 != -1);
@@ -1050,9 +1066,16 @@ BOOST_AUTO_TEST_CASE(inspect)
     Polyhedron P;
     std::thread t(f, std::ref(P));
 
-    evaluate_operations();
-    t.join();
+    {
+        std::unique_lock l(m);
+        while (!q) cv.wait(l);
+    }
 
+    push(Options::debugger_address, "gammadb-test");
+    evaluate_operations();
+    pop(Options::debugger_address);
+
+    t.join();
     test_unit_tetrahedron(P);
 }
 #endif

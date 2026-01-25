@@ -46,6 +46,7 @@ enum {
     NO_INIT,
     BATCH,
     ARGS,
+    ADDRESS,
     TARGET
 };
 
@@ -57,6 +58,7 @@ static struct option options[] = {
     {"no-init", no_argument, nullptr, NO_INIT},
     {"batch", no_argument, nullptr, BATCH},
     {"args", no_argument, nullptr, ARGS},
+    {"address", required_argument, nullptr, ADDRESS},
     {"target", required_argument, nullptr, TARGET},
     {"command", required_argument, nullptr, 'c'},
     {"execute", required_argument, nullptr, 'x'},
@@ -462,16 +464,26 @@ static void *do_ipc(void *arg)
     // We bind the socket to an abstract address, to spare ourselves
     // the need to clean up files on the filesystem.
 
-    struct sockaddr_un addr;
+    struct sockaddr_un addr = {};
 
-#define NAME "inspector"
-    memset(&addr, 0, sizeof(struct sockaddr_un));
     addr.sun_family = AF_UNIX;
-    strcpy(addr.sun_path + 1, NAME);
+    socklen_t n;
 
-    if (bind(listen_socket,
-             (const struct sockaddr *)&addr,
-             offsetof(struct sockaddr_un, sun_path) + sizeof(NAME)) == -1) {
+    if (settings.address) {
+        n = (
+            stpncpy(
+                addr.sun_path + 1, settings.address, sizeof(addr.sun_path) - 1)
+            - (char *)&addr);
+    } else {
+        n = (
+            offsetof(struct sockaddr_un, sun_path) +
+            snprintf(
+                addr.sun_path + 1, sizeof(addr.sun_path) - 1,
+                "gammadb-%d", getpid()) + 1);
+        settings.address = strdup(addr.sun_path + 1);
+    }
+
+    if (bind(listen_socket, (const struct sockaddr *)&addr, n) == -1) {
         EXIT("Failed to bind listening socket");
     }
 #undef NAME
@@ -632,7 +644,8 @@ Options:\n\
   --batch               Exit after processing options.\n\
   --args [ARGS ...]     Set the \"args\" option to the following\n\
                         arguments.\n\
-  --target TARGET       Create a window on startup and set its main\n\
+  --address=ADDR        Set the IPC address.\n\
+  --target=TARGET       Create a window on startup and set its main\n\
                         viewport target.\n", argv[0]);
 
             exit(EXIT_SUCCESS);
@@ -675,19 +688,25 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
             size_t n = 0;
             for (int i = optind; i < argc; n += strlen(argv[i++]) + 1);
 
-            settings.args = (char *)malloc(n);
-            for (char *s = settings.args;; optind++) {
-                s = stpcpy(s, argv[optind]);
+            settings.args = (char *)malloc(n + 1);
 
-                if (optind == argc - 1) {
-                    break;
+            if (n == 0) {
+                settings.args[0] = '\0';
+            } else {
+                for (char *s = settings.args; optind < argc; optind++) {
+                    s = stpcpy(s, argv[optind]);
+                    s = stpcpy(s, " ");
                 }
-
-                s = stpcpy(s, " ");
             }
         }
 
             break;
+
+        case ADDRESS:
+        {
+            settings.address = strdup(optarg);
+        }
+        break;
 
         case TARGET:
         {

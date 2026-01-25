@@ -94,6 +94,7 @@ namespace Options {
     const char *dump_list;
     const char *dump_log;
     int dump_short_tags = -1;
+    const char *debugger_address = "gammadb";
 
     // Diagnostics
 
@@ -146,6 +147,7 @@ int parse_options(int argc, char *argv[])
         DUMP_LIST,
         DUMP_LOG,
         DUMP_SHORT_TAGS,
+        DEBUGGER_ADDRESS,
         DIAGNOSTICS_SHORTEN_TAGS,
         NO_OUTPUT,
         POLYHEDRON_BOOLEANS,
@@ -171,8 +173,7 @@ int parse_options(int argc, char *argv[])
         {"no-dump-log", no_argument, nullptr, -DUMP_LOG},
         {"no-dump-short-tags", no_argument, &Options::dump_short_tags, -1},
         {"dump-short-tags", optional_argument, nullptr, DUMP_SHORT_TAGS},
-        {"no-diagnostics-shorten-tags", no_argument, &Options::diagnostics_shorten_tags, -1},
-        {"diagnostics-shorten-tags", optional_argument, nullptr, DIAGNOSTICS_SHORTEN_TAGS},
+        {"debugger-address", required_argument, nullptr, DEBUGGER_ADDRESS},
 
         // Diagnostics
 
@@ -180,6 +181,8 @@ int parse_options(int argc, char *argv[])
         {"diagnostics-color", optional_argument, nullptr, DIAGNOSTICS_COLOR},
         {"no-diagnostics-elide-tags", no_argument, nullptr, -DIAGNOSTICS_ELIDE_TAGS},
         {"diagnostics-elide-tags", optional_argument, nullptr, DIAGNOSTICS_ELIDE_TAGS},
+        {"no-diagnostics-shorten-tags", no_argument, &Options::diagnostics_shorten_tags, -1},
+        {"diagnostics-shorten-tags", optional_argument, nullptr, DIAGNOSTICS_SHORTEN_TAGS},
 
         // Evaluation
 
@@ -253,9 +256,9 @@ int parse_options(int argc, char *argv[])
         break;                                  \
     }
 
-#define STRING_OPTION(X) {                      \
-        Options::X = optarg;                    \
-        break;                                  \
+#define STRING_OPTION(X) {                              \
+        Options::X = optarg ? strdup(optarg) : optarg;  \
+        break;                                          \
     }
 
 #define INTEGER_OPTION(X, COND) {                       \
@@ -436,6 +439,7 @@ int parse_options(int argc, char *argv[])
                     "                           tags with evaluation sequence numbers.\n"
                     "  --no-dump-annotations    Do not annotate dumped operations.\n"
                     "  --dump-short-tags[=N]    Limit the maximum length in dumped tags.\n\n"
+                    "  --debugger-address=ADDR  Set the debugger's IPC address.\n"
 
                     "Evaluation options:\n"
                     "  -t N, --threads=N     Use no more than specified number of evaluation threads.\n"
@@ -570,6 +574,9 @@ int parse_options(int argc, char *argv[])
         case DUMP_SHORT_TAGS:
             OPTIONAL_ARGUMENT(dump_short_tags, 50);
             INTEGER_OPTION(dump_short_tags, i >= 0);
+
+        case DEBUGGER_ADDRESS:
+            STRING_OPTION(debugger_address);
 
         case DIAGNOSTICS_SHORTEN_TAGS:
             OPTIONAL_ARGUMENT(diagnostics_shorten_tags, 50);

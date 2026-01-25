@@ -223,18 +223,17 @@ void Inspect_operation::evaluate()
         return;
     }
 
-    struct sockaddr_un addr;
+    struct sockaddr_un addr = {};
 
     //   2. connect it to the remote end,
 
-#define NAME "inspector"
-    memset(&addr, 0, sizeof(struct sockaddr_un));
     addr.sun_family = AF_UNIX;
-    strcpy(addr.sun_path + 1, NAME);
 
     if (connect(fd,
                 (const struct sockaddr *)&addr,
-                offsetof(struct sockaddr_un, sun_path) + sizeof(NAME)) == -1) {
+                stpncpy(
+                    addr.sun_path + 1, Options::debugger_address,
+                    sizeof(addr.sun_path) - 2) - (char *)&addr) == -1) {
         message(
             Operation::WARNING, make_error_string("could not connect socket"));
         return;

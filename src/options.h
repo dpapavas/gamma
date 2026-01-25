@@ -104,12 +104,13 @@ namespace Options {
     extern const char *dump_list;
     extern const char *dump_log;
     extern int dump_short_tags;
-    extern int diagnostics_shorten_tags;
+    extern const char *debugger_address;
 
     // Diagnostics
 
     extern Diagnostics_color_mode diagnostics_color;
     extern int diagnostics_elide_tags;
+    extern int diagnostics_shorten_tags;
 
     // Evaluation
 

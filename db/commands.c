@@ -1396,7 +1396,18 @@ int read_commands(FILE *fp)
             MAYBE_GROW_TO(buffer, (n += strlen(settings.program)) + 1);
             p = stpcpy(buffer.p, settings.program);
 
-            //   2. the outputs, which need to precede other
+            //   2. the IPC address option, then
+
+            {
+                    const size_t n_0 = n;
+
+                    MAYBE_GROW_TO(
+                        buffer, (n += strlen(settings.address) + 20) + 1);
+                    p = stpcpy(buffer.p + n_0, " --debugger-address=");
+                    p = stpcpy(p, settings.address);
+            }
+
+            //   3. the outputs, which need to precede other
             //   options^[Order is important since the output selected
             //   by an option only affects the source files following
             //   it.], then
@@ -1417,7 +1428,7 @@ int read_commands(FILE *fp)
                 }
             }
 
-            //   3. the parameter definitions and finally
+            //   4. the parameter definitions and finally
 
             for (size_t i = 0; i < definitions.n; i++) {
                 const struct definition *q = definitions.p + i;
@@ -1445,7 +1456,7 @@ int read_commands(FILE *fp)
                 }
             }
 
-            //   4. any arguments specified by the user.
+            //   5. any arguments specified by the user.
 
             if (settings.args) {
                 const size_t n_0 = n;

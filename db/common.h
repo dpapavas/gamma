@@ -41,6 +41,7 @@
 struct settings {
     char *args;
     char *program;
+    char *address;
 
     bool quiet;
     bool present_on_reload, resize_on_split, print_frames;
