@@ -74,9 +74,9 @@ volatile bool running = true;
 // line switches), we wrap them in `FILE *`.  This allows us to use
 // our existing parsing machinery without change.
 
-static int evaluate(char *s)
+static int evaluate(const char *s)
 {
-    FILE *fp = fmemopen(s, strlen(s), "r");
+    FILE *fp = fmemopen((char *)s, strlen(s), "r");
     const int n = read_commands(fp);
     fclose(fp);
 
@@ -427,6 +427,18 @@ static void *do_input(void *arg)
     glfwPostEmptyEvent();
 
     return nullptr;
+}
+
+int read_command_and_redisplay(const char *s)
+{
+    rl_clear_visible_line();
+
+    const int n = evaluate(s);
+
+    rl_on_new_line();
+    rl_redisplay();
+
+    return n;
 }
 
 #undef WORD_BREAK_CHARACTERS

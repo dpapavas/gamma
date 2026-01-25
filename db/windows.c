@@ -48,9 +48,7 @@ static void key_callback(
         const struct key_binding *p = find_key_binding(mods, key);
 
         if (p) {
-            FILE *fp = fmemopen((char *)p->command, strlen(p->command), "r");
-            read_commands(fp);
-            fclose(fp);
+            read_command_and_redisplay(p->command);
         }
     }
 }

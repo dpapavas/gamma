@@ -182,5 +182,6 @@ bool refresh_windows(void);
 // Document: none
 
 int read_commands(FILE *fp);
+int read_command_and_redisplay(const char *s);
 
 #endif
