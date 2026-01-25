@@ -1416,12 +1416,14 @@ static int open_polyhedra(lua_State *L)
         {"tetrahedron", primitive<TETRAHEDRON<>, Boxed_polyhedron, 3>},
         {"square_pyramid", primitive<SQUARE_PYRAMID<>, Boxed_polyhedron, 3>},
         {"octahedron", octahedron},
-        {"regular_pyramid", primitive<REGULAR_PYRAMID<>, Boxed_polyhedron, int, FT, FT>},
+        {"regular_pyramid",
+         primitive<REGULAR_PYRAMID<>, Boxed_polyhedron, int, FT, FT>},
         {"regular_bipyramid", regular_bipyramid},
         {"cuboid", primitive<CUBOID<>, Boxed_polyhedron, 3>},
         {"icosahedron", primitive<ICOSAHEDRON<>, Boxed_polyhedron, 1>},
         {"sphere", primitive<SPHERE<>, Boxed_polyhedron, 1>},
         {"cylinder", primitive<CYLINDER<>, Boxed_polyhedron, 2>},
+        {"prism", primitive<PRISM<>, Boxed_polyhedron, int, FT, FT>},
 
         {nullptr, nullptr}};
 
