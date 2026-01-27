@@ -669,20 +669,7 @@ DEFINE_POLYGON_SET_METAMETHOD(mul, INTERSECTION)
 
 #undef DEFINE_POLYGON_SET_METAMETHOD
 
-#define DEFINE_SET_OPERATION(NAME, OP)                          \
-static int NAME ##_2(lua_State *L)                              \
-{                                                               \
-    if (luaL_testudata(L, 1, "polygon")) {                      \
-        polygon_## OP(L);                                       \
-    } else if (luaL_testudata(L, 1, "polyhedron")) {            \
-        polyhedron_## OP(L);                                    \
-    } else {                                                    \
-        luaL_argerror(L, 1, "expected polyhedron or polygon");  \
-    }                                                           \
-                                                                \
-    return 1;                                                   \
-}                                                               \
-                                                                \
+#define DEFINE_FOLDED_OPERATION(NAME, ...)                      \
 static int NAME ##_many(lua_State *L)                           \
 {                                                               \
     int n = lua_gettop(L);                                      \
@@ -690,6 +677,8 @@ static int NAME ##_many(lua_State *L)                           \
     if (n == 1) {                                               \
         return 1;                                               \
     }                                                           \
+                                                                \
+    __VA_ARGS__                                                 \
                                                                 \
     if (n == 2) {                                               \
         return NAME ##_2(L);                                    \
@@ -704,19 +693,91 @@ static int NAME ##_many(lua_State *L)                           \
     return 1;                                                   \
 }
 
-DEFINE_SET_OPERATION(join, add)
-DEFINE_SET_OPERATION(difference, sub)
-DEFINE_SET_OPERATION(intersection, mul)
+#define HANDLE_SELECTION_TYPE(OP, T)                            \
+if (luaL_testudata(L, 1, type_name<std::shared_ptr<T>>)) {      \
+    std::vector<std::shared_ptr<T>> v;                          \
+    v.reserve(n);                                               \
+                                                                \
+    for (int i = 1; i <= n; i++) {                              \
+        v.push_back(fromlua<std::shared_ptr<T>>(L, i));         \
+    }                                                           \
+                                                                \
+    tolua<std::shared_ptr<T>>(L, OP(std::move(v)));             \
+    return 1;                                                   \
+}
+
+#define DEFINE_SET_OPERATION(NAME, OP)                          \
+static int NAME ##_2(lua_State *L)                              \
+{                                                               \
+    if (luaL_testudata(L, 1, "polygon")) {                      \
+        std::visit(                                             \
+            [&L](auto &&x, auto &&y) {                          \
+                tolua<Boxed_polygon>(L, OP(x, y));              \
+            },                                                  \
+            fromlua<Boxed_polygon>(L, 1),                       \
+            fromlua<Boxed_polygon>(L, 2));                      \
+    } else if (luaL_testudata(L, 1, "polyhedron")) {            \
+        tolua<Boxed_polyhedron>(                                \
+            L,                                                  \
+            std::visit(                                         \
+                make_polyhedron_boolean_visitor(OP),            \
+                fromlua<Boxed_polyhedron>(L, 1),                \
+                fromlua<Boxed_polyhedron>(L, 2)));              \
+    } else {                                                    \
+        luaL_argerror(L, 1, "expected polyhedron or polygon");  \
+    }                                                           \
+                                                                \
+    return 1;                                                   \
+}                                                               \
+                                                                \
+DEFINE_FOLDED_OPERATION(                                        \
+    NAME, {                                                     \
+        HANDLE_SELECTION_TYPE(OP, Bounding_volume);             \
+        HANDLE_SELECTION_TYPE(OP, Vertex_selector);             \
+        HANDLE_SELECTION_TYPE(OP, Face_selector);               \
+        HANDLE_SELECTION_TYPE(OP, Edge_selector);               \
+    })
+
+DEFINE_SET_OPERATION(join, JOIN)
+DEFINE_SET_OPERATION(difference, DIFFERENCE)
+DEFINE_SET_OPERATION(intersection, INTERSECTION)
 
 #undef DEFINE_SET_OPERATION
+#undef HANDLE_SELECTION_TYPE
 
-static int clip(lua_State *L)
+static int clip_2(lua_State *L)
 {
     luaL_checkudata(L, 1, "polyhedron");
     luaL_checkudata(L, 2, "plane");
 
     return polyhedron_mul(L);
 }
+
+DEFINE_FOLDED_OPERATION(clip)
+
+static int corefine_2(lua_State *L)
+{
+    if (luaL_testudata(L, 2, "plane")) {
+        const auto &pi = fromlua<Plane_3>(L, 2);
+
+        return std::visit(
+            [&L, &pi](auto &&x) {
+                return tolua<Boxed_polyhedron>(L, COREFINE(x, pi));
+            },
+            fromlua<Boxed_polyhedron>(L, 1));
+    } else {
+        return std::visit(
+            [&L](auto &&x, auto &&y) {
+                return tolua<Boxed_polyhedron>(L, COREFINE(x, y));
+            },
+            fromlua<Boxed_polyhedron>(L, 1),
+            fromlua<Boxed_polyhedron>(L, 2));
+    }
+}
+
+DEFINE_FOLDED_OPERATION(corefine)
+
+#undef DEFINE_FOLDED_OPERATION
 
 static int minkowski_sum(lua_State *L)
 {
@@ -1199,26 +1260,6 @@ static int deform(lua_State *L)
     }
 }
 
-static int corefine(lua_State *L)
-{
-    if (luaL_testudata(L, 2, "plane")) {
-        const auto &pi = fromlua<Plane_3>(L, 2);
-
-        return std::visit(
-            [&L, &pi](auto &&x) {
-                return tolua<Boxed_polyhedron>(L, COREFINE(x, pi));
-            },
-            fromlua<Boxed_polyhedron>(L, 1));
-    } else {
-        return std::visit(
-            [&L](auto &&x, auto &&y) {
-                return tolua<Boxed_polyhedron>(L, COREFINE(x, y));
-            },
-            fromlua<Boxed_polyhedron>(L, 1),
-            fromlua<Boxed_polyhedron>(L, 2));
-    }
-}
-
 static int complement(lua_State *L)
 {
     if (luaL_testudata(L, 1, "bounding_volume")) {
@@ -1323,38 +1364,38 @@ static int open_transformation(lua_State *L)
 static int open_volumes(lua_State *L)
 {
     const luaL_Reg ops[] = {
-        {"plane",
+        {"bounding_plane",
          primitive<BOUNDING_PLANE<>, std::shared_ptr<Bounding_volume>, 4>},
-        {"halfspace-interior",
+        {"bounding_halfspace_interior",
          primitive<BOUNDING_HALFSPACE_INTERIOR<>,
          std::shared_ptr<Bounding_volume>, 4>},
-        {"halfspace",
+        {"bounding_halfspace",
          primitive<BOUNDING_HALFSPACE<>, std::shared_ptr<Bounding_volume>, 4>},
 
-        {"box",
+        {"bounding_box",
          primitive<BOUNDING_BOX<>, std::shared_ptr<Bounding_volume>, 3>},
-        {"box-boundary",
+        {"bounding_box_boundary",
          primitive<BOUNDING_BOX_BOUNDARY<>,
          std::shared_ptr<Bounding_volume>, 3>},
-        {"box-interior",
+        {"bounding_box_interior",
          primitive<BOUNDING_BOX_INTERIOR<>,
          std::shared_ptr<Bounding_volume>, 3>},
 
-        {"sphere",
+        {"bounding_sphere",
          primitive<BOUNDING_SPHERE<>, std::shared_ptr<Bounding_volume>, 1>},
-        {"sphere-boundary",
+        {"bounding_sphere_boundary",
          primitive<BOUNDING_SPHERE_BOUNDARY<>,
          std::shared_ptr<Bounding_volume>, 1>},
-        {"sphere-interior",
+        {"bounding_sphere_interior",
          primitive<BOUNDING_SPHERE_INTERIOR<>,
          std::shared_ptr<Bounding_volume>, 1>},
 
-        {"cylinder",
+        {"bounding_cylinder",
          primitive<BOUNDING_CYLINDER<>, std::shared_ptr<Bounding_volume>, 2>},
-        {"cylinder-boundary",
+        {"bounding_cylinder_boundary",
          primitive<BOUNDING_CYLINDER_BOUNDARY<>,
          std::shared_ptr<Bounding_volume>, 2>},
-        {"cylinder-interior",
+        {"bounding_cylinder_interior",
          primitive<BOUNDING_CYLINDER_INTERIOR<>,
          std::shared_ptr<Bounding_volume>, 2>},
 
@@ -1441,7 +1482,8 @@ static int open_operations(lua_State *L)
         {"difference", difference_many},
         {"intersection", intersection_many},
         {"complement", complement},
-        {"clip", clip},
+        {"clip", clip_many},
+        {"corefine", corefine_many},
         {"minkowski_sum", minkowski_sum},
         {"hull", hull},
 
@@ -1455,7 +1497,6 @@ static int open_operations(lua_State *L)
         {"deform", deform},
         {"smooth_shape", smooth_shape},
         {"deflate", deflate},
-        {"corefine", corefine},
 
         {"subdivide_catmull_clark", subdivide_catmull_clark},
         {"subdivide_doo_sabin", subdivide_doo_sabin},

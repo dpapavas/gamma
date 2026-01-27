@@ -81,18 +81,18 @@ do
 
    local section = (
       transformation.flush_east(
-	 operations.minkowski_sum(
-	    chamfer_kernel,
-	    polygons.simple(
-	       point(0, 0),
-	       point(w_0adj, 0),
-	       point(w_0adj, h_0),
-	       point(w_1adj, h_0),
-	       point(w_1adj, h_1),
-	       point(-(h_2 - h_1) * 2/3, h_2),
-	       point(0, h_1)
-	    )
-	 )
+         operations.minkowski_sum(
+            chamfer_kernel,
+            polygons.simple(
+               point(0, 0),
+               point(w_0adj, 0),
+               point(w_0adj, h_0),
+               point(w_1adj, h_0),
+               point(w_1adj, h_1),
+               point(-(h_2 - h_1) * 2/3, h_2),
+               point(0, h_1)
+            )
+         )
       )
    )
 
@@ -143,8 +143,10 @@ do
    )
 
    local face_selection = (
-      selection.faces_in(volumes.halfspace(0, 0, -1, h_1 - chamfer_length))
-      - selection.faces_in(volumes.halfspace(0, 0, -1, h_2 - chamfer_length))
+      selection.faces_in(
+         volumes.bounding_halfspace(0, 0, -1, h_1 - chamfer_length))
+      - selection.faces_in(
+         volumes.bounding_halfspace(0, 0, -1, h_2 - chamfer_length))
    )
 
    output(
@@ -163,9 +165,10 @@ do
 
    local vertex_selection = (
       selection.contract_selection(
-	 selection.vertices_in(volumes.halfspace(0, 0, -1, h_1))
-	 - selection.vertices_in(volumes.halfspace(0, 0, -1, h_2 - chamfer_length)),
-	 0
+         selection.vertices_in(volumes.bounding_halfspace(0, 0, -1, h_1))
+         - selection.vertices_in(
+            volumes.bounding_halfspace(0, 0, -1, h_2 - chamfer_length)),
+         0
       )
    )
 
@@ -243,7 +246,7 @@ do
    )
 
    output(
-      "gasket_section",   
+      "gasket_section",
       operations.linear_extrusion(section, 1)
    )
 
@@ -266,12 +269,12 @@ output(
    "assembly",
    operations.color_selection(
       funnel,
-      selection.faces_in(volumes.halfspace(0, 0, 0, 0)),
+      selection.faces_in(volumes.bounding_halfspace(0, 0, 0, 0)),
       1
    ),
    operations.color_selection(
       gasket,
-      selection.faces_in(volumes.halfspace(0, 0, 0, 0)),
+      selection.faces_in(volumes.bounding_halfspace(0, 0, 0, 0)),
       2
    )
 )

@@ -1154,22 +1154,6 @@ static Boxed_polygon offset(Boxed_polygon &p, const FT &delta)
         }, p);
 }
 
-// Below `make_polyhedron_clip_visitor` provides a visitor that
-// will perform the clip via Nef or corefinement operations.  Ref:
-// Selecting Between Nef and Corefinement Operations.
-
-static SCM clip(SCM s, SCM t)
-{
-    Boxed_polyhedron a;
-    Plane_3 Pi;
-
-    pop_argument(1, s, a);
-    pop_argument(2, t, Pi);
-
-    return to_scheme<Boxed_polyhedron>(
-        std::visit(make_polyhedron_clip_visitor(Pi), a));
-}
-
 // Extrusions operate on a polygon and an arbitrary number of
 // transformations.  (If no transformations are specified,
 // `EXTRUSIONS` implicitly inserts a null translation.)
@@ -1328,6 +1312,31 @@ if (std::shared_ptr<T> p; try_pop_argument(1, s, p)) {                  \
     return to_scheme<std::shared_ptr<T>>(OP(std::move(v)));             \
 }
 
+#define DEFINE_FOLDED_OPERATION(NAME, ...)      \
+                                                \
+static SCM NAME ##_many(SCM s, SCM rest)        \
+{                                               \
+    const SCM t = NAME ##_2(s, scm_car(rest));  \
+    const SCM u = scm_cdr(rest);                \
+                                                \
+    if (scm_is_null(u)) {                       \
+        return t;                               \
+    }                                           \
+                                                \
+    return NAME ##_many(t, u);                  \
+}                                               \
+                                                \
+static SCM NAME ##_any(SCM s, SCM rest)         \
+{                                               \
+    if (scm_is_null(rest)) {                    \
+        return s;                               \
+    }                                           \
+                                                \
+    __VA_ARGS__                                 \
+                                                \
+    return NAME ##_many(s, rest);               \
+}
+
 #define DEFINE_SET_OPERATION(NAME, OP)                                  \
 static SCM NAME ##_2(SCM s, SCM t)                                      \
 {                                                                       \
@@ -1357,31 +1366,13 @@ static SCM NAME ##_2(SCM s, SCM t)                                      \
     }                                                                   \
 }                                                                       \
                                                                         \
-static SCM NAME ##_many(SCM s, SCM rest)                                \
-{                                                                       \
-    const SCM t = NAME ##_2(s, scm_car(rest));                          \
-    const SCM u = scm_cdr(rest);                                        \
-                                                                        \
-    if (scm_is_null(u)) {                                               \
-        return t;                                                       \
-    }                                                                   \
-                                                                        \
-    return NAME ##_many(t, u);                                          \
-}                                                                       \
-                                                                        \
-static SCM NAME ##_any(SCM s, SCM rest)                                 \
-{                                                                       \
-    if (scm_is_null(rest)) {                                            \
-        return s;                                                       \
-    }                                                                   \
-                                                                        \
-    HANDLE_SELECTION_TYPE(OP, Bounding_volume);                         \
-    HANDLE_SELECTION_TYPE(OP, Vertex_selector);                         \
-    HANDLE_SELECTION_TYPE(OP, Face_selector);                           \
-    HANDLE_SELECTION_TYPE(OP, Edge_selector);                           \
-                                                                        \
-    return NAME ##_many(s, rest);                                       \
-}
+DEFINE_FOLDED_OPERATION(                                                \
+    NAME, {                                                             \
+        HANDLE_SELECTION_TYPE(OP, Bounding_volume);                     \
+        HANDLE_SELECTION_TYPE(OP, Vertex_selector);                     \
+        HANDLE_SELECTION_TYPE(OP, Face_selector);                       \
+        HANDLE_SELECTION_TYPE(OP, Edge_selector);                       \
+    })
 
 DEFINE_SET_OPERATION(union, JOIN)
 DEFINE_SET_OPERATION(difference, DIFFERENCE)
@@ -1392,7 +1383,7 @@ DEFINE_SET_OPERATION(intersection, INTERSECTION)
 
 // A polyhedron can be corefined with:
 
-static SCM corefine(SCM s, SCM t)
+static SCM corefine_2(SCM s, SCM t)
 {
     if (scm_is_eq(t, SCM_UNDEFINED)) {
         return s;
@@ -1424,6 +1415,27 @@ static SCM corefine(SCM s, SCM t)
     throw wrong_type_exception(1, s, "polyhedron, or plane-3d");
 }
 
+DEFINE_FOLDED_OPERATION(corefine)
+
+// Below `make_polyhedron_clip_visitor` provides a visitor that
+// will perform the clip via Nef or corefinement operations.  Ref:
+// Selecting Between Nef and Corefinement Operations.
+
+static SCM clip_2(SCM s, SCM t)
+{
+    Boxed_polyhedron a;
+    Plane_3 Pi;
+
+    pop_argument(1, s, a);
+    pop_argument(2, t, Pi);
+
+    return to_scheme<Boxed_polyhedron>(
+        std::visit(make_polyhedron_clip_visitor(Pi), a));
+}
+
+DEFINE_FOLDED_OPERATION(clip)
+
+#undef DEFINE_FOLDED_OPERATION
 
 // Subdivision operations take a single polyhedron and an integer
 // number of iterations.
@@ -1960,8 +1972,8 @@ static void define_operations(void *)
     DEFINE_FOREIGN_PROC("difference", 1, 0, 1, difference_any);
     DEFINE_FOREIGN_PROC("intersection", 1, 0, 1, intersection_any);
     DEFINE_FOREIGN_PROC("boundary", 1, 0, 0, boundary);
-    DEFINE_FOREIGN_PROC("clip", 2, 0, 0, clip);
-    DEFINE_FOREIGN_PROC("corefine", 2, 0, 0, corefine);
+    DEFINE_FOREIGN_PROC("clip", 1, 0, 1, clip_any);
+    DEFINE_FOREIGN_PROC("corefine", 1, 0, 1, corefine_any);
 
     DEFINE_FOREIGN_PROC("perturb", 1, 0, 1, perturb);
     DEFINE_FOREIGN_PROC("refine", 1, 0, 1, refine);

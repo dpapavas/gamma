@@ -706,15 +706,15 @@ WITH_SOURCE("lua",
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "    s.vertices_in("
-            "        t.flush_east(v.box(10, 20, 30))))"
+            "        t.flush_east(v.bounding_box(10, 20, 30))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "    s.vertices_in("
-            "        t.flush_west(v.sphere(2))))"
+            "        t.flush_west(v.bounding_sphere(2))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "    s.vertices_in("
-            "        t.flush(v.cylinder(4, 2), 1, 1, 1)))")
+            "        t.flush(v.bounding_cylinder(4, 2), 1, 1, 1)))")
 WITH_SOURCE("scheme",
             "(import (gamma transformation)"
             "        (gamma volumes) (gamma selection)"
@@ -1068,6 +1068,22 @@ EXPECTING("tetrahedron(1,1,1)",
 
 #undef WITH_POLYHEDRON_BOOLEANS_SOURCES
 
+DEFINE_TEST_CASE(clip_many)
+WITH_SOURCE("lua",
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.clip(h.cuboid(10, 10, 10),"
+            "        plane(-1, -1, -1, -9),"
+            "        plane(1, 1, 1, -9))")
+WITH_SOURCE("scheme",
+            "(import (gamma polyhedra) (gamma operations))"
+
+            "(clip (cuboid 10 10 10) (plane -1 -1 -1 -9) (plane 1 1 1 -9))")
+EXPECTING("cuboid(10,10,10)",
+          "clip(cuboid(10,10,10),plane(-1,-1,-1,-9))",
+          "clip(clip(cuboid(10,10,10),plane(-1,-1,-1,-9)),plane(1,1,1,-9))")
+
 // ## Front End Tests for Selections
 
 // We test selection application and manipulation below.  These are
@@ -1082,29 +1098,29 @@ WITH_SOURCE("lua",
 
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    s.vertices_in(v.plane(0, 0, 1, -1)))"
+            "    s.vertices_in(v.bounding_plane(0, 0, 1, -1)))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    s.faces_in(v.plane(0, 0, 1, -1)))"
+            "    s.faces_in(v.bounding_plane(0, 0, 1, -1)))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    s.faces_partially_in(v.plane(0, 0, 1, -1)))"
+            "    s.faces_partially_in(v.bounding_plane(0, 0, 1, -1)))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "    s.expand_selection("
-            "        s.vertices_in(v.plane(0, 0, 1, -1)), 1))"
+            "        s.vertices_in(v.bounding_plane(0, 0, 1, -1)), 1))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "    s.contract_selection("
-            "        s.vertices_in(v.halfspace(0, 0, 1, -1)), 1))"
+            "        s.vertices_in(v.bounding_halfspace(0, 0, 1, -1)), 1))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "     s.expand_selection("
-            "        s.faces_in(v.plane(0, 0, 1, -1)), 1))"
+            "        s.faces_in(v.bounding_plane(0, 0, 1, -1)), 1))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "    s.contract_selection("
-            "        s.faces_in(v.halfspace(0, 0, 1, -1)), 1))")
+            "        s.faces_in(v.bounding_halfspace(0, 0, 1, -1)), 1))")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
             "        (gamma polyhedra) (gamma operations))"
@@ -1151,6 +1167,43 @@ EXPECTING("cuboid(2,2,2)",
           "color_selection(mesh(cuboid(2,2,2)),"
           "vertices_in(bounding_plane(plane(0,0,1,-1))),0,0,0,255)")
 
+#define EXPECTING_SELECTION_BOOLEAN_TAGS                                \
+EXPECTING("cuboid(2,2,2)",                                              \
+          "mesh(cuboid(2,2,2))",                                        \
+          "color_selection(mesh(cuboid(2,2,2)),"                        \
+          "complement(vertices_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)", \
+          "color_selection(mesh(cuboid(2,2,2)),"                        \
+          "intersection(vertices_in(bounding_plane(plane(0,0,1,-1))),"  \
+          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",    \
+          "color_selection(mesh(cuboid(2,2,2)),"                        \
+          "difference(vertices_in(bounding_plane(plane(0,0,1,-1))),"    \
+          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",    \
+          "color_selection(mesh(cuboid(2,2,2)),"                        \
+          "union(vertices_in(bounding_plane(plane(0,0,1,-1))),"         \
+          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",    \
+          "color_selection(mesh(cuboid(2,2,2)),"                        \
+          "complement(faces_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)", \
+          "color_selection(mesh(cuboid(2,2,2)),"                        \
+          "intersection(faces_in(bounding_plane(plane(0,0,1,-1))),"     \
+          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",       \
+          "color_selection(mesh(cuboid(2,2,2)),"                        \
+          "difference(faces_in(bounding_plane(plane(0,0,1,-1))),"       \
+          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",       \
+          "color_selection(mesh(cuboid(2,2,2)),"                        \
+          "union(faces_in(bounding_plane(plane(0,0,1,-1))),"            \
+          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",       \
+          "remesh(cuboid(2,2,2),"                                       \
+          "complement(edges_in(bounding_plane(plane(0,0,1,-1)))),1,1)", \
+          "remesh(cuboid(2,2,2),"                                       \
+          "intersection(edges_in(bounding_plane(plane(0,0,1,-1))),"     \
+          "edges_in(bounding_plane(plane(0,0,1,1)))),1,1)",             \
+          "remesh(cuboid(2,2,2),"                                       \
+          "difference(edges_in(bounding_plane(plane(0,0,1,-1))),"       \
+          "edges_in(bounding_plane(plane(0,0,1,1)))),1,1)",             \
+          "remesh(cuboid(2,2,2),"                                       \
+          "union(edges_in(bounding_plane(plane(0,0,1,-1))),"            \
+          "edges_in(bounding_plane(plane(0,0,1,1)))),1,1)")
+
 DEFINE_TEST_CASE(selection_boolean)
 WITH_SOURCE("lua",
             "v = require 'gamma.volumes'"
@@ -1160,49 +1213,49 @@ WITH_SOURCE("lua",
 
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    (s.vertices_in(v.plane(0, 0, 1, -1))"
-            "     + s.vertices_in(v.plane(0, 0, 1, 1))))"
+            "    op.union(s.vertices_in(v.bounding_plane(0, 0, 1, -1)),"
+            "             s.vertices_in(v.bounding_plane(0, 0, 1, 1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    (s.vertices_in(v.plane(0, 0, 1, -1))"
-            "     - s.vertices_in(v.plane(0, 0, 1, 1))))"
+            "    op.difference(s.vertices_in(v.bounding_plane(0, 0, 1, -1)),"
+            "                  s.vertices_in(v.bounding_plane(0, 0, 1, 1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    (s.vertices_in(v.plane(0, 0, 1, -1))"
-            "     * s.vertices_in(v.plane(0, 0, 1, 1))))"
+            "    op.intersection(s.vertices_in(v.bounding_plane(0, 0, 1, -1)),"
+            "                    s.vertices_in(v.bounding_plane(0, 0, 1, 1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    ~s.vertices_in(v.plane(0, 0, 1, -1)))"
+            "    v.complement(s.vertices_in(v.bounding_plane(0, 0, 1, -1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    (s.faces_in(v.plane(0, 0, 1, -1))"
-            "     + s.faces_in(v.plane(0, 0, 1, 1))))"
+            "    op.union(s.faces_in(v.bounding_plane(0, 0, 1, -1)),"
+            "             s.faces_in(v.bounding_plane(0, 0, 1, 1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    (s.faces_in(v.plane(0, 0, 1, -1))"
-            "     - s.faces_in(v.plane(0, 0, 1, 1))))"
+            "    op.difference(s.faces_in(v.bounding_plane(0, 0, 1, -1)),"
+            "                  s.faces_in(v.bounding_plane(0, 0, 1, 1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    (s.faces_in(v.plane(0, 0, 1, -1))"
-            "     * s.faces_in(v.plane(0, 0, 1, 1))))"
+            "    op.intersection(s.faces_in(v.bounding_plane(0, 0, 1, -1)),"
+            "                    s.faces_in(v.bounding_plane(0, 0, 1, 1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    s.complement(s.faces_in(v.plane(0, 0, 1, -1))))"
+            "    s.complement(s.faces_in(v.bounding_plane(0, 0, 1, -1))))"
             "op.remesh("
             "    h.cuboid(2, 2, 2),"
-            "    (s.edges_in(v.plane(0, 0, 1, -1))"
-            "     + s.edges_in(v.plane(0, 0, 1, 1))), 1)"
+            "    op.union(s.edges_in(v.bounding_plane(0, 0, 1, -1)),"
+            "             s.edges_in(v.bounding_plane(0, 0, 1, 1))), 1)"
             "op.remesh("
             "    h.cuboid(2, 2, 2),"
-            "    (s.edges_in(v.plane(0, 0, 1, -1))"
-            "     - s.edges_in(v.plane(0, 0, 1, 1))), 1)"
+            "    op.difference(s.edges_in(v.bounding_plane(0, 0, 1, -1)),"
+            "                  s.edges_in(v.bounding_plane(0, 0, 1, 1))), 1)"
             "op.remesh("
             "    h.cuboid(2, 2, 2),"
-            "    (s.edges_in(v.plane(0, 0, 1, -1))"
-            "     * s.edges_in(v.plane(0, 0, 1, 1))), 1)"
+            "    op.intersection(s.edges_in(v.bounding_plane(0, 0, 1, -1)),"
+            "                    s.edges_in(v.bounding_plane(0, 0, 1, 1))), 1)"
             "op.remesh("
             "    h.cuboid(2, 2, 2),"
-            "    ~s.edges_in(v.plane(0, 0, 1, -1)), 1)")
+            "    s.complement(s.edges_in(v.bounding_plane(0, 0, 1, -1))), 1)")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
             "        (gamma polyhedra) (gamma operations))"
@@ -1264,41 +1317,63 @@ WITH_SOURCE("scheme",
             " (cuboid 2 2 2)"
             " (complement"
             "  (edges-in (bounding-plane 0 0 1 -1))) 1)")
-EXPECTING("cuboid(2,2,2)",
-          "mesh(cuboid(2,2,2))",
-          "color_selection(mesh(cuboid(2,2,2)),"
-          "complement(vertices_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)",
-          "color_selection(mesh(cuboid(2,2,2)),"
-          "intersection(vertices_in(bounding_plane(plane(0,0,1,-1))),"
-          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",
-          "color_selection(mesh(cuboid(2,2,2)),"
-          "difference(vertices_in(bounding_plane(plane(0,0,1,-1))),"
-          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",
-          "color_selection(mesh(cuboid(2,2,2)),"
-          "union(vertices_in(bounding_plane(plane(0,0,1,-1))),"
-          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",
-          "color_selection(mesh(cuboid(2,2,2)),"
-          "complement(faces_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)",
-          "color_selection(mesh(cuboid(2,2,2)),"
-          "intersection(faces_in(bounding_plane(plane(0,0,1,-1))),"
-          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",
-          "color_selection(mesh(cuboid(2,2,2)),"
-          "difference(faces_in(bounding_plane(plane(0,0,1,-1))),"
-          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",
-          "color_selection(mesh(cuboid(2,2,2)),"
-          "union(faces_in(bounding_plane(plane(0,0,1,-1))),"
-          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",
-          "remesh(cuboid(2,2,2),"
-          "complement(edges_in(bounding_plane(plane(0,0,1,-1)))),1,1)",
-          "remesh(cuboid(2,2,2),"
-          "intersection(edges_in(bounding_plane(plane(0,0,1,-1))),"
-          "edges_in(bounding_plane(plane(0,0,1,1)))),1,1)",
-          "remesh(cuboid(2,2,2),"
-          "difference(edges_in(bounding_plane(plane(0,0,1,-1))),"
-          "edges_in(bounding_plane(plane(0,0,1,1)))),1,1)",
-          "remesh(cuboid(2,2,2),"
-          "union(edges_in(bounding_plane(plane(0,0,1,-1))),"
-          "edges_in(bounding_plane(plane(0,0,1,1)))),1,1)")
+EXPECTING_SELECTION_BOOLEAN_TAGS
+
+DEFINE_TEST_CASE(selection_boolean_metamethods)
+WITH_SOURCE("lua",
+            "v = require 'gamma.volumes'"
+            "s = require 'gamma.selection'"
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.vertices_in(v.bounding_plane(0, 0, 1, -1))"
+            "     + s.vertices_in(v.bounding_plane(0, 0, 1, 1))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.vertices_in(v.bounding_plane(0, 0, 1, -1))"
+            "     - s.vertices_in(v.bounding_plane(0, 0, 1, 1))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.vertices_in(v.bounding_plane(0, 0, 1, -1))"
+            "     * s.vertices_in(v.bounding_plane(0, 0, 1, 1))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    ~s.vertices_in(v.bounding_plane(0, 0, 1, -1)))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.faces_in(v.bounding_plane(0, 0, 1, -1))"
+            "     + s.faces_in(v.bounding_plane(0, 0, 1, 1))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.faces_in(v.bounding_plane(0, 0, 1, -1))"
+            "     - s.faces_in(v.bounding_plane(0, 0, 1, 1))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.faces_in(v.bounding_plane(0, 0, 1, -1))"
+            "     * s.faces_in(v.bounding_plane(0, 0, 1, 1))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    ~s.faces_in(v.bounding_plane(0, 0, 1, -1)))"
+            "op.remesh("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.edges_in(v.bounding_plane(0, 0, 1, -1))"
+            "     + s.edges_in(v.bounding_plane(0, 0, 1, 1))), 1)"
+            "op.remesh("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.edges_in(v.bounding_plane(0, 0, 1, -1))"
+            "     - s.edges_in(v.bounding_plane(0, 0, 1, 1))), 1)"
+            "op.remesh("
+            "    h.cuboid(2, 2, 2),"
+            "    (s.edges_in(v.bounding_plane(0, 0, 1, -1))"
+            "     * s.edges_in(v.bounding_plane(0, 0, 1, 1))), 1)"
+            "op.remesh("
+            "    h.cuboid(2, 2, 2),"
+            "    ~s.edges_in(v.bounding_plane(0, 0, 1, -1)), 1)")
+EXPECTING_SELECTION_BOOLEAN_TAGS
+
+#undef EXPECTING_SELECTION_BOOLEAN_TAGS
 
 DEFINE_TEST_CASE(selection_conversion)
 WITH_SOURCE("lua",
@@ -1309,40 +1384,40 @@ WITH_SOURCE("lua",
 
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    s.vertices_in(s.faces_in(v.plane(0, 0, 1, -1))))"
+            "    s.vertices_in(s.faces_in(v.bounding_plane(0, 0, 1, -1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    s.vertices_in(s.edges_in(v.plane(0, 0, 1, -1))))"
+            "    s.vertices_in(s.edges_in(v.bounding_plane(0, 0, 1, -1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    s.faces_in(s.vertices_in(v.plane(0, 0, 1, -1))))"
-            "op.color_selection("
-            "    h.cuboid(2, 2, 2),"
-            "    s.faces_partially_in("
-            "        s.vertices_in(v.plane(0, 0, 1, -1))))"
-            "op.color_selection("
-            "    h.cuboid(2, 2, 2),"
-            "    s.faces_in(s.edges_in(v.plane(0, 0, 1, -1))))"
+            "    s.faces_in(s.vertices_in(v.bounding_plane(0, 0, 1, -1))))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "    s.faces_partially_in("
-            "        s.edges_in(v.plane(0, 0, 1, -1))))"
+            "        s.vertices_in(v.bounding_plane(0, 0, 1, -1))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.faces_in(s.edges_in(v.bounding_plane(0, 0, 1, -1))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.faces_partially_in("
+            "        s.edges_in(v.bounding_plane(0, 0, 1, -1))))"
             "op.remesh("
             "    h.cuboid(2, 2, 2),"
             "    s.edges_in("
-            "        s.vertices_in(v.plane(0, 0, 1, -1))), 1)"
+            "        s.vertices_in(v.bounding_plane(0, 0, 1, -1))), 1)"
             "op.remesh("
             "    h.cuboid(2, 2, 2),"
             "    s.edges_partially_in("
-            "        s.vertices_in(v.plane(0, 0, 1, -1))), 1)"
+            "        s.vertices_in(v.bounding_plane(0, 0, 1, -1))), 1)"
             "op.remesh("
             "    h.cuboid(2, 2, 2),"
             "    s.edges_in("
-            "        s.faces_in(v.plane(0, 0, 1, -1))), 1)"
+            "        s.faces_in(v.bounding_plane(0, 0, 1, -1))), 1)"
             "op.remesh("
             "    h.cuboid(2, 2, 2),"
             "    s.edges_partially_in("
-            "        s.faces_in(v.plane(0, 0, 1, -1))), 1)")
+            "        s.faces_in(v.bounding_plane(0, 0, 1, -1))), 1)")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
             "        (gamma polyhedra) (gamma operations))"
@@ -1423,7 +1498,7 @@ WITH_SOURCE("lua",
             "op.perturb(h.tetrahedron(1, 1, 1), 0.125)"
             "op.perturb("
             "    h.cuboid(2, 2, 2),"
-            "    s.vertices_in(v.halfspace(0, 0, 1, 0)),"
+            "    s.vertices_in(v.bounding_halfspace(0, 0, 1, 0)),"
             "    9.5367431640625e-07)")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
@@ -1449,7 +1524,8 @@ WITH_SOURCE("lua",
             "op.refine(h.sphere(2), 5)"
             "op.refine("
             "    h.sphere(2),"
-            "    s.faces_in(v.plane(0, 0, 1, 1) + v.plane(0, 0, -1, 1)), 5)")
+            "    s.faces_in(v.bounding_plane(0, 0, 1, 1)"
+            "    + v.bounding_plane(0, 0, -1, 1)), 5)")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
             "        (gamma polyhedra) (gamma operations))"
@@ -1489,6 +1565,23 @@ EXPECTING("tetrahedron(1,1,1)",
           "transform(cuboid(2,2,2),translation(1,1,1))",
           "corefine(cuboid(2,2,2),transform(cuboid(2,2,2),translation(1,1,1)))")
 
+DEFINE_TEST_CASE(corefine_many)
+WITH_SOURCE("lua",
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.corefine("
+            "    h.tetrahedron(1, 1, 1), h.sphere(0.5), plane(0, 0, 1, -0.5))")
+WITH_SOURCE("scheme",
+            "(import (gamma polyhedra) (gamma operations))"
+
+            "(corefine (tetrahedron 1 1 1) (sphere 1/2) (plane 0 0 1 -1/2))")
+EXPECTING("tetrahedron(1,1,1)",
+          "sphere(1/2,1/1024,1/1048576)",
+          "corefine(tetrahedron(1,1,1),sphere(1/2,1/1024,1/1048576))",
+          "corefine(corefine(tetrahedron(1,1,1),sphere(1/2,1/1024,1/1048576)),"
+          "plane(0,0,1,-1/2))")
+
 DEFINE_TEST_CASE(remesh)
 WITH_SOURCE("lua",
             "t = require 'gamma.transformation'"
@@ -1501,11 +1594,12 @@ WITH_SOURCE("lua",
             "op.remesh("
             "    h.cuboid(1, 1, 1),"
             "    s.faces_partially_in("
-            "        t.translation(0, 0, 0.5) * v.box(1, 1, 1)), 0.5)"
+            "        t.translation(0, 0, 0.5) * v.bounding_box(1, 1, 1)), 0.5)"
             "op.remesh(h.cuboid(1, 1, 1), 0.125, 2)"
             "op.remesh(h.cuboid(1, 1, 1),"
             "    s.faces_partially_in("
-            "        v.halfspace(-1, 0, 0, 1) - v.halfspace(1, 0, 0, -1)),"
+            "        v.bounding_halfspace(-1, 0, 0, 1)"
+            "        - v.bounding_halfspace(1, 0, 0, -1)),"
             "        1, 3)")
 WITH_SOURCE("scheme",
             "(import (gamma transformation)"
@@ -1544,13 +1638,15 @@ WITH_SOURCE("lua",
             "h = require 'gamma.polyhedra'"
             "op = require 'gamma.operations'"
 
-            "op.remesh(h.sphere(2), s.edges_in(v.halfspace(0, 0, 1, 0)), 0.125)"
+            "op.remesh("
+            "    h.sphere(2),"
+            "    s.edges_in(v.bounding_halfspace(0, 0, 1, 0)), 0.125)"
             "op.remesh("
             "    h.sphere(2),"
             "    s.faces_in("
-            "        v.sphere(2)"
-            "        * (t.rotation(90, 1) * v.halfspace(0, 0, 1, 0))),"
-            "    s.edges_partially_in(v.halfspace(0, 0, 1, 0)), 0.5)")
+            "        v.bounding_sphere(2)"
+            "        * (t.rotation(90, 1) * v.bounding_halfspace(0, 0, 1, 0))),"
+            "    s.edges_partially_in(v.bounding_halfspace(0, 0, 1, 0)), 0.5)")
 WITH_SOURCE("scheme",
             "(import (gamma transformation)"
             "        (gamma volumes) (gamma selection)"
@@ -1584,9 +1680,10 @@ WITH_SOURCE("lua",
             "op = require 'gamma.operations'"
 
             "op.fair(h.cylinder(1, 5),"
-            "        s.vertices_in(v.halfspace(0, 0, 1, 0)), 0)"
+            "        s.vertices_in(v.bounding_halfspace(0, 0, 1, 0)), 0)"
             "op.fair(h.cylinder(1, 5),"
-            "        s.vertices_in(t.translation(0, 0, 5) * v.cylinder(1, 1)))")
+            "        s.vertices_in(t.translation(0, 0, 5)"
+            "        * v.bounding_cylinder(1, 1)))")
 WITH_SOURCE("scheme",
             "(import (gamma transformation)"
             "        (gamma volumes) (gamma selection)"
@@ -1618,14 +1715,14 @@ WITH_SOURCE("lua",
 
             "op.smooth_shape("
             "    op.remesh(h.cuboid(2, 2, 2), 1 / 8, 1),"
-            "    s.faces_in(v.halfspace(0,1,0,0)),"
-            "    s.vertices_in(v.halfspace(0,0,1,0)), 1 / 64, 1)"
+            "    s.faces_in(v.bounding_halfspace(0,1,0,0)),"
+            "    s.vertices_in(v.bounding_halfspace(0,0,1,0)), 1 / 64, 1)"
             "op.smooth_shape("
             "    op.remesh(h.cuboid(2, 2, 2), 1 / 8, 1),"
-            "    s.faces_in(v.halfspace(0,1,0,0)), 1 / 64, 1)"
+            "    s.faces_in(v.bounding_halfspace(0,1,0,0)), 1 / 64, 1)"
             "op.smooth_shape("
             "    op.remesh(h.cuboid(2, 2, 2), 1 / 8, 1),"
-            "    s.vertices_in(v.halfspace(0,0,1,0)), 1 / 64, 1)"
+            "    s.vertices_in(v.bounding_halfspace(0,0,1,0)), 1 / 64, 1)"
             "op.smooth_shape("
             "    op.remesh(h.cuboid(2, 2, 2), 1 / 8, 1), 1 / 64, 1)")
 WITH_SOURCE("scheme",
@@ -1669,14 +1766,15 @@ WITH_SOURCE("lua",
 
             "op.deform("
             "    h.cylinder(1, 5),"
-            "    s.vertices_in(v.halfspace(0, 0, 1, -2)),"
+            "    s.vertices_in(v.bounding_halfspace(0, 0, 1, -2)),"
             "    t.translation(0, 0, 1),"
-            "    s.vertices_in(v.complement(v.halfspace(0, 0, -1, -2))),"
+            "    s.vertices_in("
+            "        v.complement(v.bounding_halfspace(0, 0, -1, -2))),"
             "    t.translation(0, 0, -1), 0.015625)"
             "op.deform("
             "    h.cylinder(1, 5),"
-            "    s.vertices_in(~v.halfspace(0, 0, 1, -2)),"
-            "    s.vertices_in(v.halfspace(0, 0, 1, -2)),"
+            "    s.vertices_in(~v.bounding_halfspace(0, 0, 1, -2)),"
+            "    s.vertices_in(v.bounding_halfspace(0, 0, 1, -2)),"
             "    t.rotation(90, 1), 0.015625, 100)")
 WITH_SOURCE("scheme",
             "(import (gamma transformation)"
@@ -1719,13 +1817,13 @@ WITH_SOURCE("lua",
             "op.deflate(op.remesh(h.cuboid(2, 2, 2), 1 / 8, 1), 3)"
             "op.deflate("
             "    op.remesh(h.cuboid(2, 2, 2), 1 / 8, 1),"
-            "    s.vertices_in(v.plane(0,0,1,-1)), 3)"
+            "    s.vertices_in(v.bounding_plane(0,0,1,-1)), 3)"
             "op.deflate("
             "    op.remesh(h.cuboid(2, 2, 2), 1 / 8, 1),"
-            "    s.vertices_in(v.plane(0,0,1,-1)), 3, 1 / 2)"
+            "    s.vertices_in(v.bounding_plane(0,0,1,-1)), 3, 1 / 2)"
             "op.deflate("
             "    op.remesh(h.cuboid(2, 2, 2), 1 / 8, 1),"
-            "    s.vertices_in(v.plane(0,0,1,-1)), 3, 1/4, 1/8)")
+            "    s.vertices_in(v.bounding_plane(0,0,1,-1)), 3, 1/4, 1/8)")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
             "        (gamma polyhedra) (gamma operations))"
@@ -1762,13 +1860,13 @@ WITH_SOURCE("lua",
             "op = require 'gamma.operations'"
 
             "op.color_selection("
-            "    g.regular(3, 1), s.vertices_in(v.plane(1, 0, 0, 0)))"
+            "    g.regular(3, 1), s.vertices_in(v.bounding_plane(1, 0, 0, 0)))"
             "op.color_selection("
             "    g.regular(3, 1),"
-            "    s.vertices_in(v.plane(0, 1, 0, 0)), 5)"
+            "    s.vertices_in(v.bounding_plane(0, 1, 0, 0)), 5)"
             "op.color_selection("
             "    h.sphere(1),"
-            "    s.faces_in(v.plane(0, 0, 1, 0)),"
+            "    s.faces_in(v.bounding_plane(0, 0, 1, 0)),"
             "    0.4, 0.5, 0.6)")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
