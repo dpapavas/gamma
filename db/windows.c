@@ -48,7 +48,9 @@ static void key_callback(
         const struct key_binding *p = find_key_binding(mods, key);
 
         if (p) {
-            read_command_and_redisplay(p->command);
+            FILE *fp = fmemopen((char *)p->command, strlen(p->command), "r");
+            read_commands(fp);
+            fclose(fp);
         }
     }
 }
@@ -628,6 +630,7 @@ struct window *find_window(const char *name)
         width, height, name, nullptr, w->next ? w->next->window : nullptr);
 
     if (!w->window) {
+        print_error("Could not create GLFW window\n");
         exit(EXIT_FAILURE);
     }
 
@@ -648,7 +651,7 @@ struct window *find_window(const char *name)
     // initialize GLAD once.
 
     if (!w->next && !gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        print_error("Failed to initialize GLAD\n");
+        print_error("Could not initialize GLAD\n");
         exit(EXIT_FAILURE);
     }
 
@@ -1269,16 +1272,15 @@ void print_window(struct window *w, GLint format, FILE *fp)
         int a, b;
         glfwGetFramebufferSize(w->window, &a, &b);
 
-        GLint i = gl2psBeginPage(
-            w->name, "gammadb",
-            (GLint []){0, 0, a, b},
-            format, GL2PS_BSP_SORT,
-            GL2PS_NO_OPENGL_CONTEXT | GL2PS_NO_BLENDING
-            | GL2PS_OCCLUSION_CULL,
-            GL_RGBA, 0, nullptr, 0, 0 ,0,
-            0, fp, nullptr);
-
-        assert(i == GL2PS_SUCCESS);
+        safely_assert(
+            gl2psBeginPage(
+                w->name, "gammadb",
+                (GLint []){0, 0, a, b},
+                format, GL2PS_BSP_SORT,
+                GL2PS_NO_OPENGL_CONTEXT | GL2PS_NO_BLENDING
+                | GL2PS_OCCLUSION_CULL,
+                GL_RGBA, 0, nullptr, 0, 0 ,0,
+                0, fp, nullptr) == GL2PS_SUCCESS);
     }
 
     // We need to bind and map VBOs and EBOs, so we need to lock the
@@ -1500,7 +1502,11 @@ void print_window(struct window *w, GLint format, FILE *fp)
     // returned when printing an empty window.  We're ok with that.
 
     {
-        const GLint i = gl2psEndPage();
+#ifndef NDEBUG
+        const GLint i =
+#endif
+            gl2psEndPage();
+
         assert(i == GL2PS_SUCCESS || i == GL2PS_NO_FEEDBACK);
     }
 }

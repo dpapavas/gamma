@@ -48,26 +48,40 @@
    fun:GC_*
 }
 
-# {
-#    cgal_race
-#    Helgrind:Race
-#    ...
-#    fun:*CGAL*
-# }
-
-# {
-#    cgal_gmp_race
-#    Helgrind:Race
-#    ...
-#    fun:__gmpn_copyi
-# }
+{
+   cgal_race
+   Helgrind:Race
+   ...
+   fun:*CGAL*
+}
 
 {
-   libgallium
+   cgal_gmp_race
+   Helgrind:Race
+   ...
+   fun:__gmpn_copyi
+}
+
+{
+   libgallium_leak
    Memcheck:Leak
    match-leak-kinds: possible
    ...
    obj:*libgallium*.so
+}
+
+{
+   libgallium_race
+   Helgrind:Race
+   ...
+   obj:*/libgallium*.so
+}
+
+{
+   libdrm_race
+   Helgrind:Race
+   ...
+   obj:*/libdrm.so*
 }
 
 {

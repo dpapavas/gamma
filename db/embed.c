@@ -29,7 +29,7 @@ int main(int argc, const char **argv)
         FILE *fp_1 = fopen(argv[i], "r");
         assert(fp_1);
 
-        char *s = NULL;
+        char *s = nullptr;
         size_t n = 0;
         int m;
 

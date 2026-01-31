@@ -293,7 +293,6 @@ struct key_binding *find_key_binding(int mods, int key)
     return nullptr;
 }
 
-
 // ## Parsing Commands
 
 // We read commands from a `FILE *`, although it's not a real file in
@@ -420,7 +419,7 @@ int read_commands(FILE *fp)
 
         if (!strcmp(s, "quit") || !strcmp(s, "exit")) {
             PARSING_FINISHED;
-            raise(SIGUSR1);
+            exit(EXIT_SUCCESS);
         }
 
         // ## Binding Commands
@@ -722,7 +721,8 @@ int read_commands(FILE *fp)
             FILE *fp = fopen(t, "wb");
 
             if (!fp) {
-                print_error("error: could not open output file (%s)\n",
+                print_error(
+                    "error: could not open output file (%s)\n",
                     strerror(errno));
                 goto error;
             }
@@ -1360,9 +1360,6 @@ int read_commands(FILE *fp)
         //   only the focused viewport will be updated.
 
         else if (!strcmp(s, "run")) {
-            static BUFFER_TYPE(char) buffer;
-            char *p;
-
             enum {
                 SINGLE, ALL
             } mode = ALL;
@@ -1385,7 +1382,8 @@ int read_commands(FILE *fp)
 
             // Now we need to compose the command line, from:
 
-            size_t n = 0;
+            static BUFFER_TYPE(char) buffer;
+            size_t n = 1;
 
             //   1. the executable, followed by
 
@@ -1393,18 +1391,23 @@ int read_commands(FILE *fp)
                 settings.program = strdup(DEFAULT_PROGRAM);
             }
 
-            MAYBE_GROW_TO(buffer, (n += strlen(settings.program)) + 1);
-            p = stpcpy(buffer.p, settings.program);
+            {
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.program)));
+                stpcpy(buffer.p, settings.program);
+            }
 
             //   2. the IPC address option, then
 
             {
-                    const size_t n_0 = n;
+                    const size_t n_0 = n - 1;
 
                     MAYBE_GROW_TO(
-                        buffer, (n += strlen(settings.address) + 20) + 1);
-                    p = stpcpy(buffer.p + n_0, " --debugger-address=");
-                    p = stpcpy(p, settings.address);
+                        buffer,
+                        (n += snprintf(
+                            nullptr, 0,
+                            " --debugger-address=gammadb-%d", getpid())));
+                    sprintf(
+                        buffer.p + n_0, " --debugger-address=gammadb-%d", getpid());
             }
 
             //   3. the outputs, which need to precede other
@@ -1418,9 +1421,10 @@ int read_commands(FILE *fp)
                         continue;
                     }
 
-                    const size_t n_0 = n;
+                    const size_t n_0 = n - 1;
+                    char *p;
 
-                    MAYBE_GROW_TO(buffer, ((n += 2 * strlen(v->name) + 5) + 1));
+                    MAYBE_GROW_TO(buffer, (n += 2 * strlen(v->name) + 5));
                     p = stpcpy(buffer.p + n_0, " -o ");
                     p = stpcpy(p, v->name);
                     p = stpcpy(p, ":");
@@ -1437,19 +1441,19 @@ int read_commands(FILE *fp)
                     continue;
                 }
 
-                const size_t n_0 = n;
+                const size_t n_0 = n - 1;
+                char *p;
 
                 if (q->value) {
                     MAYBE_GROW_TO(
-                        buffer,
-                        (n += (strlen(q->name) + strlen(q->value) + 4)) + 1);
+                        buffer, (n += (strlen(q->name) + strlen(q->value) + 4)));
 
                     p = stpcpy(buffer.p + n_0, " -D");
                     p = stpcpy(p, q->name);
                     p = stpcpy(p, "=");
                     p = stpcpy(p, q->value);
                 } else {
-                    MAYBE_GROW_TO(buffer, (n += (strlen(q->name) + 3)) + 1);
+                    MAYBE_GROW_TO(buffer, (n += (strlen(q->name) + 3)));
 
                     p = stpcpy(buffer.p + n_0, " -D");
                     p = stpcpy(p, q->name);
@@ -1459,17 +1463,27 @@ int read_commands(FILE *fp)
             //   5. any arguments specified by the user.
 
             if (settings.args) {
-                const size_t n_0 = n;
+                const size_t n_0 = n - 1;
+                char *p;
 
-                MAYBE_GROW_TO(buffer, (n += strlen(settings.args) + 1) + 1);
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.args) + 1));
                 p = stpcpy(buffer.p + n_0, " ");
                 p = stpcpy(p, settings.args);
             }
 
-            print_output("Running: %s\n", buffer.p);
+            run_inferior(buffer.p);
+        }
 
-            if (system(buffer.p)) {
-                print_error("error: execution failed\n");
+        //   `kill` := Terminate an ongoing run.
+
+        else if (!strcmp(s, "kill")) {
+            PARSING_FINISHED;
+
+            if (kill_inferior() == -1) {
+                print_error(
+                    "error: could not kill ongoing run (%s)\n",
+                    strerror(errno));
+
                 goto error;
             }
         }

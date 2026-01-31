@@ -194,15 +194,18 @@ $0 ~ "^[[:space:]]*" prefix {
       text = text "\n@item\n"
 
       sub(/^[[:digit:]]+\. /, "")
-    } else if (/^\* /) {
+    } else if (/^[*-] /) {
       if (!in_itemize) {
         in_itemize = 1
         text = text "\n@itemize"
+        if (/^-/) {
+          text = text " @minus{}"
+        }
       }
 
       text = text "\n@item\n"
 
-      sub(/^\* /, "")
+      sub(/^[*-] /, "")
     } else if (/^> /) {
       if (!in_quotation) {
         in_quotation = 1

@@ -1,9 +1,14 @@
 #define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
+#include <fcntl.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
+#include <poll.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
@@ -46,7 +51,6 @@ enum {
     NO_INIT,
     BATCH,
     ARGS,
-    ADDRESS,
     TARGET
 };
 
@@ -58,15 +62,12 @@ static struct option options[] = {
     {"no-init", no_argument, nullptr, NO_INIT},
     {"batch", no_argument, nullptr, BATCH},
     {"args", no_argument, nullptr, ARGS},
-    {"address", required_argument, nullptr, ADDRESS},
     {"target", required_argument, nullptr, TARGET},
     {"command", required_argument, nullptr, 'c'},
     {"execute", required_argument, nullptr, 'x'},
 
     {nullptr, 0, nullptr, 0}
 };
-
-volatile bool running = true;
 
 // ## Input on the Terminal
 
@@ -150,7 +151,7 @@ static char *completion_generator(const char *text, int state)
                     CMD,                                                \
                     n_ > m_ ? m_ : n_)))                                \
             __VA_ARGS__                                                 \
-    } while(false)
+    } while (false)
 
 #define WHEN_IN_1(CMD, ...) WHEN_IN(CMD, {              \
     for (i_ += m_;                                      \
@@ -205,7 +206,7 @@ static char **completion_function(const char *text, int start, int end)
                 "quit", "exit", "window", "hide", "present", "resize", "focus",
                 "split", "target", "rotate", "translate", "pan", "zoom", "view",
                 "load", "run", "info", "set", "show", "bind", "unbind", "print",
-                "define", "undefine", nullptr});
+                "define", "undefine", "kill", nullptr});
     });
 
     //   2. completing keyword arguments for certain commands, or
@@ -366,192 +367,360 @@ static char **completion_function(const char *text, int start, int end)
 #undef WHEN_IN
 #undef MATCHES
 
+// ### Printing Output Messages
+
+// When running interactively, we need to make sure we don't print
+// over Readline's prompt.  This is only a concern if Readline is
+// currently in the process of reading a command, i.e. not when the
+// user has finished entering it, in which case `rl_done` will be
+// true.
+
+// In batch mode, we can simply print messages immediately.
+
+static void print(FILE *fp, const char *format, va_list ap)
+{
+    if (rl_readline_state && !rl_done) {
+        rl_clear_visible_line();
+
+        vfprintf(fp, format, ap);
+
+        rl_on_new_line();
+        rl_redisplay();
+    } else {
+        vfprintf(fp, format, ap);
+    }
+}
+
+void print_output(const char *format, ...)
+{
+    if (settings.quiet) {
+        return;
+    }
+
+    va_list ap;
+    va_start(ap, format);
+    print(stdout, format, ap);
+    va_end(ap);
+}
+
+void print_error(const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    print(settings.batch ? stderr : stdout, format, ap);
+    va_end(ap);
+}
+
+// ### Running the Inferior
+
+// Running the inferior needs to be handled differently, depending on
+// whether we're running interactively, or in batch mode.  In either
+// case though, we need to fork a new process and execute the given
+// command in it.  That's handled below.
+
+static int ipc_socket, run_pipe[2], inferior_pid;
+
+static int fork_inferior(const char *s, bool redirect)
+{
+    print_output("Running: %s\n", s);
+
+    const pid_t pid = fork();
+
+    if (pid < 0) {
+        return -1;
+    }
+
+    if (pid == 0) {
+        // When running in quiet mode, we discard output from the
+        // inferior, otherwise if running interactively, we redirect
+        // output messages to a pipe, to print them in a controlled
+        // manner.
+
+        if (settings.quiet) {
+            const int fd = open("/dev/null", O_WRONLY);
+
+            if (fd == -1) {
+                return -1;
+            }
+
+            assert(fd > STDERR_FILENO);
+            dup2(fd, STDOUT_FILENO);
+            dup2(fd, STDERR_FILENO);
+        } else if (redirect && (
+                close(run_pipe[0]) == -1
+                || dup2(run_pipe[1], 1) == -1
+                || dup2(run_pipe[1], 2) == -1)) {
+            return -1;
+        }
+
+        // We give the forked process its own process group, so that
+        // we can later send signals to both the shell and the
+        // inferior.
+
+        // The alternative would be to send to our own process group
+        // after blocking delivery of the signal to ourselves.  This
+        // would work fine when we're the process group leader,
+        // i.e. we're started directly from the shell.  If instead we
+        // were started from a script for instance, we would take it
+        // down with us.
+
+        setpgid(0, 0);
+
+        execl("/bin/sh", "sh", "-c", s, (char *)nullptr);
+
+        // The only way to get here, is if `execl` failed, as it
+        // otherwise replaces the process image and we are no more.
+
+        return -1;
+    }
+
+    inferior_pid = pid;
+    return 0;
+}
+
+static void empty_handler(int sig)
+{
+}
+
+// Running can be either:
+
+void run_inferior(const char *s)
+{
+    //   1. in batch mode, in which case we fork and immediately block
+    //   waiting for incoming connections until a `CHLD` signal from
+    //   the terminating inferior interrupts us, or
+
+    if (settings.batch) {
+        struct sigaction sa, old;
+        sa.sa_handler = empty_handler;
+        sa.sa_flags = 0;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGCHLD, &sa, &old);
+
+        assert(!inferior_pid || waitpid(inferior_pid, nullptr, WNOHANG) != -1);
+
+        if (fork_inferior(s, false) == -1) {
+            goto error;
+        }
+
+        while (true) {
+            const int fd = accept(ipc_socket, nullptr, nullptr);
+
+            if (fd == -1) {
+                if (errno != EINTR) {
+                    print_error("Could not connect the IPC socket\n");
+                }
+
+                break;
+            }
+
+            FILE *fp = fdopen(fd, "r");
+            read_commands(fp);
+            fclose(fp);
+        }
+
+        sigaction(SIGCHLD, &old, nullptr);
+
+        return;
+    }
+
+    //   2. when running interactively, in which case we first check
+    //   if a run is already in progress.
+
+    switch (waitpid(inferior_pid, nullptr, WNOHANG)) {
+    case 0:
+        print_error("error: a run is already in progress\n");
+        return;
+
+    case -1:
+        if (errno != ECHILD || inferior_pid) {
+            print_error("error: could not wait on run (%s)\n", strerror(errno));
+            return;
+        }
+    }
+
+    //   If not, we just fork, redirecting output from the inferior to
+    //   a pipe.  Communication, either on this pipe or the IPC socket
+    //   will be handled in the main loop.
+
+    if (fork_inferior(s, true) == -1) {
+      error:
+        print_error("error: could not start the run (%s)\n", strerror(errno));
+    }
+}
+
+int kill_inferior()
+{
+    if (inferior_pid) {
+        return kill(-inferior_pid, SIGTERM);
+    }
+
+    return 0;
+}
+
 // ### Reading Terminal Input
 
 // We want to allow the user to enter commands on the terminal.  This
 // is simple enough when using GNU Readline to provide all the
-// requisite comforts, except for one point: Since we need the main
-// thread for graphical interaction (GLFW doesn't allow calling most
-// of its functions from other threads), we need to handle terminal
-// input in another thread.  This is straightforward, until it's time
-// to quit.  See ref: The Debugger Main Function, below for how this
-// is handled.
+// requisite comforts, except for a couple of points:
 
-static void *do_input(void *arg)
+//   1. We need to respond to events from multiple sources, including
+//   user input on the terminal, commands from the IPC socket, output
+//   from the inferior and user actions from the UI.  The first three
+//   can be handled by polling on file descriptors, but the last must
+//   be handled via `glfwWaitEvents`.
+
+//   One option would be to alternately poll and wait with a timeout,
+//   but that would introduce a latency/CPU waste tradeoff.  Instead
+//   we opt for the slightly more complex approach of using a thread;
+//   see below.
+
+//   2. Readline needs control of the terminal while reading user
+//   input.  On the other hand, we also need to output messages to it,
+//   usually after the user has entered a command, but perhaps also
+//   asynchronously, from commands read via IPC, or from key bindings,
+//   or, finally, from the inferior.
+
+//   We therefore use Readline through its alternative callback-based
+//   interface and also set up a pipe to write messages to, which we
+//   can then print to the output, taking care not to get in the way
+//   of Readline.
+
+// Here's the function called by Readline when a new line of user
+// input is available:
+
+static void line_handler(char *line)
 {
-    // We've inherited the signal mask from the main thread, which has
-    // almsot all signals blocked.  Since we're supposed to be in
-    // charge of signal handling, we need to reset it.
+    // When the user presses k`Ctrl-d`, `line` will be null and we
+    // exit in response.
 
-    sigset_t set;
-    sigemptyset(&set);
-    pthread_sigmask(SIG_SETMASK, &set, nullptr);
+    if (!line) {
+        exit(EXIT_SUCCESS);
+    }
 
-    rl_attempted_completion_function = completion_function;
-    rl_basic_word_break_characters = WORD_BREAK_CHARACTERS;
-    rl_completion_word_break_hook = word_break_hook;
+    // When there is input, we first skip any initial whitespace.
 
-    char *s = nullptr;
-    while (running && (s = readline("# "))) {
-        char *t;
-        for (t = s; isspace(*t); t++);
+    char *t;
+    for (t = line; isspace(*t); t++);
 
-        // If the line entered by the user is empty, we repeat the
-        // last command.  GNU History's manual doesn't seem to be very
-        // clear here.  It says:
+    // If after that, the line entered by the user is empty, we repeat
+    // the last command.  GNU History's manual doesn't seem to be very
+    // clear here.  It says:
 
-        //   > The range of valid values of offset starts at
-        //   > history_base and ends at history_length - 1
+    //   > The range of valid values of offset starts at
+    //   > `history_base` and ends at `history_length` - 1
 
-        // Looking at the implementation of `history_get`, this should
-        // probably read "at history_base + history_length - 1".
+    // Looking at the implementation of `history_get`, this should
+    // probably read "at `history_base` + `history_length` - 1".
 
-        if (*t == '\0') {
-            if (history_length > 0) {
-                evaluate(history_get(history_base + history_length - 1)->line);
-            }
-        } else {
-            add_history(s);
-            evaluate(s);
+    if (*t == '\0') {
+        if (history_length > 0) {
+            evaluate(history_get(history_base + history_length - 1)->line);
         }
-
-        free(s);
-    }
-
-    assert(!running || s == nullptr);
-
-    // Should this thread exit, which should only happen if the user
-    // quits via @kbd{Ctrl-d}, we want to exit the whole application.
-
-    running = false;
-    glfwPostEmptyEvent();
-
-    return nullptr;
-}
-
-int read_command_and_redisplay(const char *s)
-{
-    rl_clear_visible_line();
-
-    const int n = evaluate(s);
-
-    rl_on_new_line();
-    rl_redisplay();
-
-    return n;
-}
-
-#undef WORD_BREAK_CHARACTERS
-
-// ## IPC
-
-// We want to be able to read geometry and commands from outside, so
-// we set up an IPC channel.  As for terminal input, we need to do so
-// while displaying graphics and can't afford to block while waiting
-// for the other end, so we handle IPC in its own thread too.
-
-static void *do_ipc(void *arg)
-{
-    // When receiving a `SIGTERM` we don't want to print an error
-    // message.
-
-#define EXIT(MSG)                                       \
-    do {                                                \
-        if (errno != EINTR || running) {                \
-            print_error(MSG ": %s\n", strerror(errno)); \
-        }                                               \
-        goto exit;                                      \
-    }                                                   \
-    while (false)
-
-    // We use a UNIX domain socket to listen for incoming connections
-    // on.
-
-    const int listen_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-
-    if (listen_socket == -1) {
-        EXIT("Failed to create listening socket");
-    }
-
-    // We bind the socket to an abstract address, to spare ourselves
-    // the need to clean up files on the filesystem.
-
-    struct sockaddr_un addr = {};
-
-    addr.sun_family = AF_UNIX;
-    socklen_t n;
-
-    if (settings.address) {
-        n = (
-            stpncpy(
-                addr.sun_path + 1, settings.address, sizeof(addr.sun_path) - 1)
-            - (char *)&addr);
     } else {
-        n = (
-            offsetof(struct sockaddr_un, sun_path) +
-            snprintf(
-                addr.sun_path + 1, sizeof(addr.sun_path) - 1,
-                "gammadb-%d", getpid()) + 1);
-        settings.address = strdup(addr.sun_path + 1);
+        add_history(line);
+        evaluate(line);
     }
 
-    if (bind(listen_socket, (const struct sockaddr *)&addr, n) == -1) {
-        EXIT("Failed to bind listening socket");
-    }
-#undef NAME
-
-    // We can now listen for incoming connections.
-
-    if (listen(listen_socket, 20) == -1) {
-        EXIT("Failed to listen on socket");
-    }
-
-    while (running) {
-        // First we wait for one.
-
-        const int data_socket = accept(listen_socket, nullptr, nullptr);
-
-        if (data_socket == -1) {
-            EXIT("Failed to accept connection");
-            goto exit;
-        }
-
-        // For each connection we accept it and parse the received
-        // commands.  We wrap the data socket inside a `FILE *` to let
-        // the C library handle I/O on the file.
-
-        FILE *fp = fdopen(data_socket, "r");
-
-        read_commands(fp);
-
-        close(data_socket);
-    }
-
-exit:
-    close(listen_socket);
-
-    // This thread shouldn't exit unless we're already in the process
-    // of shutting down, but should it die, we want to exit the whole
-    // application.  No point in continuing, if we cant' udpate
-    // geomtery.
-
-    running = false;
-    glfwPostEmptyEvent();
-
-    return nullptr;
+    free(line);
 }
 
-#undef EXIT
+// We only poll for input on a separate thread and inform the main
+// thread to handle it.  This is done so as to keep almost all
+// functionality in one thread (the main thread) and avoid race
+// conditions, or the need for extensive synchronization.
 
-// ## The Debugger Main Function
+static volatile bool ipc_ready, pipe_ready, stdin_ready;
+static pthread_mutex_t poll_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t poll_cond = PTHREAD_COND_INITIALIZER;
 
-// First we need to define a signal handler.  See below for more
-// details.
+// We also handle signal in this thread.  The handler simply flags the
+// reception of the signal and lets the main loop handle it.
+
+static volatile sig_atomic_t winch_received, int_received, term_received;
 
 static void signal_handler(int sig)
 {
-    running = false;
-    glfwPostEmptyEvent();
+    switch (sig) {
+        case SIGWINCH:
+            winch_received = 1;
+            return;
+        case SIGINT:
+            int_received = 1;
+            return;
+        case SIGTERM:
+            term_received = 1;
+            return;
+    }
+
+    assert_not_reached();
+}
+
+static void *poll_streams(void *arg)
+{
+    while (true) {
+        struct pollfd fds[] = {
+            {ipc_socket, POLLIN, 0},
+            {run_pipe[0], POLLIN, 0},
+            {STDIN_FILENO, POLLIN, 0}
+        };
+
+        if (poll(fds, 3, -1) == -1) {
+            // Any delivered signals will cause `poll` to return,
+            // whereupon we wake up the main thread.
+
+            assert(errno == EINTR);
+            assert(winch_received || int_received || term_received);
+
+            glfwPostEmptyEvent();
+            continue;
+        }
+
+        // We need to synchronize access to the flags, as they're
+        // accessed from both threads.  Upon finding one ore more
+        // streams ready, we update the flags and wake up the main
+        // thread via `glfwPostEmptyEvent`.
+
+        pthread_mutex_lock(&poll_mutex);
+
+        ipc_ready = fds[0].revents & POLLIN;
+        pipe_ready = fds[1].revents & POLLIN;
+        stdin_ready = fds[2].revents & POLLIN;
+
+        glfwPostEmptyEvent();
+
+        // If we now were to loop immediately back to `poll`, we would
+        // likely find the same streams ready again, as the main
+        // thread might not have had time to read all available data.
+        // We would then block on `poll_mutex`, waiting for the main
+        // thread to read the streams and immediately wake it up again
+        // to read data that has already been read.  This would cause
+        // it to block.
+
+        // We therefore wait on a condition variable after waking the
+        // main thread, which signals it after reading the streams.
+
+        pthread_cond_wait(&poll_cond, &poll_mutex);
+        pthread_mutex_unlock(&poll_mutex);
+    }
+
+    return nullptr;
+}
+
+// ## The Debugger Main Function
+
+// This cleanup function will be registerd to run at exit.  It kills
+// the inferior, if it's running and resets the terminal state.
+
+static void clean_up(void)
+{
+    if (rl_readline_state & RL_STATE_CALLBACK) {
+        rl_callback_handler_remove();
+    }
+
+    if (kill_inferior() == -1) {
+        print_error("Could not stop run (%s)\n", strerror(errno));
+    }
 }
 
 int main(int argc, char *argv[])
@@ -561,7 +730,7 @@ int main(int argc, char *argv[])
     glfwSetErrorCallback(error_callback);
 
     if (!glfwInit()) {
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
@@ -577,61 +746,58 @@ int main(int argc, char *argv[])
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // We'll be creating threads, so we'll want to join them before
-    // exit, which means we need to set up signal handling.
+    // We want to be able to read geometry and commands from outside,
+    // so we set up an IPC channel.  We use a UNIX domain socket to
+    // listen for incoming connections on.
 
-    // We set up a handler that will flip the `running` flag and cause
-    // the application to exit.  We assign it to the TERM and USR1
-    // signals.  The former is meant to handle the case where the TERM
-    // signal is sent to our process externally (as with `kill -TERM`)
-    // and will be caught by the input thread (as it's blocked on all
-    // others; see below)^[It may also be caught by the main thread if
-    // it arrives during command line option processing.] causing it
-    // to exit along with the rest of the application.
+    ipc_socket = socket(AF_UNIX, SOCK_STREAM, 0);
 
-    // Using the same handler for `USR1` signals^[The `USR1` signal is
-    // chosen because Readline doesn't interfere with it.] allows us
-    // to raise this signal from anywhere if and when we wish to quit
-    // the application.  This is also the reason we need to set up the
-    // handler early, since a quit command might appear in an init
-    // file, or as argument to the `-c` switch.
-
-    struct sigaction sa;
-    sa.sa_handler = signal_handler;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-
-    sigaction(SIGTERM, &sa, nullptr);
-    sigaction(SIGUSR1, &sa, nullptr);
-
-    // Now, one gets the impression that Readline was not designed
-    // with multi-threaded applications in mind.  Since it sets up its
-    // own signal handling and since signal disposition is a
-    // per-process attribute^[In a multithreaded application, the
-    // disposition of a particular signal (whether it's ignored,
-    // handled, etc.)  is the same for all threads] we might have
-    // Readline's signal handler invoked by another thread.  This may
-    // be fine, but Readline seems to intefere with signal handling
-    // anyway, so we opt for the conservative approach:
-
-    // We block all signals (apart from USR1) on all but the input
-    // thread, making Readline solely in charge of handling them.
-
-    sigset_t set;
-    sigfillset(&set);
-    sigdelset(&set, SIGUSR1);
-    pthread_sigmask(SIG_SETMASK, &set, nullptr);
-
-    // We need to spawn the IPC thread early, for the same reasons
-    // given for early signal handling setup above.
-
-    pthread_t threads[2] = {};
-
-    if (pthread_create(&threads[0], nullptr, do_ipc, nullptr)) {
-        print_error("Failed to create IPC thread: %s\n", strerror(errno));
+    if (ipc_socket == -1) {
+        print_error("Could not create IPC socket: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
     }
 
-    int n, option, no_init = 0, batch = 0;
+    // We bind the socket to an abstract address, to spare ourselves
+    // the need to clean up files on the filesystem.
+
+    {
+        struct sockaddr_un addr = {};
+
+        addr.sun_family = AF_UNIX;
+        socklen_t n;
+
+        n = (
+            offsetof(struct sockaddr_un, sun_path) +
+            snprintf(
+                addr.sun_path + 1, sizeof(addr.sun_path) - 1,
+                "gammadb-%d", getpid()) + 1);
+
+        if (bind(ipc_socket, (const struct sockaddr *)&addr, n) == -1) {
+            print_error("Could not bind socket: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (listen(ipc_socket, 20) == -1) {
+        print_error("Could not listen on ICP socket: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    // We also create the inferior pipe now, before parsing command
+    // line arguments that might lead to it being executed.  Ref:
+    // Running the Inferior.
+
+    if (pipe(run_pipe) == -1) {
+        print_error("Could not create run pipe: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    if (atexit(clean_up)) {
+        print_error("Could not install cleanup handler\n");
+        exit(EXIT_FAILURE);
+    }
+
+    int n, option, no_init = 0;
     while ((n = -1, option = getopt_long(
                 argc, argv,
                 "-hc:x:q",
@@ -656,7 +822,6 @@ Options:\n\
   --batch               Exit after processing options.\n\
   --args [ARGS ...]     Set the \"args\" option to the following\n\
                         arguments.\n\
-  --address=ADDR        Set the IPC address.\n\
   --target=TARGET       Create a window on startup and set its main\n\
                         viewport target.\n", argv[0]);
 
@@ -691,7 +856,7 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
             break;
 
         case BATCH:
-            batch = 1;
+            settings.batch = 1;
             settings.present_on_reload = false;
             break;
 
@@ -710,15 +875,9 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
                     s = stpcpy(s, " ");
                 }
             }
-        }
 
             break;
-
-        case ADDRESS:
-        {
-            settings.address = strdup(optarg);
         }
-        break;
 
         case TARGET:
         {
@@ -726,8 +885,9 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
 
             free((char *)v->name);
             v->name = strdup(optarg);
+
+            break;
         }
-        break;
 
         case 'c':
             if (evaluate(optarg) < 0) {
@@ -745,25 +905,27 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
                     exit(EXIT_FAILURE);
                 }
 
-                if (fp != stdin) {
-                    fclose(fp);
+                if (fp != stdin && fclose(fp)) {
+                    print_error(
+                        "Could not close file '%s': %s\n",
+                        optarg, strerror(errno));
+                    exit(EXIT_FAILURE);
                 }
             } else {
-                fprintf(
-                    stderr, "Could not open file '%s': %s\n",
-                    optarg, strerror(errno));
+                print_error(
+                    "Could not open file '%s': %s\n", optarg, strerror(errno));
                 exit(EXIT_FAILURE);
             }
-        }
 
             break;
+        }
 
         case '?':
             exit(EXIT_FAILURE);
         }
     }
 
-    if (batch) {
+    if (settings.batch) {
         exit(EXIT_SUCCESS);
     }
 
@@ -778,52 +940,164 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
                 exit(EXIT_FAILURE);
             }
 
-            fclose(fp);
+            if (fclose(fp)) {
+                print_error("Could not close init file: %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
         } else if (errno != ENOENT) {
             print_error("Could not open init file: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 
-    // Now that we've established that this is not a batch run, we can
-    // go ahead and start the thread for terminal input.
+    // Before entering the main loop, we create the polling and signal
+    // handling thread. Ref: Reading Terminal Input.
 
-    if (pthread_create(&threads[1], nullptr, do_input, nullptr)) {
-        print_error("Failed to create input thread: %s\n", strerror(errno));
+    pthread_t thread;
+
+    if (pthread_create(&thread, nullptr, poll_streams, nullptr)) {
+        print_error(
+            "Could not create run thread: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
     }
 
-    // Now we run the main loop and clean up when we've determined
-    // that it's time to quit.
+    // Since we're using the callback interface, we need to intercept
+    // terminal size changes and let Readline handle them.
+    // Additionally, we intercept the `INT` signal to provide the
+    // usual "cancel this command" behavior, as well as the `TERM`
+    // signal to clean up properly on termination.
 
-    while (running) {
-        refresh_windows();
+    // We also block signal delivery in the main thread, to ensure
+    // they're all delivered to the polling thread.
+
+    {
+        struct sigaction sa;
+        sa.sa_handler = signal_handler;
+        sa.sa_flags = 0;
+        sigemptyset(&sa.sa_mask);
+
+        sigaction(SIGWINCH, &sa, nullptr);
+        sigaction(SIGINT, &sa, nullptr);
+        sigaction(SIGTERM, &sa, nullptr);
+
+        sa.sa_handler = empty_handler;
+
+        sigset_t set;
+        sigfillset(&set);
+
+        if (sigprocmask(SIG_BLOCK, &set, nullptr) == -1) {
+            print_error("Could not block signals: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // We can now initialize Readline and enter the main loop, where
+    // we:
+
+    rl_attempted_completion_function = completion_function;
+    rl_basic_word_break_characters = WORD_BREAK_CHARACTERS;
+    rl_completion_word_break_hook = word_break_hook;
+    rl_callback_handler_install("# ", line_handler);
+
+    print_output("gammadb, version " VERSION_NUMBER "\n\
+Copyright (C) 2025 Dimitris Papavasiliou.\n\
+This is free software; see the source code for copying conditions.\n\
+There is ABSOLUTELY NO WARRANTY; not even for MERCHANTABILITY or\n\
+FITNESS FOR A PARTICULAR PURPOSE.\n\n");
+
+    while (true) {
+        //   1. update the UI as required,
+
         glfwWaitEvents();
+        refresh_windows();
+
+        //   2. handle any received signals and
+
+        if (winch_received) {
+            rl_resize_terminal();
+
+            winch_received = 0;
+        }
+
+        if (int_received) {
+            rl_callback_handler_remove();
+            rl_crlf();
+            rl_callback_handler_install("# ", line_handler);
+
+            int_received = 0;
+        }
+
+        if (term_received) {
+            exit(EXIT_SUCCESS);
+        }
+
+        //   3. read input, if available:
+
+        pthread_mutex_lock(&poll_mutex);
+        if (ipc_ready || pipe_ready || stdin_ready) {
+
+            //   - Accept any incoming connections on the IPC socket and
+            //   parse the received commands.
+
+            if (ipc_ready) {
+                const int fd = accept(ipc_socket, nullptr, nullptr);
+
+                if (fd == -1) {
+                    print_error(
+                        "Could not accept connection: %s\n", strerror(errno));
+
+                    exit(EXIT_FAILURE);
+                }
+
+                //   We wrap the data socket inside a `FILE *` to let
+                //   the C library handle I/O on the file.
+
+                FILE *fp = fdopen(fd, "r");
+                read_commands(fp);
+                fclose(fp);
+
+                ipc_ready = false;
+            }
+
+            //   - Print messages from the inferior via the pipe.
+
+            if (pipe_ready) {
+                char c;
+
+                rl_clear_visible_line();
+
+                do {
+                    if (read(run_pipe[0], &c, 1) != 1) {
+                        print_error(
+                            "Could not read from run pipe: %s\n",
+                            strerror(errno));
+
+                        exit(EXIT_FAILURE);
+                    }
+
+                    putchar(c);
+                } while (c != '\n');
+
+                rl_on_new_line();
+                rl_redisplay();
+
+                pipe_ready = false;
+            }
+
+            //   - Send terminal input to Readline.
+
+            if (stdin_ready) {
+                rl_callback_read_char();
+                stdin_ready = false;
+            }
+
+            pthread_cond_signal(&poll_cond);
+        }
+
+        pthread_mutex_unlock(&poll_mutex);
     }
-
-    // We want to signal our threads to clean up properly, before we
-    // join them.
-
-    // The input thread will typically be blocked, with Readline
-    // waiting to read the next command.  Although not explicitly
-    // stated in Readline's documentation, based on Readline sources,
-    // handling of "terminal" signals, like TERM or HUP, will result
-    // in the blocked call to `readline` exit returning `nullptr`.
-
-    if (threads[1]) {
-        pthread_kill(threads[1], SIGTERM);
-        pthread_join(threads[1], nullptr);
-    }
-
-    // For the IPC thread, the signal will result in the
-    // socket-related calls failing with `EINTR`.  We exit when that
-    // happens.
-
-    if (threads[0]) {
-        pthread_kill(threads[0], SIGUSR1);
-        pthread_join(threads[0], nullptr);
-    }
-
-    glfwTerminate();
 
     return 0;
 }
+
+#undef WORD_BREAK_CHARACTERS

@@ -12,6 +12,9 @@
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 
+void print_output(const char *format, ...);
+void print_error(const char *format, ...);
+
 /* This macro ensures that the asserted expression does get executed,
  * no matter the build type, along with any side-effects. */
 
@@ -21,13 +24,10 @@
 #define safely_assert(...) assert(__VA_ARGS__)
 #endif
 
-#define print_error(...) fprintf(stderr, __VA_ARGS__)
-#define print_output(...)                       \
-    do {                                        \
-        if (!settings.quiet) {                  \
-            printf(__VA_ARGS__);                \
-        }                                       \
-    } while (false)
+#define assert_not_reached() {                  \
+        assert(false);                          \
+        __builtin_unreachable();                \
+    }
 
 // Document: program
 
@@ -41,9 +41,8 @@
 struct settings {
     char *args;
     char *program;
-    char *address;
 
-    bool quiet;
+    bool quiet, batch;
     bool present_on_reload, resize_on_split, print_frames;
 
     double default_color[4], edge_color[4];
@@ -179,9 +178,15 @@ void resize_window(struct window *w, int width, int height);
 void print_window(struct window *w, GLint format, FILE *fp);
 bool refresh_windows(void);
 
+// ## Running Definitions
+
+// Ref: Running the Inferior.
+
+void run_inferior(const char *s);
+int kill_inferior();
+
 // Document: none
 
 int read_commands(FILE *fp);
-int read_command_and_redisplay(const char *s);
 
 #endif

@@ -5,13 +5,6 @@
 
 #include "common.h"
 
-#define PRINT_GL_INTEGER(NAME)                  \
-    do {                                        \
-        GLint i;                                \
-        glGetIntegerv(NAME, &i);                \
-        printf(#NAME ": %d\n", i);              \
-    } while(0)
-
 static void multiply_matrix_4(
     const GLfloat A[16], const GLfloat B[16], GLfloat R[16])
 {
