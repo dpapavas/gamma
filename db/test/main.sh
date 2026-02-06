@@ -19,10 +19,15 @@ test_run_invalid_1() { run -c "run bogus" | error 'invalid mode specified'; }
 test_run_invalid_2() { run -c "run all bogus" | syntax_error; }
 test_run_invalid_3() { run -c "run single bogus" | syntax_error; }
 
+match_run() {
+    match --debugger-address=gammadb-$(while ! pidof -s gammadb; do :; done) "$@"
+}
+
 test_run_no_window() {
-    (run --execute=- -c "run" | match hello world) <<EOF
+    (run --execute=- | match_run hello world) <<EOF
 set program echo
 set args hello world
+run
 EOF
 }
 
@@ -39,9 +44,11 @@ EOF
      )
 
     echo -n "$i" | run --execute=- -c "run all" |
-        match -o one:one -o two:two hello world || return 1
+        match_run -o one:one -o two:two hello world ||
+        return 1
     echo -n "$i" | run --execute=- -c "run single" |
-        match -o two:two hello world || return 1
+        match_run -o two:two hello world ||
+        return 1
 }
 
 test_print_missing() { run -c "window test" -c "print" | error "no output file name specified"; }

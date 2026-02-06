@@ -6,6 +6,7 @@ match() {
     IFS='' read -r line;
     if [[ "$line" != $(echo -n $1; shift; printf "%s" "${@/#/+( )}") ]]; then
         echo "Unexpected line: " "$line" > /dev/stderr
+        echo "Expected: " "$@" > /dev/stderr
         exit 1
     fi
 }
