@@ -160,9 +160,9 @@ void refresh_viewport(struct viewport *v)
     // differ.
 
     // We define a zooming factor $\zeta$, which roughly corresponds
-    // to the percentage of the projection plane (the viewport) the
-    // viewed object would take up.  More precisely, $\zeta = 1$
-    // should result in the object's AABB filling up the viewport
+    // to the percentage of the projection plane (i.e. the viewport)
+    // that the viewed object would take up.  More precisely, $\zeta =
+    // 1$ should result in the object's AABB filling up the viewport
     // along one dimension, without exceeding it in the other.
 
     const GLfloat zeta = v->zoom;
@@ -178,11 +178,31 @@ void refresh_viewport(struct viewport *v)
 
     const GLfloat dim = fmaxf(w, h / a);
 
+    // We calculate near and far clipping planes to barely fit the
+    // AABB, irrespective of rotation, i.e. to fit the bounding shpere
+    // of the translated AABB.
+
+    GLfloat P[16] = {};
+    GLfloat n, f;
+
+    {
+        const GLfloat x = fmaxf(
+            fabsf(v->object->bounds[3] - v->translation[0]),
+            fabsf(v->object->bounds[0] - v->translation[0]));
+        const GLfloat y = fmaxf(
+            fabsf(v->object->bounds[4] - v->translation[1]),
+            fabsf(v->object->bounds[1] - v->translation[1]));
+        const GLfloat z = fmaxf(
+            fabsf(v->object->bounds[5] - v->translation[2]),
+            fabsf(v->object->bounds[2] - v->translation[2]));
+
+        n = -sqrtf(x * x + y * y + z * z);
+        f = -n;
+    }
+
     // Now we can turn to the calculation of the projection matrix.
 
-    const GLfloat n = v->near, f = v->far, nf = n - f;
-
-    GLfloat rho, P[16] = {};
+    const GLfloat nf = n - f;
 
     if (v->projection == ORTHOGRAPHIC) {
         // For orthographic projection, we use `dim` to define the
@@ -196,33 +216,12 @@ void refresh_viewport(struct viewport *v)
         // $\zeta\over{dim}$).
 
         P[0] = 2.0f * zeta / dim;
-        P[5] = 2.0f * zeta / dim / a;
+        P[5] = P[0] / a;
         P[10] = 2.0f / nf;
         P[11] = (n + f) / nf;
         P[15] = 1.0f;
-
-        // Although camera distance is immaterial with respect to the
-        // projected image, we still translate the object to place it
-        // at the middle of the viewing volume along the Z axis.
-
-        rho = (n + f) / 2.0f;
     } else {
         assert(v->projection == PERSPECTIVE);
-
-        // Given the FOV half-angle $\phi_2$, we can compute the right
-        // x-coordinate $r$ and top y-coordinate $t$ of the projection
-        // plane.  The width and height of the plane is then just $2r$
-        // and $2t$ respectively.
-
-        const GLfloat phi_2 = v->angle;
-        const GLfloat tanphi_2 = tan(phi_2), r = tanphi_2 * n;
-        const GLfloat t = r * a;
-
-        P[0] = n / r;
-        P[5] = n / t;
-        P[10] = (n + f) / nf;
-        P[11] = 2.0f * n * f / nf;
-        P[14] = -1.0f;
 
         // For perspective projection and a given horizontal FOV angle
         // $\phi$ the projected dimension of the object would be
@@ -238,20 +237,39 @@ void refresh_viewport(struct viewport *v)
         // zoom factor.  This affords a better match between
         // perspective and orthographic projections.
 
-        rho = dim / (2.0f * zeta * tanphi_2) + d / 2.0f;
+        const GLfloat phi_2 = v->angle;
+        const GLfloat tanphi_2 = tan(phi_2);
+        const GLfloat rho = dim / (2.0f * zeta * tanphi_2) + d / 2.0f;
+
+        // Given the FOV half-angle `phi_2`, we can compute the right
+        // x-coordinate of the projection plane as $\tan{\phi\over{2}}
+        // n$ and the top y-coordinate as $\tan{\phi\over{2}} n a$.
+
+        // The components of the matrix are then given below, where we
+        // also push back the clipping planes by the camera distance
+        // $rho$.
+
+        n = fmaxf(n + rho, nf / -1000.0f);
+        f += rho;
+
+        P[0] = 1.0 / tanphi_2;
+        P[5] = P[0] / a;
+        P[10] = (n + f) / nf;
+        P[11] = 2.0f * n * f / nf;
+        P[14] = -1.0f;
+
+        // We apply our translation by $(0, 0, -\rho)$ by
+        // post-multiplying the projection matrix $P$ with the
+        // required translation matrix.
+
+        for (int i = 0; i < 4; i++) {
+            GLfloat *p = &P[4 * i];
+            p[3] -= rho * p[2];
+        }
     }
 
-    // We apply our translation by $(0, 0, -\rho)$ by
-    // post-multiplying the projection matrix $P$ with the
-    // required translation matrix.
-
-    for (int i = 0; i < 4; i++) {
-        GLfloat *p = &P[4 * i];
-        p[3] -= rho * p[2];
-    }
-
-    // Finally, we concatenate the projection and rotations matrices
-    // and add the viewports translation.
+    // Finally, we concatenate the projection and rotation matrices
+    // and add the viewport translation.
 
     multiply_matrix_4(P, v->rotation, v->matrix);
 
@@ -261,4 +279,7 @@ void refresh_viewport(struct viewport *v)
                  + v->translation[1] * p[1]
                  + v->translation[2] * p[2]);
     }
+
+    v->near = n;
+    v->far = f;
 }

@@ -595,7 +595,7 @@ struct window *find_window(const char *name)
         {true, true},
         0, width - 1, 0, height - 1,
         (settings.default_view > 0.0f ? PERSPECTIVE : ORTHOGRAPHIC),
-        0.1f, 100.0f,
+        0.1f, 1.0f,
         ((settings.default_view > 0.0f ? settings.default_view : 50.0f) / 2.0f
          / 180.0f * M_PI),
         settings.default_zoom,

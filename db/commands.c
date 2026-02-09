@@ -154,9 +154,7 @@ static void triangulate(
         const float mm = sqrtf(uxvuxv[0] + uxvuxv[1] + uxvuxv[2]);
 
         const float phi = atan2f(
-            uxv[0] * uxvuxv[0] / mm
-            + uxv[1] * uxvuxv[1] / mm
-            + uxv[2] * uxvuxv[2] / mm,
+            uxvuxv[0] / mm + uxvuxv[1] / mm + uxvuxv[2] / mm,
             u[0] * v[0] + u[1] * v[1] + u[2] * v[2]);
 
         //   5. skipping over mouths, ie. vertices where the angle is
