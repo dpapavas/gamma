@@ -126,7 +126,6 @@ void printf_text(struct text *t, size_t size, const char *fmt, ...);
 enum projection {ORTHOGRAPHIC, PERSPECTIVE};
 
 struct viewport {
-    size_t index;
     const char *name;
 
     struct {

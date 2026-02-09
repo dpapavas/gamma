@@ -43,7 +43,7 @@
   (list-for ((s (iota z)))
     (let ((place
            (partial place-tooth (circle r_e) (+ r_i r_e))))
-      #>2 (intersection
+      #>3 (intersection
        (circle (/ d_a 2))
        (place 1/2 s)
        (place -1/2 (+ s 1))))))

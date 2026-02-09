@@ -590,7 +590,6 @@ struct window *find_window(const char *name)
 }
 
     *w->viewports = (struct viewport){
-        1,
         strdup("1"),
         {true, true},
         0, width - 1, 0, height - 1,
@@ -955,7 +954,9 @@ static bool refresh_window(struct window *w)
             if (v->stale.annotation) {
                 size_t j = 0;
                 sscanf(v->name, "%zu", &j);
-                printf_text(t, 18, (j != v->index) ? "%d: %s" : "%d", i, v->name);
+                printf_text(t, 18, (j != i) ? "%d: %s" : "%d", i, v->name);
+
+                v->stale.annotation = false;
             }
 
             glEnable(GL_BLEND);

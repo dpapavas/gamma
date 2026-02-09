@@ -51,7 +51,7 @@ output(1, sprocket)
 
 for s = 1, z do
    sprocket = sprocket + output(
-      2, (place_tooth(
+      3, (place_tooth(
              polygons.circle(r_e), r_i + r_e, 0.5, s)
           * place_tooth(
              polygons.circle(r_e), r_i + r_e, -0.5, s + 1)

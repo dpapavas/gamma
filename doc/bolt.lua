@@ -45,7 +45,7 @@ function thread(d, P, L)
       transformation.flush_bottom(
          polyhedra.prism(n, d_1 / 2, L))
       + output(
-         2, operations.extrusion(
+         3, operations.extrusion(
             profile, table.unpack(path))))
 end
 

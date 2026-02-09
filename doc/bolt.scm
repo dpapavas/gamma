@@ -10,7 +10,7 @@
 
     (union
      (flush-bottom (prism n (/ d_1 2) L)) ; The shaft
-     #>2
+     #>3
      (apply
       extrusion
       (let ((a (/ P 16))              ; Coordinates of

@@ -217,7 +217,7 @@ window examples
 resize 1500 1000
 split horizontally 3 1
 split vertically 2
-focus 3
+focus 2
 target sprocket
 
 # Bind some keys to commands.
@@ -343,7 +343,7 @@ Figure: sprocket
 # set print-frames yes
 # split horizontally 3 1
 # split vertically 2
-# focus 3
+# focus 2
 # target sprocket
 # rotate 50 -50 -40
 ```
@@ -456,7 +456,7 @@ of fig: sprocket.
 Figure: sprocket-diagram
 ```print sprocket_diagram.scm
 # resize 500 250
-# translate 0.3 10
+# translate 0.3 11
 # zoom 1.3
 ```
   The curves determining the form of a sprocket.  The roller seating
@@ -540,11 +540,11 @@ Figure: bolt
 # split horizontally 3 1
 # split vertically 2
 # focus 2
-# zoom -0.2
-# rotate 80 -45 45
-# focus 3
 # target bolt
 # rotate 45 -45 -45
+# focus 3
+# zoom -0.2
+# rotate 80 -45 45
 ```
   The output, as seen in the Debugger.  The lower left viewport shows
   the thread profile polygon, which is extruded along a helical path,

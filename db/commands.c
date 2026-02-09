@@ -782,35 +782,39 @@ int read_commands(FILE *fp)
             PARSING_FINISHED;
             NEEDS_WINDOW;
 
+            struct viewport *v = w->focus;
+
+            // If enabled, we resize the whole window, so that the
+            // split viewport retains its current size.
+
             if (settings.resize_on_split) {
                 int a, b;
 
                 glfwGetFramebufferSize(w->window, &a, &b);
 
                 if (dir == HORIZONTALLY) {
-                    resize_window(w, q * a, b);
+                    resize_window(w, a + (q - 1) * (v->right - v->left), b);
                 } else {
-                    resize_window(w, a, q * b);
+                    resize_window(w, a, b + (q - 1) * (v->top - v->bottom));
                 }
             }
 
-            struct viewport *v = w->focus;
-            for (size_t j = q; j > n + 1; j--) {
+            // We then perform the specified number of splits,
+            // creating and initializing new viewports accordingly.
+
+            for (size_t i = q; i > n + 1; i--) {
                 struct viewport *u =
                     (struct viewport *)malloc(sizeof(struct viewport));
 
                 *u = *v;
+                u->annotation = nullptr;
+                u->object = nullptr;
                 u->vao = 0;
-                u->index = v->index + 1;
-                u->name = (const char *)malloc(4);
-                snprintf((char *)u->name, 3, "%zu", u->index);
-
-                v->next = u;
 
                 switch (dir) {
                 case HORIZONTALLY:
                 {
-                    const int m = v->left + (v->right - v->left) / j;
+                    const int m = v->left + (v->right - v->left) / i;
                     u->left = m;
                     v->right = m;
                 }
@@ -819,7 +823,7 @@ int read_commands(FILE *fp)
 
                 case VERTICALLY:
                 {
-                    const int m = v->bottom + (v->top - v->bottom) / j;
+                    const int m = v->bottom + (v->top - v->bottom) / i;
                     v->top = m;
                     u->bottom = m;
                 }
@@ -830,11 +834,24 @@ int read_commands(FILE *fp)
                 v->stale.projection = true;
                 u->stale.projection = true;
 
-                v = u;
+                assert(w->viewports);
 
-                for (; u; u = u->next) {
-                    u->stale.annotation = true;
+                // We append new viewports at the end, so as not to
+                // upset the index numbers (and implicit names) of
+                // current viewports.
+
+                size_t j = 1;
+                for (v = w->viewports; v->next; v = v->next) {
+                    j++;
                 }
+
+                u->name = (const char *)malloc(4);
+                snprintf((char *)u->name, 3, "%zu", j + 1);
+                u->stale.annotation = true;
+
+                v->next = u;
+                u->next = nullptr;
+                v = u;
             }
 
             glfwPostEmptyEvent();
