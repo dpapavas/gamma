@@ -98,9 +98,30 @@ static void triangulate(
     // In the general case we iterate the vertices looking for an ear
     // tip.  Vertex $b$ is an ear tip if the segment $ac$ formed by
     // connecting its neighbor vertices intersects the polygon only at
-    // $a$ and $c$ and if the $\angle abc$ is less than $\pi$.
+    // $a$ and $c$ and if it is convex, i.e the $\angle abc$ is less
+    // than $\pi$.
 
-    // We proceed by:
+    // To determine convexity, we need to know the surface normal for
+    // the polygon.  We calculate it by Newell's method below,
+    // skipping normalization.
+
+    float w[3] = {};
+
+    if (n > 4) {
+        for (size_t i = 0; i < n; i++) {
+            const unsigned int l = s[i];
+            const unsigned int m = s[(i + 1) % n];
+
+            const float *a = &vertices[7 * l];
+            const float *b = &vertices[7 * m];
+
+            w[0] += (a[1] - b[1]) * (a[2] + b[2]);
+            w[1] += (a[2] - b[2]) * (a[0] + b[0]);
+            w[2] += (a[0] - b[0]) * (a[1] + b[1]);
+        }
+    }
+
+    // We then proceed by:
 
     for (size_t i = 0; i < n; i++) {
         //   1. First handling some trivial cases: We just copy a
@@ -125,7 +146,7 @@ static void triangulate(
 
         const unsigned int k = s[(i + n - 1) % n];
         const unsigned int l = s[i];
-        const unsigned int m = s[(i + n + 1) % n];
+        const unsigned int m = s[(i + 1) % n];
 
         const float *a = &vertices[7 * k];
         const float *b = &vertices[7 * l];
@@ -137,10 +158,11 @@ static void triangulate(
         const float u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
         const float v[3] = {c[0] - b[0], c[1] - b[1], c[2] - b[2]};
 
-        //   4. calculating the angle as $atan2((u \times v) \cdot n,
-        //   u \cdot v)$, where $n$ is the normal of the plane on
-        //   which the vectors lie, i.e. $n = \frac{u \times v}{\|u
-        //   \times v\|}$,
+        //   4. determining whether the angle is convex by comparing
+        //   the directions of the cross product $u \times v$ and the
+        //   polygon's normal $w$, using the scalar triple product $w
+        //   \cdot (u \times v)$, skipping over the vertex if that is
+        //   the case,
 
         const float uxv[3] = {
             u[1] * v[2] - u[2] * v[1],
@@ -148,24 +170,11 @@ static void triangulate(
             u[0] * v[1] - u[1] * v[0]
         };
 
-        const float uxvuxv[3] =
-            {uxv[0] * uxv[0], uxv[1] * uxv[1], uxv[2] * uxv[2]};
-
-        const float mm = sqrtf(uxvuxv[0] + uxvuxv[1] + uxvuxv[2]);
-
-        const float phi = atan2f(
-            uxvuxv[0] / mm + uxvuxv[1] / mm + uxvuxv[2] / mm,
-            u[0] * v[0] + u[1] * v[1] + u[2] * v[2]);
-
-        //   5. skipping over mouths, ie. vertices where the angle is
-        //   larger than $\pi$, which is returned as a negative angle
-        //   by $atan2$ above,
-
-        if (phi < 0) {
+        if (uxv[0] * w[0] + uxv[1] * w[1] + uxv[2] * w[2] < 0) {
             continue;
         }
 
-        //   6. skipping over vertices, which aren't principal
+        //   5. skipping over vertices, which aren't principal
         //   vertices to begin with,
 
         for (size_t j = 0; j < n - 3 ; j++) {
@@ -175,7 +184,7 @@ static void triangulate(
             }
         }
 
-        //   7. at which point we have an ear tip.  We output the
+        //   6. at which point we have an ear tip.  We output the
         //   corresponding triangle,
 
         t[0] = k;
@@ -184,14 +193,14 @@ static void triangulate(
 
         t += 3;
 
-        //   8. then clip the tip vertex by removing it from the list
+        //   7. then clip the tip vertex by removing it from the list
         //   of vertices, after we can finally,
 
         for (size_t j = i; j < n - 1 ; s[j] = s[j + 1], j++);
 
         n -= 1;
 
-        //   9. start anew with the reduced polygon, unless it's
+        //   8. start anew with the reduced polygon, unless it's
         //   already down to a triangle, which we output immediately.
 
         i = 0;
