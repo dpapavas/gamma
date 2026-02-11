@@ -91,7 +91,8 @@ static void write_off(std::ostream &s, const Surface_mesh &mesh)
 
     s << mesh.number_of_vertices() << " "
       << mesh.number_of_faces() << " "
-      << mesh.number_of_edges() << "\n" << std::scientific;
+      << mesh.number_of_edges() << "\n"
+      << std::setprecision(DBL_DECIMAL_DIG);
 
     // Next, we output the vertices.  Surface mesh indexes are
     // (seemingly) not necessarily contiguous and compact, so we need
@@ -400,7 +401,7 @@ void Write_STL_operation::evaluate()
     }
 
     s << "solid " << std::filesystem::path(filename).stem().string() << "\n"
-      << std::scientific;
+      << std::setprecision(DBL_DECIMAL_DIG);
 
     for (Surface_mesh::Face_index f: M.faces()) {
         Vector_3 u = CGAL::Polygon_mesh_processing::compute_face_normal(f, M);
