@@ -210,7 +210,6 @@ static void APIENTRY debug_message_callback(
 
 struct {
     GLuint name;
-
     GLuint matrix, color;
 } uniform;
 
@@ -218,7 +217,6 @@ struct {
 
 struct {
     GLuint name;
-
     GLuint matrix, intensity;
 } flat;
 
@@ -227,9 +225,16 @@ struct {
 
 struct {
     GLuint name;
-
     GLuint matrix, color;
 } sprite;
+
+//   4. The point program draws round points over the geometry's
+//   vertices.
+
+struct {
+    GLuint name;
+    GLuint matrix, intensity, scale, size;
+} point;
 
 // The following functions compile and link shaders and programs.
 
@@ -657,9 +662,8 @@ struct window *find_window(const char *name)
     glCullFace(GL_BACK);
     glEnable(GL_CULL_FACE);
 
-    glEnable(GL_MULTISAMPLE);
-
-    glPolygonOffset(1.0f, 1.0f);
+    glEnable(GL_LINE_SMOOTH);
+    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
 
     // If enabled, we set up a debug message callback, to be notified
     // about any GL errors.
@@ -734,6 +738,12 @@ struct window *find_window(const char *name)
         BUILD_PROGRAM(uniform);
         WITH_UNIFORM(uniform, matrix);
         WITH_UNIFORM(uniform, color);
+
+        BUILD_PROGRAM(point);
+        WITH_UNIFORM(point, matrix);
+        WITH_UNIFORM(point, intensity);
+        WITH_UNIFORM(point, scale);
+        WITH_UNIFORM(point, size);
 
         BUILD_PROGRAM(flat);
         WITH_UNIFORM(flat, matrix);
@@ -873,6 +883,7 @@ static bool refresh_window(struct window *w)
                 glUniform4f(uniform.color, 0.2f, 0.2f, 0.2f, 1.0f);
             }
 
+            glLineWidth(1.5f);
             glDrawArrays(GL_LINE_LOOP, 0, 4);
         }
 
@@ -911,38 +922,66 @@ static bool refresh_window(struct window *w)
                 glUniform1f(flat.intensity, 0.75f);
             }
 
+            glPolygonOffset(settings.edge_line_width, 1.0f);
             glEnable(GL_POLYGON_OFFSET_FILL);
             glDrawElements(GL_TRIANGLES, counts[1], GL_UNSIGNED_INT, 0);
             glDisable(GL_POLYGON_OFFSET_FILL);
 
             //   2. the edges, drawn as a sequence of line segments,
 
-            glUseProgram(uniform.name);
-            glUniformMatrix4fv(uniform.matrix, 1, GL_TRUE, v->matrix);
-            glUniform4f(
-                uniform.color,
-                (GLfloat)settings.edge_color[0],
-                (GLfloat)settings.edge_color[1],
-                (GLfloat)settings.edge_color[2],
-                (GLfloat)settings.edge_color[3]);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            glUniform1f(flat.intensity, v == w->focus ? 0.5f : 0.35f);
+
+            glLineWidth(settings.edge_line_width);
+            glDepthMask(GL_FALSE);
 
             glDrawElements(
                 GL_LINES, counts[2], GL_UNSIGNED_INT,
                 (void *)(counts[1] * sizeof(GLuint)));
 
-            //   3. the vertices, drawn as points and finally,
+            glDepthMask(GL_TRUE);
 
-            glUniform4f(uniform.color, 0.0f, 0.0f, 1.0f, 1.0f);
-            glPointSize(5);
+            //   3. the vertices, drawn as points.
+
+            glUseProgram(point.name);
+            glEnable(GL_PROGRAM_POINT_SIZE);
+
+            //   In the shader, we scale the point size, depending on
+            //   the projection mode.
+
+            //   In orthographic projection, we scale by the viewport
+            //   zoom, as this is the only factor determining the size
+            //   of the geometry.
+
+            //   In orthographic projection, we scale by $z_f
+            //   \over{z_e}$, where $z_f$ is the z coordinate of the
+            //   far plane and $z_e$ the eye z coordinate of the
+            //   point.  This makes the point size set by the user the
+            //   effective size for the furthest vertices, those near
+            //   the far plane, with points closer to the viewer
+            //   enlarged along with the mesh, as if by perspective.
+
+            glUniform1f(
+                point.scale,
+                v->projection == ORTHOGRAPHIC ? 2.0f * v->zoom : v->far);
+
+            glUniform1f(point.intensity, v == w->focus ? 1.0f : 0.75f);
+            glUniform1f(point.size, settings.vertex_point_size);
+            glUniformMatrix4fv(point.matrix, 1, GL_TRUE, v->matrix);
+
             glDrawArrays(GL_POINTS, 0, counts[0]);
 
+            glDisable(GL_PROGRAM_POINT_SIZE);
             glDisable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
         }
 
-        //   4. text annotations, which is currently just the viewport
-        //   index and target^[We only display the target if it has
-        //   been changed from the default, which is the viewport
-        //   index].
+        //   4. Finally, text annotations, which is currently just the
+        //   viewport index and target^[We only display the target if
+        //   it has been changed from the default, which is the
+        //   viewport index].
 
         {
             if (!v->annotation) {
@@ -963,7 +1002,7 @@ static bool refresh_window(struct window *w)
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glBindTexture(GL_TEXTURE_2D, t->texture);
 
-            for (int i = (v != w->focus); i < 2 ; i++) {
+            for (int j = (v != w->focus); j < 2 ; j++) {
                 //   This is the equivalent of the product of matrices
                 //   $P T S$, where $P$ is an orthographic projection
                 //   matrix with $l = 0, r = a, b = 0, t = b$,
@@ -983,9 +1022,9 @@ static bool refresh_window(struct window *w)
                 //   texture anyway, but it won't hurt either.]
 
                 const GLfloat x = floorf(
-                    10.0f + i + t->width / 2.0f + t->offset) + 0.5f;
+                    10.0f + j + t->width / 2.0f + t->offset) + 0.5f;
                 const GLfloat y = floorf(
-                    11.0f + i + t->height / 2.0f + t->descent) + 0.5f;
+                    11.0f + j + t->height / 2.0f + t->descent) + 0.5f;
 
                 const GLfloat S[16] = {
                     t->width / a, 0.0f, 0.0f, x * 2.0f / a - 1.0f,
@@ -997,7 +1036,7 @@ static bool refresh_window(struct window *w)
                 glUseProgram(sprite.name);
                 glUniformMatrix4fv(sprite.matrix, 1, GL_TRUE, S);
 
-                if (i == 0) {
+                if (j == 0) {
                     glUniform4f(sprite.color, 1.0f, 0.85f, 0.24f, 1.0f);
                 } else {
                     glUniform4f(sprite.color, 0.15f, 0.15f, 0.15f, 1.0f);
@@ -1438,11 +1477,7 @@ void print_window(struct window *w, GLint format, FILE *fp)
             for (GLsizei i = 0; i < o->counts[1]; i++) {
                 memcpy(v + (i % 3), vertices + p[i], sizeof(GL2PSvertex));
 
-                if (i % 3 == 0
-                    && v[0].rgba[0] == settings.edge_color[0]
-                    && v[0].rgba[1] == settings.edge_color[1]
-                    && v[0].rgba[2] == settings.edge_color[2]
-                    && v[0].rgba[3] > 0) {
+                if (i % 3 == 0 && v[0].rgba[3] < 1.0f) {
                      i += 2;
                      continue;
                 }
@@ -1465,16 +1500,11 @@ void print_window(struct window *w, GLint format, FILE *fp)
             const GLuint *q = p + o->counts[1];
             for (GLsizei i = 0; i < o->counts[2]; i++) {
                 const GL2PSvertex *v_qi = vertices + q[i];
-                memcpy(&v[i % 2].xyz, v_qi, sizeof(GL2PSxyz));
-                memcpy(
-                    &v[i % 2].rgba,
-                    (GL2PSrgba) {
-                        (GLfloat)settings.edge_color[0],
-                        (GLfloat)settings.edge_color[1],
-                        (GLfloat)settings.edge_color[2],
-                        (GLfloat)settings.edge_color[3]
-                    },
-                    sizeof(GL2PSrgba));
+                memcpy(v + (i % 2), v_qi, sizeof(GL2PSvertex));
+
+                if (v[0].rgba[3] == 1.0f) {
+                    memset(v[i % 2].rgba, 0, 3 * sizeof(v[0].rgba[0]));
+                }
 
                 if (i % 2 == 1) {
                     gl2psAddPolyPrimitive(

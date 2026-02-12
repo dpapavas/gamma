@@ -91,7 +91,7 @@ void zoom_viewport(struct viewport *v, float zeta)
     if (isnan(zeta)) {
         v->zoom = settings.default_zoom;
     } else {
-        v->zoom += zeta;
+        v->zoom = fmaxf(v->zoom + zeta, 0.0f);
     }
 
     v->stale.projection = true;

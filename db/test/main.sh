@@ -72,8 +72,9 @@ test_set() {
     args --hello --world
     present-on-reload no
     resize-on-split yes
-    default-color 0.1 0.2 0.3 0.4
-    edge-color 0.1 0.2 0.3 0.4
+    default-vertex-color 0.1 0.2 0.3 0.4
+    edge-line-width 2.3
+    vertex-point-size 4.5
     mouse-sensitivity 0.123
     default-view 100
     default-zoom 0.5

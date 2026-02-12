@@ -253,10 +253,11 @@ static int compare_edges(const void *a, const void *b)
 
 struct settings settings = {
     .present_on_reload = true,
-    .edge_color = {0, 0, 0, 1},
     .default_zoom = 0.7f,
     .default_view = 50.0f,
-    .default_color = {1, 1, 1, 1},
+    .default_vertex_color = {0.78, 0.78, 0.78, 1},
+    .vertex_point_size = 3.0f,
+    .edge_line_width = 2.0f,
     .mouse_sensitivity = 0.01
 };
 
@@ -1170,10 +1171,10 @@ int read_commands(FILE *fp)
                     }
 
                     if (p[3] == 0 && p[4] == 0 && p[5] == 0 && p[6] == 0) {
-                        p[3] = (float)settings.default_color[0];
-                        p[4] = (float)settings.default_color[1];
-                        p[5] = (float)settings.default_color[2];
-                        p[6] = (float)settings.default_color[3];
+                        p[3] = (float)settings.default_vertex_color[0];
+                        p[4] = (float)settings.default_vertex_color[1];
+                        p[5] = (float)settings.default_vertex_color[2];
+                        p[6] = (float)settings.default_vertex_color[3];
                     }
                 }
 
@@ -2047,20 +2048,26 @@ int read_commands(FILE *fp)
                 SET_VALUES(fp, settings.default_translation, "%lf", 3);
             }
 
-            //   `default-color` := The color assigned to vertices
+            //   `default-vertex-color` := The color assigned to vertices
             //   that do not have a color associated with them.  It is
             //   given as four RGBA floating point values.
 
-            else if (!strcmp(s, "default-color")) {
-                SET_VALUES(fp, settings.default_color, "%lf", 4);
+            else if (!strcmp(s, "default-vertex-color")) {
+                SET_VALUES(fp, settings.default_vertex_color, "%lf", 4);
             }
 
-            //   `edge-color` := The color with which object edges are
-            //   drawn.  It is given as four RGBA floating point
-            //   values.
+            //   `vertex-point-size` := The size of the points showing
+            //   the locations of the vertices.
 
-            else if (!strcmp(s, "edge-color")) {
-                SET_VALUES(fp, settings.edge_color, "%lf", 4);
+            else if (!strcmp(s, "vertex-point-size")) {
+                SET_VALUES(fp, &settings.vertex_point_size, "%lf", 1);
+            }
+
+            //   `edge-line-width` := The width of the lines used to
+            //   draw geometry edges.
+
+            else if (!strcmp(s, "edge-line-width")) {
+                SET_VALUES(fp, &settings.edge_line_width, "%lf", 1);
             }
 
             //   `mouse-sensitivity` := A number that controls how fast
@@ -2074,6 +2081,8 @@ int read_commands(FILE *fp)
                 print_error("error: no such setting\n");
                 goto error;
             }
+
+            glfwPostEmptyEvent();
         }
 
         // `show setting`
@@ -2107,10 +2116,12 @@ int read_commands(FILE *fp)
                 SHOW_VALUES(settings.default_rotation, "%lg", 3);
             } else if (!strcmp(s, "default-translation")) {
                 SHOW_VALUES(settings.default_translation, "%lg", 3);
-            } else if (!strcmp(s, "default-color")) {
-                SHOW_VALUES(settings.default_color, "%lg", 4);
-            } else if (!strcmp(s, "edge-color")) {
-                SHOW_VALUES(settings.edge_color, "%lg", 4);
+            } else if (!strcmp(s, "default-vertex-color")) {
+                SHOW_VALUES(settings.default_vertex_color, "%lg", 4);
+            } else if (!strcmp(s, "vertex-point-size")) {
+                SHOW_VALUES(&settings.vertex_point_size, "%lg", 1);
+            } else if (!strcmp(s, "edge-line-width")) {
+                SHOW_VALUES(&settings.edge_line_width, "%lg", 1);
             } else if (!strcmp(s, "mouse-sensitivity")) {
                 SHOW_VALUES(&settings.mouse_sensitivity, "%lg", 1);
             } else {

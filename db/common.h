@@ -47,7 +47,7 @@ struct settings {
     bool quiet, batch;
     bool present_on_reload, resize_on_split, print_frames;
 
-    double default_color[4], edge_color[4];
+    double default_vertex_color[4], vertex_point_size, edge_line_width;
     double default_view, default_zoom;
     double default_rotation[3], default_translation[3];
     double mouse_sensitivity;

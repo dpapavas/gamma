@@ -236,9 +236,9 @@ static char **completion_function(const char *text, int start, int end)
     {
         char *v[] = {
             "program", "args", "quiet", "present-on-reload", "resize-on-split",
-            "print-frames", "default-color", "default-view", "default-zoom",
-            "default-rotation", "default-translation", "edge-color",
-            "mouse-sensitivity", nullptr};
+            "print-frames", "default-vertex-color", "default-view", "default-zoom",
+            "default-rotation", "default-translation", "edge-line-width",
+            "mouse-sensitivity", "vertex-point-size", nullptr};
 
         WHEN_IN_1("set", {
                 return MATCHES(nullptr, v);
@@ -746,7 +746,6 @@ int main(int argc, char *argv[])
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
 
     glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
-    glfwWindowHint(GLFW_SAMPLES, 16);
 #ifndef NDEBUG
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, true);
 #endif
