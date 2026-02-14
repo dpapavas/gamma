@@ -28,6 +28,23 @@
 
 // Color selected vertices/faces
 
+const CGAL::IO::Color Color_operation::palette[13] = {
+    CGAL::IO::Color(55, 55, 55),
+
+    CGAL::IO::Color(231, 31, 36),
+    CGAL::IO::Color(244, 230, 0),
+    CGAL::IO::Color(38, 113, 179),
+    CGAL::IO::Color(244, 142, 43),
+    CGAL::IO::Color(0, 142, 93),
+    CGAL::IO::Color(110, 57, 137),
+    CGAL::IO::Color(237, 96, 39),
+    CGAL::IO::Color(255, 198, 48),
+    CGAL::IO::Color(139, 187, 55),
+    CGAL::IO::Color(0, 151, 196),
+    CGAL::IO::Color(67, 78, 151),
+    CGAL::IO::Color(199, 0, 122)
+};
+
 template<typename T>
 static void apply_color(
     Surface_mesh &P, const T &elements, CGAL::IO::Color color)

@@ -26,6 +26,7 @@ class Color_operation:
     public Unary_operation<Polyhedron_operation<Surface_mesh>> {
 public:
     const CGAL::IO::Color color;
+    static const CGAL::IO::Color palette[13];
 
     Color_operation(
         const std::shared_ptr<Polyhedron_operation<Surface_mesh>> &p,
@@ -36,7 +37,12 @@ public:
               static_cast<unsigned char>(CGAL::to_double(b * 255)),
               static_cast<unsigned char>(CGAL::to_double(a * 255))) {}
 
-    // We don't searialize color maps, so always need to re-evaluate.
+    Color_operation(
+        const std::shared_ptr<Polyhedron_operation<Surface_mesh>> &p, int i):
+        Unary_operation<Polyhedron_operation<Surface_mesh>>(p),
+        color(palette[i % 13]) {}
+
+    // We don't serialize color maps, so always need to re-evaluate.
 
     bool store() const override {
         return false;
@@ -57,6 +63,12 @@ public:
         const std::shared_ptr<T> &q,
         const FT r, const FT g, const FT b, const FT a):
         Color_operation(p, r, g, b, a),
+        selector(q) {}
+
+    Color_selection_operation(
+        const std::shared_ptr<Polyhedron_operation<Surface_mesh>> &p,
+        const std::shared_ptr<T> &q, int i):
+        Color_operation(p, i),
         selector(q) {}
 
     void evaluate() override;

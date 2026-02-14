@@ -1003,50 +1003,55 @@ DEFINE_SUBDIVISION_OPERATION(sqrt_3, SQRT_3)
 
 #undef DEFINE_SUBDIVISION_OPERATION
 
-static std::array<FT, 4> checkcolor(lua_State *L, int arg)
-{
-    std::array<FT, 4> v = {0, 0, 0, 1};
-
-    if (lua_gettop(L) == arg) {
-        int n = luaL_checkinteger(L, arg);
-
-        for (int i = 0; i < 3; i++) {
-            v[i] = (n >> i) & 1;
-        }
-    } else {
-        for (int i = 0; i < 4; i++) {
-            if (lua_isnone(L, arg + i)) {
-                break;
-            }
-
-            v[i] = luaL_checknumber(L, arg + i);
-        }
-    }
-
-    return v;
-}
-
 #define DEFINE_COLOR_OPERATION(FUNC, OP)                                \
 static int FUNC(lua_State *L)                                           \
 {                                                                       \
-    std::array<FT, 4> v = checkcolor(L, 2);                             \
+    if (lua_gettop(L) <= 2) {                                           \
+        int i = luaL_optinteger(L, 2, 0);                               \
                                                                         \
-    if (luaL_testudata(L, 1, "polygon")) {                              \
-        std::visit(                                                     \
-            [&L, &v](auto &&x) {                                        \
-                tolua<Boxed_polyhedron>(                                \
-                    L, OP(x, v[0], v[1], v[2], v[3]));                  \
-            },                                                          \
-            fromlua<Boxed_polygon>(L, 1));                              \
-    } else if (luaL_testudata(L, 1, "polyhedron")) {                    \
-        std::visit(                                                     \
-            [&L, &v](auto &&x) {                                        \
-                tolua<Boxed_polyhedron>(                                \
-                    L, OP(x, v[0], v[1], v[2], v[3]));                  \
-            },                                                          \
-            fromlua<Boxed_polyhedron>(L, 1));                           \
+        if (luaL_testudata(L, 1, "polygon")) {                          \
+            std::visit(                                                 \
+                [&L, &i](auto &&x) {                                    \
+                    tolua<Boxed_polyhedron>(L, OP(x, i));               \
+                },                                                      \
+                fromlua<Boxed_polygon>(L, 1));                          \
+        } else if (luaL_testudata(L, 1, "polyhedron")) {                \
+            std::visit(                                                 \
+                [&L, &i](auto &&x) {                                    \
+                    tolua<Boxed_polyhedron>(L, OP(x, i));               \
+                },                                                      \
+                fromlua<Boxed_polyhedron>(L, 1));                       \
+        } else {                                                        \
+            luaL_argerror(L, 1, "expected polyhedron or polygon");      \
+        }                                                               \
     } else {                                                            \
-        luaL_argerror(L, 1, "expected polyhedron or polygon");          \
+        FT v[] = {0, 0, 0, 1};                                          \
+                                                                        \
+        for (int i = 0; i < 4; i++) {                                   \
+            if (lua_isnone(L, 2 + i)) {                                 \
+                break;                                                  \
+            }                                                           \
+                                                                        \
+            v[i] = luaL_checknumber(L, 2 + i);                          \
+        }                                                               \
+                                                                        \
+        if (luaL_testudata(L, 1, "polygon")) {                          \
+            std::visit(                                                 \
+                [&L, &v](auto &&x) {                                    \
+                    tolua<Boxed_polyhedron>(                            \
+                        L, OP(x, v[0], v[1], v[2], v[3]));              \
+                },                                                      \
+                fromlua<Boxed_polygon>(L, 1));                          \
+        } else if (luaL_testudata(L, 1, "polyhedron")) {                \
+            std::visit(                                                 \
+                [&L, &v](auto &&x) {                                    \
+                    tolua<Boxed_polyhedron>(                            \
+                        L, OP(x, v[0], v[1], v[2], v[3]));              \
+                },                                                      \
+                fromlua<Boxed_polyhedron>(L, 1));                       \
+        } else {                                                        \
+            luaL_argerror(L, 1, "expected polyhedron or polygon");      \
+        }                                                               \
     }                                                                   \
                                                                         \
     return 1;                                                           \
@@ -1070,24 +1075,52 @@ static int color_selection(lua_State *L)
         luaL_argerror(L, 2, "expected face or vertex selector");
     }
 
-    std::array<FT, 4> v = checkcolor(L, 3);
+    if (lua_gettop(L) <= 3) {
+        int i = luaL_optinteger(L, 3, 0);
 
-    if (luaL_testudata(L, 1, "polygon")) {
-        std::visit(
-            [&L, &v](auto &&x, auto &&y) {
-                tolua<Boxed_polyhedron>(
-                    L, COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
-            },
-            fromlua<Boxed_polygon>(L, 1), p);
-    } else if (luaL_testudata(L, 1, "polyhedron")) {
-        std::visit(
-            [&L, &v](auto &&x, auto &&y) {
-                tolua<Boxed_polyhedron>(
-                    L, COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
-            },
-            fromlua<Boxed_polyhedron>(L, 1), p);
+        if (luaL_testudata(L, 1, "polygon")) {
+            std::visit(
+                [&L, &i](auto &&x, auto &&y) {
+                    tolua<Boxed_polyhedron>(L, COLOR_SELECTION(x, y, i));
+                },
+                fromlua<Boxed_polygon>(L, 1), p);
+        } else if (luaL_testudata(L, 1, "polyhedron")) {
+            std::visit(
+                [&L, &i](auto &&x, auto &&y) {
+                    tolua<Boxed_polyhedron>(L, COLOR_SELECTION(x, y, i));
+                },
+                fromlua<Boxed_polyhedron>(L, 1), p);
+        } else {
+            luaL_argerror(L, 1, "expected polyhedron or polygon");
+        }
     } else {
-        luaL_argerror(L, 1, "expected polyhedron or polygon");
+        FT v[] = {0, 0, 0, 1};
+
+        for (int i = 0; i < 4; i++) {
+            if (lua_isnone(L, 3 + i)) {
+                break;
+            }
+
+            v[i] = luaL_checknumber(L, 3 + i);
+        }
+
+        if (luaL_testudata(L, 1, "polygon")) {
+            std::visit(
+                [&L, &v](auto &&x, auto &&y) {
+                    tolua<Boxed_polyhedron>(
+                        L, COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+                },
+                fromlua<Boxed_polygon>(L, 1), p);
+        } else if (luaL_testudata(L, 1, "polyhedron")) {
+            std::visit(
+                [&L, &v](auto &&x, auto &&y) {
+                    tolua<Boxed_polyhedron>(
+                        L, COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+                },
+                fromlua<Boxed_polyhedron>(L, 1), p);
+        } else {
+            luaL_argerror(L, 1, "expected polyhedron or polygon");
+        }
     }
 
     return 1;

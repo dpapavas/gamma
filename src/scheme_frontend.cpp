@@ -1635,51 +1635,49 @@ static SCM deform(SCM s, SCM rest)
         }, a);
 }
 
-static std::array<FT, 4> pop_color(int i, SCM rest)
-{
-    std::array<FT, 4> v = {0, 0, 0, 1};
-
-    if (!scm_is_null(rest)) {
-        if (scm_is_pair(rest)
-            && scm_is_null(scm_cdr(rest))) {
-            int n;
-
-            pop_argument(i, rest, n);
-
-            for (int i = 0; i < 3; i++) {
-                v[i] = (n >> i) & 1;
-            }
-        } else {
-            pop_argument(i, rest, v[0]);
-            pop_argument(i + 1, rest, v[1]);
-            pop_argument(i + 2, rest, v[2]);
-            pop_optional(i + 3, rest, v[3]);
-        }
-    }
-
-    return v;
-}
-
 #define DEFINE_COLOR_OPERATION(FUNC, OP)                                \
 static SCM FUNC(SCM s, SCM rest)                                        \
 {                                                                       \
-    std::array<FT, 4> v = pop_color(2, rest);                           \
+    if (scm_is_null(rest) || scm_is_null(scm_cdr(rest))) {              \
+        int i = 0;                                                      \
+        try_pop_argument(2, rest, i);                                   \
                                                                         \
-    if (Boxed_polygon p; try_pop_argument(1, s, p)) {                   \
-        return std::visit(                                              \
-            [&v](auto &&x) {                                            \
-                return to_scheme<Boxed_polyhedron>(                     \
-                    OP(x, v[0], v[1], v[2], v[3]));                     \
-            }, p);                                                      \
-    } else if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {         \
-        return std::visit(                                              \
-            [&v](auto &&x) {                                            \
-                return to_scheme<Boxed_polyhedron>(                     \
-                    OP(x, v[0], v[1], v[2], v[3]));                     \
-            }, p);                                                      \
+        if (Boxed_polygon p; try_pop_argument(1, s, p)) {               \
+            return std::visit(                                          \
+                [&i](auto &&x) {                                        \
+                    return to_scheme<Boxed_polyhedron>(OP(x, i));       \
+                }, p);                                                  \
+        } else if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {     \
+            return std::visit(                                          \
+                [&i](auto &&x) {                                        \
+                    return to_scheme<Boxed_polyhedron>(OP(x, i));       \
+                }, p);                                                  \
+        }                                                               \
+    } else if (FT v[] = {0, 0, 0, 1};                                   \
+               try_pop_argument(2, rest, v[0])) {                       \
+        pop_argument(3, rest, v[1]);                                    \
+        pop_argument(4, rest, v[2]);                                    \
+        pop_optional(5, rest, v[3]);                                    \
+                                                                        \
+        if (Boxed_polygon p; try_pop_argument(1, s, p)) {               \
+            return std::visit(                                          \
+                [&v](auto &&x) {                                        \
+                    return to_scheme<Boxed_polyhedron>(                 \
+                        OP(x, v[0], v[1], v[2], v[3]));                 \
+                }, p);                                                  \
+        } else if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {     \
+            return std::visit(                                          \
+                [&v](auto &&x) {                                        \
+                    return to_scheme<Boxed_polyhedron>(                 \
+                        OP(x, v[0], v[1], v[2], v[3]));                 \
+                }, p);                                                  \
+        }                                                               \
     } else {                                                            \
-        throw wrong_type_exception(1, s, "polygon or polyhedron");      \
+        throw wrong_type_exception(                                     \
+            2, scm_car(rest), "rational number or integer");            \
     }                                                                   \
+                                                                        \
+    throw wrong_type_exception(1, s, "polygon or polyhedron");          \
 }
 
 DEFINE_COLOR_OPERATION(color_vertices, COLOR_VERTICES)
@@ -1689,8 +1687,6 @@ DEFINE_COLOR_OPERATION(color_faces, COLOR_FACES)
 
 static SCM color_selection(SCM s, SCM t, SCM rest)
 {
-    std::array<FT, 4> v = pop_color(3, rest);
-
     std::variant<std::shared_ptr<Face_selector>,
                  std::shared_ptr<Vertex_selector>> q;
 
@@ -1704,21 +1700,48 @@ static SCM color_selection(SCM s, SCM t, SCM rest)
         throw wrong_type_exception(2, t, "selector");
     }
 
-    if (Boxed_polygon p; try_pop_argument(1, s, p)) {
-        return std::visit(
-            [&v](auto &&x, auto &&y) {
-                return to_scheme<Boxed_polyhedron>(
-                    COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
-            }, p, q);
-    } else if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {
-        return std::visit(
-            [&v](auto &&x, auto &&y) {
-                return to_scheme<Boxed_polyhedron>(
-                    COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
-            }, p, q);
+    if (scm_is_null(rest) || scm_is_null(scm_cdr(rest))) {
+        int i = 0;
+        try_pop_argument(3, rest, i);
+
+        if (Boxed_polygon p; try_pop_argument(1, s, p)) {
+            return std::visit(
+                [&i](auto &&x, auto &&y) {
+                    return to_scheme<Boxed_polyhedron>(
+                        COLOR_SELECTION(x, y, i));
+                }, p, q);
+        } else if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {
+            return std::visit(
+                [&i](auto &&x, auto &&y) {
+                    return to_scheme<Boxed_polyhedron>(
+                        COLOR_SELECTION(x, y, i));
+                }, p, q);
+        }
+    } else if (FT v[] = {0, 0, 0, 1};
+               try_pop_argument(3, rest, v[0])) {
+        pop_argument(4, rest, v[1]);
+        pop_argument(5, rest, v[2]);
+        pop_optional(6, rest, v[3]);
+
+        if (Boxed_polygon p; try_pop_argument(1, s, p)) {
+            return std::visit(
+                [&v](auto &&x, auto &&y) {
+                    return to_scheme<Boxed_polyhedron>(
+                        COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+                }, p, q);
+        } else if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {
+            return std::visit(
+                [&v](auto &&x, auto &&y) {
+                    return to_scheme<Boxed_polyhedron>(
+                        COLOR_SELECTION(x, y, v[0], v[1], v[2], v[3]));
+                }, p, q);
+        }
     } else {
-        throw wrong_type_exception(1, s, "polygon or polyhedron");
+        throw wrong_type_exception(
+            2, scm_car(rest), "rational number or integer");
     }
+
+    throw wrong_type_exception(1, s, "polygon or polyhedron");
 }
 
 // ## Scheme Library Definitions

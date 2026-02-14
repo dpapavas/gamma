@@ -733,11 +733,11 @@ EXPECTING("cuboid(2,2,2)",
           "mesh(cuboid(2,2,2))",
           "color_selection(mesh(cuboid(2,2,2)),vertices_in("
           "bounding_box(plane(-1,0,0,0),plane(1,0,0,10),plane(0,-1,0,10),"
-          "plane(0,1,0,10),plane(0,0,-1,15),plane(0,0,1,15))),0,0,0,255)",
+          "plane(0,1,0,10),plane(0,0,-1,15),plane(0,0,1,15))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),vertices_in("
-          "bounding_sphere(point(2,0,0),2)),0,0,0,255)",
+          "bounding_sphere(point(2,0,0),2)),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),vertices_in("
-          "bounding_cylinder(point(-4,-4,-2),vector(0,0,1),4,2)),0,0,0,255)")
+          "bounding_cylinder(point(-4,-4,-2),vector(0,0,1),4,2)),55,55,55,255)")
 
 // ## Front End Tests for Polygon Operations
 
@@ -1153,45 +1153,45 @@ WITH_SOURCE("scheme",
 EXPECTING("cuboid(2,2,2)",
           "mesh(cuboid(2,2,2))",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "contract(faces_in(bounding_halfspace(plane(0,0,1,-1))),1),0,0,0,255)",
+          "contract(faces_in(bounding_halfspace(plane(0,0,1,-1))),1),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "expand(faces_in(bounding_plane(plane(0,0,1,-1))),1),0,0,0,255)",
+          "expand(faces_in(bounding_plane(plane(0,0,1,-1))),1),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "contract(vertices_in(bounding_halfspace(plane(0,0,1,-1))),1),0,0,0,255)",
+          "contract(vertices_in(bounding_halfspace(plane(0,0,1,-1))),1),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "expand(vertices_in(bounding_plane(plane(0,0,1,-1))),1),0,0,0,255)",
+          "expand(vertices_in(bounding_plane(plane(0,0,1,-1))),1),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "faces_partially_in(bounding_plane(plane(0,0,1,-1))),0,0,0,255)",
+          "faces_partially_in(bounding_plane(plane(0,0,1,-1))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "faces_in(bounding_plane(plane(0,0,1,-1))),0,0,0,255)",
+          "faces_in(bounding_plane(plane(0,0,1,-1))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "vertices_in(bounding_plane(plane(0,0,1,-1))),0,0,0,255)")
+          "vertices_in(bounding_plane(plane(0,0,1,-1))),55,55,55,255)")
 
 #define EXPECTING_SELECTION_BOOLEAN_TAGS                                \
 EXPECTING("cuboid(2,2,2)",                                              \
           "mesh(cuboid(2,2,2))",                                        \
           "color_selection(mesh(cuboid(2,2,2)),"                        \
-          "complement(vertices_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)", \
+          "complement(vertices_in(bounding_plane(plane(0,0,1,-1)))),55,55,55,255)", \
           "color_selection(mesh(cuboid(2,2,2)),"                        \
           "intersection(vertices_in(bounding_plane(plane(0,0,1,-1))),"  \
-          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",    \
+          "vertices_in(bounding_plane(plane(0,0,1,1)))),55,55,55,255)", \
           "color_selection(mesh(cuboid(2,2,2)),"                        \
           "difference(vertices_in(bounding_plane(plane(0,0,1,-1))),"    \
-          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",    \
+          "vertices_in(bounding_plane(plane(0,0,1,1)))),55,55,55,255)", \
           "color_selection(mesh(cuboid(2,2,2)),"                        \
           "union(vertices_in(bounding_plane(plane(0,0,1,-1))),"         \
-          "vertices_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",    \
+          "vertices_in(bounding_plane(plane(0,0,1,1)))),55,55,55,255)", \
           "color_selection(mesh(cuboid(2,2,2)),"                        \
-          "complement(faces_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)", \
+          "complement(faces_in(bounding_plane(plane(0,0,1,-1)))),55,55,55,255)", \
           "color_selection(mesh(cuboid(2,2,2)),"                        \
           "intersection(faces_in(bounding_plane(plane(0,0,1,-1))),"     \
-          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",       \
+          "faces_in(bounding_plane(plane(0,0,1,1)))),55,55,55,255)",    \
           "color_selection(mesh(cuboid(2,2,2)),"                        \
           "difference(faces_in(bounding_plane(plane(0,0,1,-1))),"       \
-          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",       \
+          "faces_in(bounding_plane(plane(0,0,1,1)))),55,55,55,255)",    \
           "color_selection(mesh(cuboid(2,2,2)),"                        \
           "union(faces_in(bounding_plane(plane(0,0,1,-1))),"            \
-          "faces_in(bounding_plane(plane(0,0,1,1)))),0,0,0,255)",       \
+          "faces_in(bounding_plane(plane(0,0,1,1)))),55,55,55,255)",    \
           "remesh(cuboid(2,2,2),"                                       \
           "complement(edges_in(bounding_plane(plane(0,0,1,-1)))),1,1)", \
           "remesh(cuboid(2,2,2),"                                       \
@@ -1461,17 +1461,17 @@ WITH_SOURCE("scheme",
 EXPECTING("cuboid(2,2,2)",
           "mesh(cuboid(2,2,2))",
           "color_selection(mesh(cuboid(2,2,2)),faces_partially_in("
-          "vertices_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)",
+          "vertices_in(bounding_plane(plane(0,0,1,-1)))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),faces_in("
-          "vertices_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)",
+          "vertices_in(bounding_plane(plane(0,0,1,-1)))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),faces_partially_in("
-          "edges_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)",
+          "edges_in(bounding_plane(plane(0,0,1,-1)))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),faces_in("
-          "edges_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)",
+          "edges_in(bounding_plane(plane(0,0,1,-1)))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),vertices_in("
-          "faces_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)",
+          "faces_in(bounding_plane(plane(0,0,1,-1)))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),vertices_in("
-          "edges_in(bounding_plane(plane(0,0,1,-1)))),0,0,0,255)",
+          "edges_in(bounding_plane(plane(0,0,1,-1)))),55,55,55,255)",
           "remesh(cuboid(2,2,2),"
           "edges_in(vertices_in(bounding_plane(plane(0,0,1,-1)))),1,1)",
           "remesh(cuboid(2,2,2),"
@@ -1889,10 +1889,10 @@ EXPECTING("regular_polygon(3,1,1/1048576)",
           "mesh(sphere(1,1/1024,1/1048576))",
           "color_selection(mesh(extrusion(regular_polygon(3,1,1/1048576),"
           "translation(0,0,0))),vertices_in(bounding_plane(plane(1,0,0,0)))"
-          ",0,0,0,255)",
+          ",55,55,55,255)",
           "color_selection(mesh(extrusion(regular_polygon(3,1,1/1048576),"
           "translation(0,0,0))),vertices_in(bounding_plane(plane(0,1,0,0)))"
-          ",255,0,255,255)",
+          ",0,142,93,255)",
           "color_selection(mesh(sphere(1,1/1024,1/1048576)),"
           "faces_in(bounding_plane(plane(0,0,1,0))),102,127,153,255)")
 
@@ -1922,9 +1922,9 @@ EXPECTING("regular_polygon(3,1,1/1048576)",                             \
           "mesh(extrusion(regular_polygon(3,1,1/1048576),translation(0,0,0)))", \
           "mesh(tetrahedron(1,1,1))",                                   \
           "color_" #WHAT "(mesh(extrusion(regular_polygon(3,1,1/1048576)," \
-          "translation(0,0,0))),0,0,0,255)",                            \
+          "translation(0,0,0))),55,55,55,255)",                         \
           "color_" #WHAT "(mesh(extrusion(regular_polygon(3,1,1/1048576)," \
-          "translation(0,0,0))),255,0,255,255)",                        \
+          "translation(0,0,0))),0,142,93,255)",                         \
           "color_" #WHAT "(mesh(tetrahedron(1,1,1)),102,127,153,255)")
 
 DEFINE_COLOR_TEST_CASE(vertices)
