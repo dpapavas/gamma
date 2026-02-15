@@ -1546,11 +1546,15 @@ int read_commands(FILE *fp)
 #define PRINT_TABLE(N, ...)                                             \
         do {                                                            \
             if (!settings.quiet) {                                      \
+                begin_print();                                          \
+                                                                        \
                 const size_t n_ = N;                                    \
                 int widths_[n_ - 1] = {};                               \
                 for (size_t phase_ = 0, i_ = 0; phase_ < 2; i_ = 0, phase_++) \
                     __VA_ARGS__                                         \
-                        }                                               \
+                                                                        \
+                end_print();                                            \
+            }                                                           \
         } while (false)
 
         //   `info subject` := Display information on a particular

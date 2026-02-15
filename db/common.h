@@ -12,6 +12,8 @@
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 
+void begin_print(void);
+void end_print(void);
 void print_output(const char *format, ...);
 void print_error(const char *format, ...);
 

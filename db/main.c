@@ -377,18 +377,26 @@ static char **completion_function(const char *text, int start, int end)
 
 // In batch mode, we can simply print messages immediately.
 
-static void print(FILE *fp, const char *format, va_list ap)
+void begin_print(void)
 {
     if (rl_readline_state && !rl_done) {
         rl_clear_visible_line();
+    }
+}
 
-        vfprintf(fp, format, ap);
-
+void end_print(void)
+{
+    if (rl_readline_state && !rl_done) {
         rl_on_new_line();
         rl_redisplay();
-    } else {
-        vfprintf(fp, format, ap);
     }
+}
+
+static void print(FILE *fp, const char *format, va_list ap)
+{
+    begin_print();
+    vfprintf(fp, format, ap);
+    end_print();
 }
 
 void print_output(const char *format, ...)
@@ -1064,7 +1072,7 @@ FITNESS FOR A PARTICULAR PURPOSE.\n\n");
             if (pipe_ready) {
                 char c;
 
-                rl_clear_visible_line();
+                begin_print();
 
                 do {
                     if (read(run_pipe[0], &c, 1) != 1) {
@@ -1078,9 +1086,7 @@ FITNESS FOR A PARTICULAR PURPOSE.\n\n");
                     putchar(c);
                 } while (c != '\n');
 
-                rl_on_new_line();
-                rl_redisplay();
-
+                end_print();
                 pipe_ready = false;
             }
 
