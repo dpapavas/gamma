@@ -44,10 +44,11 @@ EOF
      )
 
     echo -n "$i" | run --execute=- -c "run all" |
-        match_run -o one:one -o two:two hello world ||
+        match_run -Dflag -Dname=value -o one:one -o two:two hello world ||
         return 1
+
     echo -n "$i" | run --execute=- -c "run single" |
-        match_run -o two:two hello world ||
+        match_run -Dflag -Dname=value -o two:two hello world ||
         return 1
 }
 
@@ -101,6 +102,16 @@ test_bind_invalid_key_5() { run -c "bind M-"$'\a' | error "invalid key specified
 test_unbind_no_key() { run -c "unbind" | error "no key specified"; }
 test_unbind_invalid_1() { run -c "unbind a" | error "no such binding"; }
 test_unbind_invalid_2() { run -c "bind a foo" -c "unbind a bogus" | syntax_error; }
+
+test_define_no_name() { run -c "define" | error "no parameter specified"; }
+test_define() {
+    run -c "define flag" -c "define name value" -c "info definitions" | (
+        match "Name" "Value"
+        match "flag" ""
+        match "name" "value"
+        ok
+    )
+}
 
 test_bind() {
     run -c "bind a initial" \
