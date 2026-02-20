@@ -35,6 +35,8 @@ test_run() {
     i=$(cat <<EOF
 set program echo
 set args hello world
+define flag
+define name value
 window test
 target one
 split
@@ -50,6 +52,19 @@ EOF
     echo -n "$i" | run --execute=- -c "run single" |
         match_run -Dflag -Dname=value -o two:two hello world ||
         return 1
+}
+
+test_write() {
+    (run --execute=- -c "write test.stl" |
+        match -Dname=value -o test.stl:one hello world) <<EOF
+set program echo
+set args hello world
+define name value
+window test
+target one
+split
+write test.stl
+EOF
 }
 
 test_print_missing() { run -c "window test" -c "print" | error "no output file name specified"; }

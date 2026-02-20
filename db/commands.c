@@ -670,10 +670,13 @@ int read_commands(FILE *fp)
                 v = v->next;
             }
 
-            if (v) {
-                w->focus = v;
-                glfwPostEmptyEvent();
+            if (!v) {
+                print_error("error: no such viewport\n");
+                goto error;
             }
+
+            w->focus = v;
+            glfwPostEmptyEvent();
         }
 
         //   `print file` := Print the contents of the viewports
@@ -1373,6 +1376,121 @@ int read_commands(FILE *fp)
 
         // ## The Run Command
 
+        // In order to run the inferior, we assemble a command line
+        // from the pieces defined below:
+
+        //   1. the executable,
+
+#define RUN                                                             \
+        do {                                                            \
+            static BUFFER_TYPE(char) buffer;                            \
+            size_t n = 1;                                               \
+                                                                        \
+            if (!settings.program) {                                    \
+                settings.program = strdup(DEFAULT_PROGRAM);             \
+            }                                                           \
+                                                                        \
+            {                                                           \
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.program))); \
+                stpcpy(buffer.p, settings.program);                     \
+            }
+
+            //   2. the IPC address option,
+
+#define WITH_ADDRESS                                                    \
+            {                                                           \
+                const size_t n_0 = n - 1;                               \
+                                                                        \
+                MAYBE_GROW_TO(                                          \
+                    buffer,                                             \
+                    (n += snprintf(                                     \
+                        nullptr, 0,                                     \
+                        " --debugger-address=gammadb-%d", getpid())));  \
+                sprintf(                                                \
+                    buffer.p + n_0, " --debugger-address=gammadb-%d",   \
+                    getpid());                                          \
+            }
+
+            //   3. parameter definitions,
+
+#define WITH_DEFINITIONS                                                \
+            for (size_t i = 0; i < definitions.n; i++) {                \
+                const struct definition *q = definitions.p + i;         \
+                                                                        \
+                if (!q->name) {                                         \
+                    continue;                                           \
+                }                                                       \
+                                                                        \
+                const size_t n_0 = n - 1;                               \
+                char *p;                                                \
+                                                                        \
+                if (q->value) {                                         \
+                    MAYBE_GROW_TO(                                      \
+                        buffer, (n += (strlen(q->name)                  \
+                                       + strlen(q->value) + 4)));       \
+                                                                        \
+                    p = stpcpy(buffer.p + n_0, " -D");                  \
+                    p = stpcpy(p, q->name);                             \
+                    p = stpcpy(p, "=");                                 \
+                    p = stpcpy(p, q->value);                            \
+                } else {                                                \
+                    MAYBE_GROW_TO(buffer, (n += (strlen(q->name) + 3))); \
+                                                                        \
+                    p = stpcpy(buffer.p + n_0, " -D");                  \
+                    p = stpcpy(p, q->name);                             \
+                }                                                       \
+            }
+
+            //   4. potentially more than one inspection outputs,
+
+#define WITH_RUN_OUTPUTS                                                \
+            if (w) {                                                    \
+                for (struct viewport *v = w->viewports; v; v = v->next) { \
+                    if (mode == SINGLE && v != w->focus) {              \
+                        continue;                                       \
+                    }                                                   \
+                                                                        \
+                    const size_t n_0 = n - 1;                           \
+                    char *p;                                            \
+                                                                        \
+                    MAYBE_GROW_TO(buffer, (n += 2 * strlen(v->name) + 5)); \
+                    p = stpcpy(buffer.p + n_0, " -o ");                 \
+                    p = stpcpy(p, v->name);                             \
+                    p = stpcpy(p, ":");                                 \
+                    p = stpcpy(p, v->name);                             \
+                }                                                       \
+            }
+
+            //   5. a single output, written to disk,
+
+#define WITH_WRITE_OUTPUT                                               \
+            if (w) {                                                    \
+                const struct viewport *v = w->focus;                    \
+                const size_t n_0 = n - 1;                               \
+                char *p;                                                \
+                                                                        \
+                MAYBE_GROW_TO(buffer, (n += strlen(v->name) + strlen(s) + 5)); \
+                p = stpcpy(buffer.p + n_0, " -o ");                     \
+                p = stpcpy(p, s);                                       \
+                p = stpcpy(p, ":");                                     \
+                p = stpcpy(p, v->name);                                 \
+            }
+
+            //   6. any arguments specified by the user.
+
+#define AND_ARGS                                                        \
+            if (settings.args) {                                        \
+                const size_t n_0 = n - 1;                               \
+                char *p;                                                \
+                                                                        \
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.args) + 1)); \
+                p = stpcpy(buffer.p + n_0, " ");                        \
+                p = stpcpy(p, settings.args);                           \
+            }                                                           \
+                                                                        \
+            run_inferior(buffer.p);                                     \
+        } while(false)
+
         //   `run [mode]` := Run the "inferior" process to update the
         //   contents of the viewports.  The program specified by the
         //   `program` setting is run in a shell, with the arguments
@@ -1404,100 +1522,30 @@ int read_commands(FILE *fp)
             }
 
             PARSING_FINISHED;
-
-            // Now we need to compose the command line, from:
-
-            static BUFFER_TYPE(char) buffer;
-            size_t n = 1;
-
-            //   1. the executable, followed by
-
-            if (!settings.program) {
-                settings.program = strdup(DEFAULT_PROGRAM);
-            }
-
-            {
-                MAYBE_GROW_TO(buffer, (n += strlen(settings.program)));
-                stpcpy(buffer.p, settings.program);
-            }
-
-            //   2. the IPC address option, then
-
-            {
-                    const size_t n_0 = n - 1;
-
-                    MAYBE_GROW_TO(
-                        buffer,
-                        (n += snprintf(
-                            nullptr, 0,
-                            " --debugger-address=gammadb-%d", getpid())));
-                    sprintf(
-                        buffer.p + n_0, " --debugger-address=gammadb-%d", getpid());
-            }
-
-            //   3. the outputs, which need to precede other
-            //   options^[Order is important since the output selected
-            //   by an option only affects the source files following
-            //   it.], then
-
-            if (w) {
-                for (struct viewport *v = w->viewports; v; v = v->next) {
-                    if (mode == SINGLE && v != w->focus) {
-                        continue;
-                    }
-
-                    const size_t n_0 = n - 1;
-                    char *p;
-
-                    MAYBE_GROW_TO(buffer, (n += 2 * strlen(v->name) + 5));
-                    p = stpcpy(buffer.p + n_0, " -o ");
-                    p = stpcpy(p, v->name);
-                    p = stpcpy(p, ":");
-                    p = stpcpy(p, v->name);
-                }
-            }
-
-            //   4. the parameter definitions and finally
-
-            for (size_t i = 0; i < definitions.n; i++) {
-                const struct definition *q = definitions.p + i;
-
-                if (!q->name) {
-                    continue;
-                }
-
-                const size_t n_0 = n - 1;
-                char *p;
-
-                if (q->value) {
-                    MAYBE_GROW_TO(
-                        buffer, (n += (strlen(q->name) + strlen(q->value) + 4)));
-
-                    p = stpcpy(buffer.p + n_0, " -D");
-                    p = stpcpy(p, q->name);
-                    p = stpcpy(p, "=");
-                    p = stpcpy(p, q->value);
-                } else {
-                    MAYBE_GROW_TO(buffer, (n += (strlen(q->name) + 3)));
-
-                    p = stpcpy(buffer.p + n_0, " -D");
-                    p = stpcpy(p, q->name);
-                }
-            }
-
-            //   5. any arguments specified by the user.
-
-            if (settings.args) {
-                const size_t n_0 = n - 1;
-                char *p;
-
-                MAYBE_GROW_TO(buffer, (n += strlen(settings.args) + 1));
-                p = stpcpy(buffer.p + n_0, " ");
-                p = stpcpy(p, settings.args);
-            }
-
-            run_inferior(buffer.p);
+            RUN WITH_ADDRESS WITH_DEFINITIONS WITH_RUN_OUTPUTS AND_ARGS;
         }
+
+        //   `write file` := Run the "inferior" process to output the
+        //   geometry of the focused window to the specified file.
+        //   The file format is determined by the file extension,
+        //   which must correspond to a supported output format.
+
+        else if (!strcmp(s, "write")) {
+
+            if (try_scan(fp, "%63s", s) != 1) {
+                s[0] = '\0';
+            }
+
+            PARSING_FINISHED;
+
+            RUN WITH_DEFINITIONS WITH_WRITE_OUTPUT AND_ARGS;
+        }
+
+#undef RUN
+#undef WITH_ADDRESS
+#undef WITH_DEFINITIONS
+#undef WITH_RUN_OUTPUTS
+#undef END_RUN
 
         //   `kill` := Terminate an ongoing run.
 

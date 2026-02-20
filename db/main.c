@@ -206,7 +206,7 @@ static char **completion_function(const char *text, int start, int end)
                 "quit", "exit", "window", "hide", "present", "resize", "focus",
                 "split", "target", "rotate", "translate", "pan", "zoom", "view",
                 "load", "run", "info", "set", "show", "bind", "unbind", "print",
-                "define", "undefine", "kill", nullptr});
+                "define", "undefine", "kill", "write", nullptr});
     });
 
     //   2. completing keyword arguments for certain commands, or
@@ -249,7 +249,17 @@ static char **completion_function(const char *text, int start, int end)
             });
     }
 
-    //   3. files to read from, or
+    WHEN_IN_1("toggle", {
+        return MATCHES(
+            nullptr,
+            (char *[]) {"maximized", "vertices", "edges", "faces", nullptr});
+    });
+
+    WHEN_IN_1("resize", {
+        return MATCHES(nullptr, (char *[]) {"fullscreen", nullptr});
+    });
+
+    //   3. files to read from, or write to, or
 
     WHEN_IN(
         "load", {
@@ -273,6 +283,12 @@ static char **completion_function(const char *text, int start, int end)
 
                 break;
             }
+        });
+
+    WHEN_IN(
+        "write", {
+            return rl_completion_matches(
+                text, rl_filename_completion_function);
         });
 
     //   4. the key in `bind` commands,
