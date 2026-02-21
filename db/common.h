@@ -121,41 +121,6 @@ struct text {
 struct text *make_text(void);
 void printf_text(struct text *t, size_t size, const char *fmt, ...);
 
-// ## Viewports Definitions
-
-// Ref: Viewports.
-
-enum projection {ORTHOGRAPHIC, PERSPECTIVE};
-
-struct viewport {
-    const char *name;
-
-    struct {
-        bool projection: 1;
-        bool annotation: 1;
-    } stale;
-
-    int left, right, bottom, top;
-
-    enum projection projection;
-    GLfloat near, far;
-    GLfloat angle;
-    GLfloat zoom, translation[3], rotation[16], matrix[16];
-
-    GLuint vao;
-
-    struct text *annotation;
-    struct object *object;
-    struct viewport *next;
-};
-
-enum direction {HORIZONTALLY, VERTICALLY};
-void pan_viewport(struct viewport *v, float x, float y);
-void translate_viewport(struct viewport *v, float x, float y, float z);
-void rotate_viewport(struct viewport *v, float alpha, float beta, float gamma);
-void zoom_viewport(struct viewport *v, float zeta);
-void refresh_viewport(struct viewport *v);
-
 // ## Windows Definitions
 
 // Ref: Windows.
@@ -178,6 +143,48 @@ struct window *find_window(const char *name);
 void resize_window(struct window *w, int width, int height);
 void print_window(struct window *w, GLint format, FILE *fp);
 bool refresh_windows(void);
+
+// ## Viewports Definitions
+
+// Ref: Viewports.
+
+enum projection {ORTHOGRAPHIC, PERSPECTIVE};
+
+struct viewport {
+    const char *name;
+
+    struct {
+        bool projection: 1;
+        bool annotation: 1;
+    } stale;
+
+    struct {
+        bool maximized:1;
+        bool vertices:1;
+        bool edges:1;
+        bool faces:1;
+    } flags;
+
+    int left, right, bottom, top;
+
+    enum projection projection;
+    GLfloat near, far;
+    GLfloat angle;
+    GLfloat zoom, translation[3], rotation[16], matrix[16];
+
+    GLuint vao;
+
+    struct text *annotation;
+    struct object *object;
+    struct viewport *next;
+};
+
+enum direction {HORIZONTALLY, VERTICALLY};
+void pan_viewport(struct viewport *v, float x, float y);
+void translate_viewport(struct viewport *v, float x, float y, float z);
+void rotate_viewport(struct viewport *v, float alpha, float beta, float gamma);
+void zoom_viewport(struct viewport *v, float zeta);
+void refresh_viewport(struct viewport *v, struct window *w);
 
 // ## Running Definitions
 

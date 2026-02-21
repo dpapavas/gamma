@@ -150,7 +150,7 @@ void rotate_viewport(struct viewport *v, float alpha, float beta, float gamma)
 
 // Here we update the overall transformation matrix of the viewport.
 
-void refresh_viewport(struct viewport *v)
+void refresh_viewport(struct viewport *v, struct window *w)
 {
     // Zooming needs to be handled differently in orthographic and
     // perspective projections.  In the former, changing the distance
@@ -171,12 +171,20 @@ void refresh_viewport(struct viewport *v)
     // the AABB and that of the viewport.  We capture the relationship
     // by calculating the object's effective dimension as:
 
-    const GLfloat a = (GLfloat)(v->top - v->bottom) / (v->right - v->left);
-    const GLfloat w = v->object->bounds[3] - v->object->bounds[0];
-    const GLfloat h = v->object->bounds[4] - v->object->bounds[1];
-    const GLfloat d = v->object->bounds[5] - v->object->bounds[2];
+    GLfloat a;
 
-    const GLfloat dim = fmaxf(w, h / a);
+    if (v->flags.maximized) {
+        int i, j;
+
+        glfwGetFramebufferSize(w->window, &i, &j);
+        a = (GLfloat)j / (GLfloat)i;
+    } else {
+        a = (GLfloat)(v->top - v->bottom) / (v->right - v->left);
+    }
+
+    const GLfloat dim = fmaxf(
+        v->object->bounds[3] - v->object->bounds[0],
+        (v->object->bounds[4] - v->object->bounds[1]) / a);
 
     // We calculate near and far clipping planes to barely fit the
     // AABB, irrespective of rotation, i.e. to fit the bounding shpere
@@ -239,7 +247,8 @@ void refresh_viewport(struct viewport *v)
 
         const GLfloat phi_2 = v->angle;
         const GLfloat tanphi_2 = tan(phi_2);
-        const GLfloat rho = dim / (2.0f * zeta * tanphi_2) + d / 2.0f;
+        const GLfloat rho = dim / (2.0f * zeta * tanphi_2)
+            + (v->object->bounds[5] - v->object->bounds[2]) / 2.0f;
 
         // Given the FOV half-angle `phi_2`, we can compute the right
         // x-coordinate of the projection plane as $\tan{\phi\over{2}}

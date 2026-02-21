@@ -72,27 +72,27 @@ static void cursor_position_callback(GLFWwindow *window, double x, double y)
     // between viewports and update the focus accordingly.
 
     case IDLE:
-    {
-        int a, b;
-        glfwGetFramebufferSize(window, &a, &b);
+        if (!w->focus->flags.maximized) {
+            int a, b;
+            glfwGetFramebufferSize(window, &a, &b);
 
-        const double y_1 = b - y;
-        struct viewport *v = w->viewports;
+            const double y_1 = b - y;
+            struct viewport *v = w->viewports;
 
-        while (
-            v && (v->left > x || v->right < x
-                  || v->bottom > y_1 || v->top < y_1)) {
-            v = v->next;
+            while (
+                v && (v->left > x || v->right < x
+                      || v->bottom > y_1 || v->top < y_1)) {
+                v = v->next;
+            }
+
+            // We can move the pointer out of all viewports, even if they
+            // seem to span the whole window.  Moving the pointer on the
+            // decorations still fires this callback.
+
+            if (v) {
+                w->focus = v;
+            }
         }
-
-        // We can move the pointer out of all viewports, even if they
-        // seem to span the whole window.  Moving the pointer on the
-        // decorations still fires this callback.
-
-        if (v) {
-            w->focus = v;
-        }
-    }
 
         break;
 
@@ -597,6 +597,7 @@ struct window *find_window(const char *name)
     *w->viewports = (struct viewport){
         strdup("1"),
         {true, true},
+        {false, true, true, true},
         0, width - 1, 0, height - 1,
         (settings.default_view > 0.0f ? PERSPECTIVE : ORTHOGRAPHIC),
         0.1f, 1.0f,
@@ -832,6 +833,12 @@ static bool refresh_window(struct window *w)
 
     size_t i = 1;
     for (struct viewport *v = w->viewports; v; v = v->next, i++) {
+        assert(w->focus);
+
+        if (v != w->focus && w->focus->flags.maximized) {
+            continue;
+        }
+
         // Redraw the background and frame of the viewport.  This
         // consists in drawing a unit quad, first filled and then as a
         // line loop, scaled so that its edges run through the middle
@@ -840,15 +847,32 @@ static bool refresh_window(struct window *w)
         // This is done with the matrix below, along with the
         // following viewport specification.
 
-        const GLfloat a = v->right - v->left;
-        const GLfloat b = v->top - v->bottom;
+        GLfloat l, r, b, t;
 
-        glViewport(v->left, v->bottom, (GLsizei)a, (GLsizei)b);
+        if (v->flags.maximized) {
+            int j, k;
+
+            glfwGetFramebufferSize(w->window, &j, &k);
+
+            l = b = 0.0f;
+            r = (GLfloat)j;
+            t = (GLfloat)k;
+        } else {
+            l = v->left;
+            r = v->right;
+            b = v->bottom;
+            t = v->top;
+        }
+
+        const GLfloat rl = r - l;
+        const GLfloat tb = t - b;
+
+        glViewport(l, b, (GLsizei)rl, (GLsizei)tb);
 
         {
             const GLfloat S[16] = {
-                (a - 1.0f) / a, 0.0f, 0.0f, 0.0f,
-                0.0f, (b - 1.0f) / b, 0.0f, 0.0f,
+                (rl - 1.0f) / rl, 0.0f, 0.0f, 0.0f,
+                0.0f, (tb - 1.0f) / tb, 0.0f, 0.0f,
                 0.0f, 0.0f, 1.0f, 0.0f,
                 0.0f, 0.0f, 0.0f, 1.0f
             };
@@ -897,7 +921,7 @@ static bool refresh_window(struct window *w)
             // needed.
 
             if (v->stale.projection) {
-                refresh_viewport(v);
+                refresh_viewport(v, w);
                 v->stale.projection = false;
             }
 
@@ -916,64 +940,72 @@ static bool refresh_window(struct window *w)
             //   dimming the color intensity, if the viewport's not
             //   focues, then
 
-            if (v == w->focus) {
-                glUniform1f(flat.intensity, 1.0f);
-            } else {
-                glUniform1f(flat.intensity, 0.75f);
-            }
+            if (v->flags.faces) {
+                if (v == w->focus) {
+                    glUniform1f(flat.intensity, 1.0f);
+                } else {
+                    glUniform1f(flat.intensity, 0.75f);
+                }
 
-            glPolygonOffset(settings.edge_line_width, 1.0f);
-            glEnable(GL_POLYGON_OFFSET_FILL);
-            glDrawElements(GL_TRIANGLES, counts[1], GL_UNSIGNED_INT, 0);
-            glDisable(GL_POLYGON_OFFSET_FILL);
+                glPolygonOffset(settings.edge_line_width, 1.0f);
+                glEnable(GL_POLYGON_OFFSET_FILL);
+                glDrawElements(GL_TRIANGLES, counts[1], GL_UNSIGNED_INT, 0);
+                glDisable(GL_POLYGON_OFFSET_FILL);
+            }
 
             //   2. the edges, drawn as a sequence of line segments,
 
             glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            glUniform1f(flat.intensity, v == w->focus ? 0.5f : 0.35f);
+            if (v->flags.edges) {
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            glLineWidth(settings.edge_line_width);
-            glDepthMask(GL_FALSE);
+                glUniform1f(flat.intensity, v == w->focus ? 0.5f : 0.35f);
 
-            glDrawElements(
-                GL_LINES, counts[2], GL_UNSIGNED_INT,
-                (void *)(counts[1] * sizeof(GLuint)));
+                glLineWidth(settings.edge_line_width);
+                glDepthMask(GL_FALSE);
 
-            glDepthMask(GL_TRUE);
+                glDrawElements(
+                    GL_LINES, counts[2], GL_UNSIGNED_INT,
+                    (void *)(counts[1] * sizeof(GLuint)));
+
+                glDepthMask(GL_TRUE);
+            }
 
             //   3. the vertices, drawn as points.
 
-            glUseProgram(point.name);
-            glEnable(GL_PROGRAM_POINT_SIZE);
+            if (v->flags.vertices) {
+                glUseProgram(point.name);
+                glEnable(GL_PROGRAM_POINT_SIZE);
 
-            //   In the shader, we scale the point size, depending on
-            //   the projection mode.
+                //   In the shader, we scale the point size, depending on
+                //   the projection mode.
 
-            //   In orthographic projection, we scale by the viewport
-            //   zoom, as this is the only factor determining the size
-            //   of the geometry.
+                //   In orthographic projection, we scale by the viewport
+                //   zoom, as this is the only factor determining the size
+                //   of the geometry.
 
-            //   In orthographic projection, we scale by $z_f
-            //   \over{z_e}$, where $z_f$ is the z coordinate of the
-            //   far plane and $z_e$ the eye z coordinate of the
-            //   point.  This makes the point size set by the user the
-            //   effective size for the furthest vertices, those near
-            //   the far plane, with points closer to the viewer
-            //   enlarged along with the mesh, as if by perspective.
+                //   In orthographic projection, we scale by $z_f
+                //   \over{z_e}$, where $z_f$ is the z coordinate of the
+                //   far plane and $z_e$ the eye z coordinate of the
+                //   point.  This makes the point size set by the user the
+                //   effective size for the furthest vertices, those near
+                //   the far plane, with points closer to the viewer
+                //   enlarged along with the mesh, as if by perspective.
 
-            glUniform1f(
-                point.scale,
-                v->projection == ORTHOGRAPHIC ? 2.0f * v->zoom : v->far);
+                glUniform1f(
+                    point.scale,
+                    v->projection == ORTHOGRAPHIC ? 2.0f * v->zoom : v->far);
 
-            glUniform1f(point.intensity, v == w->focus ? 1.0f : 0.75f);
-            glUniform1f(point.size, settings.vertex_point_size);
-            glUniformMatrix4fv(point.matrix, 1, GL_TRUE, v->matrix);
+                glUniform1f(point.intensity, v == w->focus ? 1.0f : 0.75f);
+                glUniform1f(point.size, settings.vertex_point_size);
+                glUniformMatrix4fv(point.matrix, 1, GL_TRUE, v->matrix);
 
-            glDrawArrays(GL_POINTS, 0, counts[0]);
+                glDrawArrays(GL_POINTS, 0, counts[0]);
 
-            glDisable(GL_PROGRAM_POINT_SIZE);
+                glDisable(GL_PROGRAM_POINT_SIZE);
+            }
+
             glDisable(GL_DEPTH_TEST);
             glDisable(GL_BLEND);
         }
@@ -1027,8 +1059,8 @@ static bool refresh_window(struct window *w)
                     11.0f + j + t->height / 2.0f + t->descent) + 0.5f;
 
                 const GLfloat S[16] = {
-                    t->width / a, 0.0f, 0.0f, x * 2.0f / a - 1.0f,
-                    0.0f, t->height / b, 0.0f, y * 2.0f / b - 1.0f,
+                    t->width / rl, 0.0f, 0.0f, x * 2.0f / rl - 1.0f,
+                    0.0f, t->height / tb, 0.0f, y * 2.0f / tb - 1.0f,
                     0.0f, 0.0f, 1.0f, 0.0f,
                     0.0f, 0.0f, 0.0f, 1.0f
                 };
@@ -1404,7 +1436,7 @@ void print_window(struct window *w, GLint format, FILE *fp)
         // the window might not have been presented yet.
 
         if (v->stale.projection) {
-            refresh_viewport(v);
+            refresh_viewport(v, w);
             v->stale.projection = false;
         }
 

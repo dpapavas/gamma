@@ -206,7 +206,7 @@ static char **completion_function(const char *text, int start, int end)
                 "quit", "exit", "window", "hide", "present", "resize", "focus",
                 "split", "target", "rotate", "translate", "pan", "zoom", "view",
                 "load", "run", "info", "set", "show", "bind", "unbind", "print",
-                "define", "undefine", "kill", "write", nullptr});
+                "define", "undefine", "kill", "write", "toggle", nullptr});
     });
 
     //   2. completing keyword arguments for certain commands, or

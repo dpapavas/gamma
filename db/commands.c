@@ -838,6 +838,8 @@ int read_commands(FILE *fp)
                 v->stale.projection = true;
                 u->stale.projection = true;
 
+                u->flags.maximized = false;
+
                 assert(w->viewports);
 
                 // We append new viewports at the end, so as not to
@@ -1656,7 +1658,7 @@ int read_commands(FILE *fp)
                 NEEDS_WINDOW;
 
                 PRINT_TABLE(
-                    9, {
+                    10, {
                         COLUMN("%s", "#");
                         COLUMN("%s", "Orig.");
                         COLUMN("%s", "Size");
@@ -1665,6 +1667,7 @@ int read_commands(FILE *fp)
                         COLUMN("%s", "Zoom");
                         COLUMN("%s", "Pr.");
                         COLUMN("%s", "Name");
+                        COLUMN("%s", "Flags");
                         COLUMN("%s", "");
 
                         size_t i = 0;
@@ -1709,35 +1712,14 @@ int read_commands(FILE *fp)
                                 gamma = 0.0f;
                             }
 
-                            // We also show the field of view angle
-                            // and projection mode in one column.
-
-                            char s[] = "Or.";
-
-                            if (v->projection) {
-                                snprintf(
-                                    s, 4, "%d",
-                                    (int)roundf(v->angle / M_PI * 180.0f * 2.0f));
-                            }
-
                             // The `%g` format switches to scientific
                             // notation for numbers smaller than 1e-4.
                             // We don't want that, so we truncate to 5
                             // decimal places.
 
-                            // The reason we use the tertiary operator
-                            // below, instead of just dividing the
-                            // constants below by `1e4` straight away,
-                            // is to avoid having small negative
-                            // number rounded to negative zero and
-                            // showing up as `-0`.
-
                             const float x = roundf(v->translation[0] * 1e4);
                             const float y = roundf(v->translation[1] * 1e4);
                             const float z = roundf(v->translation[2] * 1e4);
-
-                            // The rest of the columns are taken
-                            // straight from the viewport.
 
                             COLUMN("%zu", ++i);
                             COLUMN("%d, %d", v->left, v->bottom);
@@ -1745,19 +1727,76 @@ int read_commands(FILE *fp)
                                 "%d, %d",
                                 (v->right - v->left),
                                 (v->top - v->bottom));
+
+                            // The reason we use the tertiary operator
+                            // below, instead of just diviing the
+                            // constants below by `1e4` straight away,
+                            // is to avoid having small negative
+                            // number rounded to negative zero and
+                            // showing up as `-0`.
+
                             COLUMN(
                                 "%.4g, %.4g, %.4g",
                                 x == 0.0f ? 0.0f : x / 1e4,
                                 y == 0.0f ? 0.0f : y / 1e4,
                                 z == 0.0f ? 0.0f : z / 1e4);
+
                             COLUMN(
                                 "%d, %d, %d",
                                 (int)roundf(alpha / M_PI * 180.0f),
                                 (int)roundf(beta / M_PI * 180.0f),
                                 (int)roundf(gamma / M_PI * 180.0f));
+
                             COLUMN("%g", v->zoom);
-                            COLUMN("%s", s);
+
+                            // We show the field of view angle and
+                            // projection mode in one column.
+
+                            {
+                                char s[] = "Or.";
+
+                                if (v->projection) {
+                                    snprintf(
+                                        s, 4, "%d",
+                                        (int)roundf(v->angle / M_PI * 180.0f * 2.0f));
+                                }
+
+                                COLUMN("%s", s);
+                            }
+
                             COLUMN("%s", v->name);
+
+                            // Viewport flags are shown as a set of letters.
+
+                            {
+                                const struct {
+                                    bool p;
+                                    char c;
+                                } flags[] = {
+                                    {v->flags.maximized, 'm'},
+                                    {v->flags.vertices, 'v'},
+                                    {v->flags.edges, 'e'},
+                                    {v->flags.faces, 'f'}
+                                };
+
+                                const int n = sizeof(flags) / sizeof(flags[0]);
+                                char s[n + 3], *c = s;
+
+                                *c++ = '[';
+
+                                for (int i = 0; i < n; i++) {
+                                    *c++ = flags[i].p ? flags[i].c : ' ';
+                                }
+
+                                *c++ = ']';
+                                *c++ = '\0';
+
+                                COLUMN("%s", s);
+                            }
+
+                            // We also mark the focused window with an
+                            // asterisk.
+
                             COLUMN("%s", v == w->focus ? "*" : "");
                         }
                     });
@@ -1919,6 +1958,62 @@ int read_commands(FILE *fp)
 #undef COLUMN
 #undef PRINT_TABLE
 
+        // ### Toggling Commands
+
+        // `toggle flag`
+
+        // Toggle a flag on the currently focused viewport.  The
+        // available flags are:
+
+        else if (!strcmp(s, "toggle")) {
+            if (try_scan(fp, "%63s", s) != 1) {
+                print_error("error: no flag specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            struct viewport *v = w->focus;
+
+#define TOGGLE(FLAG) v->flags.FLAG = !w->focus->flags.FLAG
+
+            //   `maximized` := Allow the viewport to termporarily
+            //   occupy the entire window.
+
+            if (!strcmp(s, "maximized")) {
+                TOGGLE(maximized);
+                v->stale.projection = true;
+            }
+
+            //   `vertices` := Draw points to show geometry vertices.
+
+            else if (!strcmp(s, "vertices")) {
+                TOGGLE(vertices);
+            }
+
+            //   `edges` := Draw lines to show geometry edges.
+
+            else if (!strcmp(s, "edges")) {
+                TOGGLE(edges);
+            }
+
+            //   `faces` := Draw the geometry faces.
+
+            else if (!strcmp(s, "faces")) {
+                TOGGLE(faces);
+            }
+
+#undef TOGGLE
+
+            else {
+                print_error("error: no such flag\n");
+                goto error;
+            }
+
+            glfwPostEmptyEvent();
+        }
+
         // ### Setting Commands
 
         // We handle changing and showing settings with the following
@@ -1958,7 +2053,7 @@ int read_commands(FILE *fp)
                        || !strcmp(s_, "false")) {                       \
                 SETTING = false;                                        \
             } else {                                                    \
-                print_error("error: \"yes\", or \"no\" expected\n"); \
+                print_error("error: \"yes\", or \"no\" expected\n");    \
                 goto error;                                             \
             }                                                           \
         } while(false);
