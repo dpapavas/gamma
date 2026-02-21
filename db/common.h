@@ -128,6 +128,8 @@ void printf_text(struct text *t, size_t size, const char *fmt, ...);
 struct window {
     const char *name;
 
+    int saved_geometry[4];
+
     pthread_mutex_t mutex;
 
     GLFWwindow *window;

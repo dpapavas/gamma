@@ -12,7 +12,7 @@ match() {
 }
 
 error() { match "error: $1"; }
-syntax_error() { error 'invalid syntax, near "bogus"'; }
+syntax_error() { error "invalid syntax, near \"${1:-bogus}\""; }
 ok() { match ""; }
 
 IFS='/' read -ra selected <<< "$1"

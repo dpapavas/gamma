@@ -19,8 +19,25 @@ test_present() { run -c "present" | windows 1 "1000, 1000" Yes test; }
 
 test_resize_missing_size() { run -c "resize" | error "new size not specified"; }
 test_resize_missing_height() { run -c "resize 100" | error "new size not specified"; }
+test_resize_invalid_keyword() { run -c "resize full" | error "new size not specified"; }
+test_resize_fullscreen_and_size() {
+    run -c "resize fullscreen 100 100" |  error "new size not specified"
+}
 test_resize_invalid() { run -c "resize 100 100 bogus" | syntax_error; }
+test_resize_fullscreen_and_size() {
+    run -c "resize fullscreen 100 100" | syntax_error "100 100";
+}
 test_resize() { run -c "resize 100 100" | windows 1 "100, 100" No test; }
+test_resize_2() {
+    run -c "resize fullscreen" |
+        windows 1 \
+                "$(xrandr | head -n 1 | sed "s/.* current \([[:digit:]]*\) x \([[:digit:]]*\).*/\1, \2/")" \
+                Yes test
+}
+test_resize_3() {
+    run -c "resize fullscreen"  -c "resize fullscreen" |
+        windows 1 "1000, 1000" Yes test
+}
 
 test_window_invalid() { run -c "window name bogus" | syntax_error; }
 test_window_no_name() { run -c "window" | error "no window name specified"; }

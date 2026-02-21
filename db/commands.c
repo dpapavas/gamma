@@ -618,6 +618,13 @@ int read_commands(FILE *fp)
             PARSING_FINISHED;
             NEEDS_WINDOW;
 
+            // If the window is full screen, GLFW will ignore the hide
+            // request.  We need to restore it first.
+
+            if (w->saved_geometry[2] != 0) {
+                resize_window(w, 0, 0);
+            }
+
             glfwHideWindow(w->window);
         }
 
@@ -632,13 +639,25 @@ int read_commands(FILE *fp)
             glfwFocusWindow(w->window);
         }
 
-        //   `resize width height` := Resize the currently selected
-        //   window.  Viewport sizes are adjusted accordingly.
+        //   `resize width height`, `resize fullscreen` := Resize the
+        //   currently selected window.  If `fullscreen` is specified,
+        //   the window is made full screen, if not already so.  If
+        //   already full screen, its old size and position is
+        //   restored.  Viewport sizes are adjusted accordingly.
 
         else if (!strcmp(s, "resize")) {
-            int a, b;
+            int a, b = -1;
 
-            if (try_scan(fp, "%d", &a) != 1 || try_scan(fp, "%d", &b) != 1) {
+            if (try_scan(fp, "%63[a-z]", &s) == 1) {
+                if (!strcmp(s, "fullscreen")) {
+                    a = b = 0;
+                }
+            } else {
+                try_scan(fp, "%d", &a);
+                try_scan(fp, "%d", &b);
+            }
+
+            if (b == -1) {
                 print_error("error: new size not specified\n");
                 goto error;
             }

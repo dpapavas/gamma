@@ -579,6 +579,7 @@ struct window *find_window(const char *name)
     w->name = strdup(name);
     w->next = windows;
 
+    memset(w->saved_geometry, 0, sizeof(w->saved_geometry));
     pthread_mutex_init(&w->mutex, nullptr);
 
     // The window is created with a single viewport spanning it, which
@@ -774,17 +775,85 @@ struct window *find_window(const char *name)
 
 void resize_window(struct window *w, int width, int height)
 {
-    int w_0, h_0;
+    int a_0, b_0, a, b;
 
     lock_window(w);
-    glfwGetFramebufferSize(w->window, &w_0, &h_0);
-    glfwSetWindowSize(w->window, width, height);
+    glfwGetFramebufferSize(w->window, &a_0, &b_0);
+
+    // A `width` and `height` of zero is interpreted as a request to
+    // make the window full screen, or restore it to its old size, if
+    // it already is.
+
+    // There are a few cases:
+
+    if (width != 0 || w->saved_geometry[2] != 0) {
+        if (width == 0) {
+            //   1. A full screen window must be restored.
+
+            glfwSetWindowMonitor(
+                w->window,
+                nullptr,
+                w->saved_geometry[0],
+                w->saved_geometry[1],
+                w->saved_geometry[2],
+                w->saved_geometry[3],
+                GLFW_DONT_CARE);
+
+            a = w->saved_geometry[2];
+            b = w->saved_geometry[3];
+
+            memset(w->saved_geometry, 0, sizeof(w->saved_geometry));
+        } else {
+            if (w->saved_geometry[2] != 0) {
+                //   2. A full screen window is resized to a different
+                //   size.  We need to switch to windowed mode,
+                //   restoring the old position, but setting the new
+                //   size.
+
+                glfwSetWindowMonitor(
+                    w->window,
+                    nullptr,
+                    w->saved_geometry[0],
+                    w->saved_geometry[1],
+                    width,
+                    height,
+                    GLFW_DONT_CARE);
+            } else {
+                //   3. A normal window is resized.
+
+                glfwSetWindowSize(w->window, width, height);
+            }
+
+            a = width;
+            b = height;
+        }
+    } else {
+        //   4. A normal window is made full screen.  We save the
+        //   current geometry and switch mode.
+
+        glfwGetWindowPos(
+            w->window, &w->saved_geometry[0], &w->saved_geometry[1]);
+        glfwGetWindowSize(
+            w->window, &w->saved_geometry[2], &w->saved_geometry[3]);
+
+        GLFWmonitor *m = glfwGetPrimaryMonitor();
+        const GLFWvidmode *mode = glfwGetVideoMode(m);
+
+        glfwSetWindowMonitor(
+            w->window, m, 0, 0, mode->width, mode->height, mode->refreshRate);
+
+        a = mode->width;
+        b = mode->height;
+    }
+
+    // Since the framebuffer size has changed, we must resize all
+    // viewports accordingly.
 
     for (struct viewport *v = w->viewports; v; v = v->next) {
-        v->left = v->left * (width - 1) / (w_0 - 1);
-        v->right = v->right * (width - 1) / (w_0 - 1);
-        v->bottom = v->bottom * (height - 1) / (h_0 - 1);
-        v->top = v->top * (height - 1) / (h_0 - 1);
+        v->left = v->left * (a - 1) / (a_0 - 1);
+        v->right = v->right * (a - 1) / (a_0 - 1);
+        v->bottom = v->bottom * (b - 1) / (b_0 - 1);
+        v->top = v->top * (b - 1) / (b_0 - 1);
         v->stale.projection = true;
     }
 
@@ -797,8 +866,8 @@ void resize_window(struct window *w, int width, int height)
     // show the old size in one run and the new size in another.)
 
     do {
-        glfwGetFramebufferSize(w->window, &w_0, &h_0);
-    } while (w_0 != width || h_0 != height);
+        glfwGetWindowSize(w->window, &a_0, &b_0);
+    } while (a_0 != a || b_0 != b);
 
     glfwPostEmptyEvent();
 }
