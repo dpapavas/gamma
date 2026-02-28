@@ -1010,15 +1010,12 @@ static bool refresh_window(struct window *w)
             //   focues, then
 
             if (v->flags.faces) {
-                if (v == w->focus) {
-                    glUniform1f(flat.intensity, 1.0f);
-                } else {
-                    glUniform1f(flat.intensity, 0.75f);
-                }
-
+                glUniform1f(flat.intensity, v == w->focus ? 1.0f : 0.75f);
                 glPolygonOffset(settings.edge_line_width, 1.0f);
                 glEnable(GL_POLYGON_OFFSET_FILL);
+
                 glDrawElements(GL_TRIANGLES, counts[1], GL_UNSIGNED_INT, 0);
+
                 glDisable(GL_POLYGON_OFFSET_FILL);
             }
 
@@ -1385,6 +1382,8 @@ void refresh_object(
                 && v->translation[1] == 0.0f
                 && v->translation[2] == 0.0f) {
                 translate_viewport(v, NAN, NAN, NAN);
+            } else {
+                v->stale.projection = true;
             }
 
             // Finally we present the window found to be showing the

@@ -165,7 +165,7 @@ void refresh_viewport(struct viewport *v, struct window *w)
     // 1$ should result in the object's AABB filling up the viewport
     // along one dimension, without exceeding it in the other.
 
-    const GLfloat zeta = v->zoom;
+    GLfloat zeta = v->zoom;
 
     // In other words, the zoom factor depends on both the shape of
     // the AABB and that of the viewport.  We capture the relationship
@@ -191,7 +191,7 @@ void refresh_viewport(struct viewport *v, struct window *w)
     // of the translated AABB.
 
     GLfloat P[16] = {};
-    GLfloat n, f;
+    GLfloat n, f, rho;
 
     {
         const GLfloat x = fmaxf(
@@ -208,9 +208,9 @@ void refresh_viewport(struct viewport *v, struct window *w)
         f = -n;
     }
 
-    // Now we can turn to the calculation of the projection matrix.
-
     const GLfloat nf = n - f;
+
+    // Now we can turn to the calculation of the projection matrix.
 
     if (v->projection == ORTHOGRAPHIC) {
         // For orthographic projection, we use `dim` to define the
@@ -222,6 +222,15 @@ void refresh_viewport(struct viewport *v, struct window *w)
         // first two components of the diagonal (where the viewport
         // width is in the denominator, so we end up with
         // $\zeta\over{dim}$).
+
+        // Although camera distance makes no visible difference, we
+        // still translate the model to prevent the viewing volume
+        // from spanning the XY plane.
+
+        rho = 1.0f - n;
+
+        n += rho;
+        f += rho;
 
         P[0] = 2.0f * zeta / dim;
         P[5] = P[0] / a;
@@ -240,15 +249,28 @@ void refresh_viewport(struct viewport *v, struct window *w)
         // distance to get a zoom factor $\zeta$, would be
         // $-\frac{dim}{2\zeta\tan{\phi\over{2}}}$.
 
-        // We agument this by half the depth of the AABB to make the
-        // "front" fill up the viewport as prescribed by the requested
-        // zoom factor.  This affords a better match between
-        // perspective and orthographic projections.
+        // We agument this to shift the object so that the "front"
+        // fill up the viewport as prescribed by the requested zoom
+        // factor.  This affords a better match between perspective
+        // and orthographic projections.
 
         const GLfloat phi_2 = v->angle;
         const GLfloat tanphi_2 = tan(phi_2);
-        const GLfloat rho = dim / (2.0f * zeta * tanphi_2)
-            + (v->object->bounds[5] - v->object->bounds[2]) / 2.0f;
+
+        rho = dim / (2.0f * zeta * tanphi_2) - v->object->bounds[2];
+
+        // We also clamp the zoom factor, so as to prevent the near
+        // plane from slipping into the positive Z halfspace.
+
+        const GLfloat n_min = -nf / 1000.0f;
+
+        if ((n + rho) < n_min) {
+            rho = n_min - n;
+            zeta = dim / (rho + v->object->bounds[2]) / 2.0f / tanphi_2;
+        }
+
+        n += rho;
+        f += rho;
 
         // Given the FOV half-angle `phi_2`, we can compute the right
         // x-coordinate of the projection plane as $\tan{\phi\over{2}}
@@ -258,23 +280,20 @@ void refresh_viewport(struct viewport *v, struct window *w)
         // also push back the clipping planes by the camera distance
         // $rho$.
 
-        n = fmaxf(n + rho, nf / -1000.0f);
-        f += rho;
-
         P[0] = 1.0 / tanphi_2;
         P[5] = P[0] / a;
         P[10] = (n + f) / nf;
         P[11] = 2.0f * n * f / nf;
         P[14] = -1.0f;
+    }
 
-        // We apply our translation by $(0, 0, -\rho)$ by
-        // post-multiplying the projection matrix $P$ with the
-        // required translation matrix.
+    // We apply our translation by $(0, 0, -\rho)$ by
+    // post-multiplying the projection matrix $P$ with the
+    // required translation matrix.
 
-        for (int i = 0; i < 4; i++) {
-            GLfloat *p = &P[4 * i];
-            p[3] -= rho * p[2];
-        }
+    for (int i = 0; i < 4; i++) {
+        GLfloat *p = &P[4 * i];
+        p[3] -= rho * p[2];
     }
 
     // Finally, we concatenate the projection and rotation matrices
@@ -291,4 +310,5 @@ void refresh_viewport(struct viewport *v, struct window *w)
 
     v->near = n;
     v->far = f;
+    v->zoom = zeta;
 }
