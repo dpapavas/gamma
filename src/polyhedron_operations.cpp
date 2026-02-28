@@ -1052,11 +1052,14 @@ void Octahedron_operation::evaluate()
     }
 }
 
+// A cuboid, or, as a convenience when the height is specified as
+// zero, a single rectangular face (a cuboid of zero height).
+
 void Cuboid_operation::evaluate()
 {
     typedef Polyhedron::Point Point;
 
-    if (a <= 0 || b <= 0 || c <= 0) {
+    if (a <= 0 || b <= 0 || c < 0) {
         CGAL_error_msg("cannot make cuboid with non-positive side lengths");
     }
 
@@ -1065,6 +1068,17 @@ void Cuboid_operation::evaluate()
     FT k = a / 2, l = b / 2 , m = c / 2;
 
     polyhedron = std::make_shared<Polyhedron>();
+
+    if (c == 0) {
+        auto h = polyhedron->make_triangle(
+            Point(-k, l, 0),
+            Point(-k, -l, 0),
+            Point(k, -l, 0));
+
+        polyhedron->split_edge(h)->vertex()->point() = Point(k, l, 0);
+
+        return;
+    }
 
     auto h = polyhedron->make_tetrahedron(
         Point(k, -l, -m),

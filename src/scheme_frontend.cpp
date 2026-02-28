@@ -992,6 +992,20 @@ DEFINE_SELECTOR(
 
 #undef DEFINE_SELECTOR
 
+// Another useful category is feature-based selections.
+
+static SCM faces_by_sharpness(SCM s, SCM t)
+{
+    FT theta;
+    std::vector<int> v;
+
+    pop_argument(1, s, theta);
+    pop_arguments(2, t, v);
+
+    return to_scheme<std::shared_ptr<Face_selector>>(
+        FACES_BY_SHARPNESS(theta, v));
+}
+
 // Selections can also be derived by expanding or contracting.
 
 template<int SIGN>
@@ -1934,6 +1948,11 @@ static void define_selection(void *)
     DEFINE_FOREIGN_PROC("expand-selection", 2, 0, 0, relative_selection<+1>);
     DEFINE_FOREIGN_PROC("contract-selection", 2, 0, 0, relative_selection<-1>);
     DEFINE_FOREIGN_PROC("complement", 1, 0, 0, complement);
+
+    DEFINE_FOREIGN_PRIMITIVE(
+        "edges-by-sharpness", EDGES_BY_SHARPNESS<>, std::shared_ptr<Edge_selector>, 1);
+
+    DEFINE_FOREIGN_PROC("faces-by-sharpness", 1, 0, 1, faces_by_sharpness);
 }
 
 static void define_polygons(void *)

@@ -219,6 +219,11 @@ void Deflate_operation<T>::evaluate()
         skeletonization.contract();
     }
 
+    if (selector) {
+        this->annotations.insert(
+            {"constrained", std::to_string(constrained.size())});
+    }
+
     this->polyhedron = std::make_shared<T>();
     CGAL::copy_face_graph(skeletonization.meso_skeleton(), *this->polyhedron);
 }

@@ -155,6 +155,19 @@ inline std::shared_ptr<R> EDGES_PARTIALLY_IN(const std::shared_ptr<T> &p)
     }
 }
 
+template<typename R = Edge_selector>
+inline std::shared_ptr<R> EDGES_BY_SHARPNESS(const FT &theta)
+{
+    return std::make_shared<Sharp_edge_selector>(theta);
+}
+
+template<typename R = Face_selector>
+inline std::shared_ptr<R> FACES_BY_SHARPNESS(
+    const FT &theta, const std::vector<int> &is)
+{
+    return std::make_shared<Sharp_patch_face_selector>(theta, is);
+}
+
 #define DEFINE_SELECTOR_SET_OPERATIONS(WHAT, WHICH)                     \
 template<typename R = WHAT ##_selector>                                 \
 inline std::shared_ptr<R> JOIN(                                         \

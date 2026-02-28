@@ -33,15 +33,31 @@
 
 #include <CGAL/draw_polyhedron.h>
 #include <CGAL/draw_surface_mesh.h>
+#include <CGAL/Polygon_mesh_processing/compute_normal.h>
 
-// These are (selector_type, mesh_type) tuples.
+// Document: program
+
+// # Selection Tests
+
+// These tests set up geometry and apply selections, testing the
+// results either by counting or by examining their spatial
+// characteristics.
 
 using types = boost::mpl::list<Polyhedron, Surface_mesh>;
 
 BOOST_FIXTURE_TEST_SUITE(selection, Coarse_evaluation_fixture)
 
+
+// ## Bounded Selections
+
+// We group tests by the geometric primitive their applied on.
+
 static const FT epsilon(FT::ET(1, 1'000'000));
 #define TEST_SELECTION(S, N) BOOST_TEST(S->apply(M).size() == N);
+
+// ### Bounding Volume Tests on Cuboids
+
+// We use a cuboid to test:
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
 {
@@ -49,7 +65,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
     evaluate_operations();
     auto &M = *result.value;
 
-    // Plane
+    //   1. bounding planes,
 
     {
         const auto V = BOUNDING_PLANE(0, 0, 1, -1);
@@ -69,7 +85,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 0);
     }
 
-    // Halfspace interior
+    //   2. bouding halfspaces and
 
     {
         const auto V = BOUNDING_HALFSPACE_INTERIOR(0, 0, 1, -1);
@@ -89,8 +105,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 8);
     }
 
-    // Halfspace
-
     {
         const auto V = BOUNDING_HALFSPACE(0, 0, 1, -1);
         const auto W = BOUNDING_HALFSPACE(0, 0, 1, -1 + epsilon);
@@ -109,7 +123,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 8);
     }
 
-    // Box
+    //   3. Bounding boxes.
 
     {
         const auto V = BOUNDING_BOX(2, 2, 2);
@@ -128,8 +142,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
         TEST_SELECTION(EDGES_IN(W), 0);
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 0);
     }
-
-    // Box interior
 
     {
         const auto V = TRANSFORM(
@@ -151,8 +163,6 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
         TEST_SELECTION(EDGES_IN(W), 0);
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 3);
     }
-
-    // Box boundary
 
     {
         const auto V = TRANSFORM(
@@ -176,6 +186,10 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cuboid, T, types)
     }
 }
 
+// ### Bounding Volume Tests on Cylinder
+
+// We use a cylinder to test selections using bounding cylinders:
+
 BOOST_AUTO_TEST_CASE_TEMPLATE(on_cylinder, T, types)
 {
     const auto &result = evaluate(
@@ -183,7 +197,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cylinder, T, types)
     evaluate_operations();
     auto &M = *result.value;
 
-    // Cylinder
+    //   1. Bounding cylinder,
 
     {
         const auto V = BOUNDING_CYLINDER(2, 2);
@@ -203,7 +217,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cylinder, T, types)
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 125 + 132);
     }
 
-    // Cylinder interior
+    //   2. interior and
 
     {
         const auto V = BOUNDING_CYLINDER_INTERIOR(2, 2);
@@ -223,7 +237,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cylinder, T, types)
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 132);
     }
 
-    // Cylinder boundary
+    //   3. boundary.
 
     {
         const auto V = BOUNDING_CYLINDER_BOUNDARY(2, 2);
@@ -244,6 +258,11 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_cylinder, T, types)
     }
 }
 
+// ### Bounding Volume Tests on Sphere
+
+// Similarly, a sphere is used to test selections using bounding
+// spheres:
+
 BOOST_AUTO_TEST_CASE_TEMPLATE(on_sphere, T, types)
 {
     const auto &result = evaluate(
@@ -251,7 +270,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_sphere, T, types)
     evaluate_operations();
     auto &M = *result.value;
 
-    // Sphere
+    //   1. Bounding sphere,
 
     {
         const auto V = BOUNDING_SPHERE(2);
@@ -271,7 +290,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_sphere, T, types)
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 1920);
     }
 
-    // Sphere interior
+    //   2. interior and
 
     {
         const auto V = BOUNDING_SPHERE_INTERIOR(2);
@@ -291,7 +310,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_sphere, T, types)
         TEST_SELECTION(EDGES_PARTIALLY_IN(W), 1920 * 2);
     }
 
-    // Sphere boundary
+    //   3. boundary.
 
     {
         const auto V = BOUNDING_SPHERE_BOUNDARY(2);
@@ -314,13 +333,19 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(on_sphere, T, types)
 
 #undef TEST_SELECTION
 
-// ### Relative Selection Tests (Expansion and Contraction)
+// ## Relative Selection Tests (Expansion and Contraction)
+
+// Here we test relative selections, by performing contractions and
+// expansions on basic selections and testing the results alone, or
+// in combinations.
+
+// ### Relative Vertex Selection Tests
+
+// We create a a cuboid with sections for $z = -2 ... 2$, then:
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(relative_vertices, T, types)
 {
     std::vector<Aff_transformation_3> v;
-
-    // A cuboid with secctions for z = -2 .. 2.
 
     for (int i = -2; i <= 2 ; i++) {
         v.push_back(TRANSLATION_3(0, 0, i));
@@ -331,13 +356,13 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_vertices, T, types)
     evaluate_operations();
     auto &P = *result.value;
 
-    // a: plane z = 0
+    //   1. select the center vertices, on plane $z = 0$,
 
     const auto a = VERTICES_IN(BOUNDING_PLANE(0, 0, 1, 0));
 
     BOOST_TEST(a->apply(P).size() == 4);
 
-    // b: expanded to plane -1 <= z <= 1
+    //   2. expand this to include planes $-1 <= z <= 1$,
 
     const auto b = RELATIVE_SELECTION(a, 1);
     auto bv = b->apply(P);
@@ -346,7 +371,8 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_vertices, T, types)
 
     BOOST_TEST(bv.size() == 12);
 
-    // c: same, but through joining (so it should be sorted)
+    //   3. make the same selection, but through joining (so it should
+    //   be sorted),
 
     const auto c = JOIN({
             a,
@@ -355,13 +381,13 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_vertices, T, types)
 
     BOOST_TEST(c->apply(P) == bv);
 
-    // d: expanded to all vertices
+    //   4. expanded the selection to all vertices,
 
     const auto d = RELATIVE_SELECTION(a, 2);
 
     BOOST_TEST(d->apply(P).size() == 20);
 
-    // e: planes z = +/- 2
+    //   5. select planes $z = \pm 2$,
 
     const auto e = COMPLEMENT(b);
     const auto ev = e->apply(P);
@@ -369,20 +395,20 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_vertices, T, types)
     BOOST_TEST(ev.size() == 8);
     BOOST_TEST(INTERSECTION({b, e})->apply(P).size() == 0);
 
-    // f: same as b, but by removing the end planes
+    //   6. select the same vertices as in as `b`, but by removing the end planes,
 
     const auto f = DIFFERENCE({d, e});
 
     BOOST_TEST(f->apply(P) == bv);
 
-    // g: planes z != 0
+    //   7. select all planes with $z \neq 0$ and finally,
 
     const auto g = DIFFERENCE({d, a});
 
     BOOST_TEST(g->apply(P).size() == 16);
     BOOST_TEST(INTERSECTION({g, e})->apply(P) == ev);
 
-    // h: same as e, but through contraction
+    //   8. make the same selection as in `e`, but through contraction.
 
     const auto h = RELATIVE_SELECTION(g, -1);
     auto hv = h->apply(P);
@@ -391,6 +417,10 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_vertices, T, types)
 
     BOOST_TEST(hv == ev);
 }
+
+// ### Relative Face Selection Tests
+
+// Starting with the same sectioned cuboid, we:
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 {
@@ -405,13 +435,13 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
     evaluate_operations();
     auto &P = *result.value;
 
-    // a: planes -1 <= z <= 1
+    //   1. select faces in planes $-1 <= z <= 1$,
 
     const auto a = FACES_PARTIALLY_IN(BOUNDING_PLANE(0, 0, 1, 0));
 
     BOOST_TEST(a->apply(P).size() == 16);
 
-    // b: expanded to -2 <= z <= 2 (but w/o the caps)
+    //   2. expand to $-2 <= z <= 2$ (but without the caps),
 
     const auto b = RELATIVE_SELECTION(a, 1);
     auto bv = b->apply(P);
@@ -420,7 +450,8 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 
     BOOST_TEST(bv.size() == 32);
 
-    // c: same, but through joining (so it should be sorted)
+    //   3. make the same selection, but through joining (so it should
+    //   be sorted),
 
     const auto c = JOIN({
             a,
@@ -429,7 +460,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 
     BOOST_TEST(c->apply(P) == bv);
 
-    // d: expanded to all faces
+    //   4. expand it to all faces, then finally
 
     const auto d = RELATIVE_SELECTION(a, 2);
     auto dv = d->apply(P);
@@ -438,7 +469,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 
     BOOST_TEST(dv.size() == 36);
 
-    // e: caps only
+    //   5. select only the caps.
 
     const auto e = RELATIVE_SELECTION(DIFFERENCE({d, a}), -1);
     auto ev = e->apply(P);
@@ -450,6 +481,10 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
     BOOST_TEST(JOIN({b, e})->apply(P) == dv);
     BOOST_TEST(COMPLEMENT(b)->apply(P) == ev);
 }
+
+// ### Relative Edge Selection Tests
+
+// Starting with the same geometry, we:
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 {
@@ -464,13 +499,14 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
     evaluate_operations();
     auto &P = *result.value;
 
-    // a: planes -1 < z < 1 (not including edges on the planes)
+    //   1. select edges between the planes $-1 < z < 1$ (not
+    //   including edges on the planes),
 
     const auto a = EDGES_PARTIALLY_IN(BOUNDING_PLANE(0, 0, 1, 0));
 
     BOOST_TEST(a->apply(P).size() == 20);
 
-    // b: expanded to -2 < z < 2 (but w/o the caps)
+    //   2. expand it to $-2 < z < 2$ (but without the caps),
 
     const auto b = RELATIVE_SELECTION(a, 1);
     auto bv = b->apply(P);
@@ -479,7 +515,8 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 
     BOOST_TEST(bv.size() == 44);
 
-    // c: same, but through joining (so it should be sorted)
+    //   3. make the same selection, but through joining (so it should
+    //   be sorted),
 
     const auto c = JOIN({
             a,
@@ -488,7 +525,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 
     BOOST_TEST(c->apply(P) == bv);
 
-    // d: expanded to all vertices
+    //   4. expand it to all edges, the finally
 
     const auto d = RELATIVE_SELECTION(a, 2);
     auto dv = d->apply(P);
@@ -497,7 +534,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 
     BOOST_TEST(dv.size() == 54);
 
-    // e: caps only
+    //   5. select only the edges of the caps.
 
     const auto e = RELATIVE_SELECTION(DIFFERENCE({d, a}), -1);
     auto ev = e->apply(P);
@@ -512,78 +549,76 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 
 // ### Selection Conversion (Vertices in Selected Faces, etc.)
 
+// Here we test conversion between selections of different elements.
+
 BOOST_AUTO_TEST_CASE_TEMPLATE(conversion, T, types)
 {
     std::vector<Aff_transformation_3> v;
+
+    // Using a cuboid we test:
 
     const auto &result = evaluate(CONVERT_TO<T>(CUBOID(2, 2, 2)));
     evaluate_operations();
     auto &P = *result.value;
 
-    // From vertices
-
-    // a: vertices on plane z = 1, converted to faces
+    //   1. vertices on plane $z = 1$, converted to faces,
 
     const auto a = FACES_IN(VERTICES_IN(BOUNDING_PLANE(0, 0, 1, -1)));
 
     BOOST_TEST(a->apply(P).size() == 1);
 
-    // b: vertices on plane z = -1, converted to faces (partial)
+    //   2. vertices on plane $z = -1$, converted to faces (partial),
 
     const auto b = FACES_PARTIALLY_IN(VERTICES_IN(BOUNDING_PLANE(0, 0, 1, 1)));
 
     BOOST_TEST(b->apply(P).size() == 5);
     BOOST_TEST(INTERSECTION({a, b})->apply(P).size() == 0);
 
-    // c: vertices on plane z = 1, converted to edges
+    //   3. vertices on plane $z = 1$, converted to edges,
 
     const auto c = EDGES_IN(VERTICES_IN(BOUNDING_PLANE(0, 0, 1, -1)));
 
     BOOST_TEST(c->apply(P).size() == 4);
 
-    // d: vertices on plane z = -1, converted to edges (partial)
+    //   4. vertices on plane $z = -1$, converted to edges (partial),
 
     const auto d = EDGES_PARTIALLY_IN(VERTICES_IN(BOUNDING_PLANE(0, 0, 1, 1)));
 
     BOOST_TEST(d->apply(P).size() == 8);
     BOOST_TEST(INTERSECTION({c, d})->apply(P).size() == 0);
 
-    // From faces
-
-    // e: faces on plane z = 1, converted to vertices
+    //   5. faces on plane $z = 1$, converted to vertices,
 
     const auto e = VERTICES_IN(FACES_IN(BOUNDING_PLANE(0, 0, 1, -1)));
 
     BOOST_TEST(e->apply(P).size() == 4);
 
-    // f: faces on plane z = 1, converted to edges
+    //   6. faces on plane $z = 1$, converted to edges,
 
     const auto f = EDGES_IN(FACES_IN(BOUNDING_PLANE(0, 0, 1, -1)));
 
     BOOST_TEST(f->apply(P).size() == 4);
 
-    // g: faces on plane z = -1, converted to edges (partial)
+    //   7. faces on plane $z = -1$, converted to edges (partial),
 
     const auto g = EDGES_PARTIALLY_IN(FACES_IN(BOUNDING_PLANE(0, 0, 1, 1)));
 
     BOOST_TEST(g->apply(P).size() == 8);
     BOOST_TEST(INTERSECTION({f, g})->apply(P).size() == 0);
 
-    // From edges
-
-    // h: edges on plane z = 1, converted to vertices
+    //   8. edges on plane $z = 1$, converted to vertices,
 
     const auto h = VERTICES_IN(EDGES_IN(BOUNDING_PLANE(0, 0, 1, -1)));
 
     BOOST_TEST(h->apply(P).size() == 4);
 
-    // i: edges on plane z = 1, converted to faces
+    //   9. edges on plane $z = 1$, converted to faces,
 
     const auto i = FACES_IN(EDGES_IN(BOUNDING_PLANE(0, 0, 1, -1)));
 
     BOOST_TEST(i->apply(P).size() == 1);
 
-    // j: edges on plane z = -1, converted to faces (partial)
+    //   10. edges on plane $z = -1$, converted to faces (partial),
 
     const auto j = FACES_PARTIALLY_IN(EDGES_IN(BOUNDING_PLANE(0, 0, 1, 1)));
 
@@ -591,7 +626,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(conversion, T, types)
     BOOST_TEST(INTERSECTION({i, j})->apply(P).size() == 0);
 }
 
-// ### Bounding Volume Flush Operations Tests
+// ## Bounding Volume Flush Operations Tests
 
 // We transform and then flush various shapes, then apply a matching
 // transformation and flush to the corresponding bounding shape and
@@ -683,5 +718,118 @@ DEFINE_FLUSH_TEST_CASE(intersection,
                            BOUNDING_BOX(6, 6, 6)}), 0)
 
 #undef DEFINE_FLUSH_TEST_CASE
+
+// ## Feature-Based Selection Tests
+
+// To test sharp edge detection, we create a square bipyramid, with
+// side length 2 and height 1.  The edges making up the base therefore
+// share faces that form a right angle.  The edges that are incident
+// to the tips share faces at 60 degree angles.
+
+// We therefore test that:
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_edges, T, types)
+{
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYHEDRON_HULL_OPEN();
+            h->push_back(CUBOID(2, 2, 0));
+            h->push_back(Point_3(0, 0, 1));
+            h->push_back(Point_3(0, 0, -1));
+            return CONVERT_TO<T>(POLYHEDRON_HULL_CLOSE(h));
+        });
+
+    evaluate_operations();
+    auto &P = *result.value;
+    const auto map = CGAL::get(CGAL::vertex_point, P);
+
+    //   1. There are no edges sharper than 90 degrees.
+
+    {
+        auto v = EDGES_BY_SHARPNESS(91)->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+    }
+
+    //   2. For angles between 90 and 60 degrees, only the base edges
+    //   are selected.
+
+    for (int theta: {90, 61}) {
+        auto v = EDGES_BY_SHARPNESS(theta)->apply(P);
+
+        BOOST_TEST(v.size() == 4);
+        for (auto &x: v) {
+            BOOST_TEST(boost::get(map, CGAL::target(x, P)).z() == FT(0));
+        }
+    }
+
+    //   3. All edges are sharper than 60 degrees.
+
+    {
+        auto v = EDGES_BY_SHARPNESS(60)->apply(P);
+
+        BOOST_TEST(v.size() == 12);
+    }
+}
+
+// To test selection of sharp face patches, we use similar geometry,
+// only now the central section of the bipyramid has some width.  Its
+// edges therefore now have an angle of 45 degrees.
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_faces, T, types)
+{
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYHEDRON_HULL_OPEN();
+            h->push_back(CUBOID(2, 2, 2));
+            h->push_back(Point_3(0, 0, 2));
+            h->push_back(Point_3(0, 0, -2));
+            return CONVERT_TO<T>(POLYHEDRON_HULL_CLOSE(h));
+        });
+
+    evaluate_operations();
+    auto &P = *result.value;
+
+    Vector_3 n(0, 0, 0);
+    for (int i = 0; i < 4; i++) {
+        // Using a threshold of 60 degrees therefore now splits the
+        // geometry along the vertical edges into four parts, each
+        // containing four faces (one on each tip plus two triangular
+        // faces making up the square side).
+
+        auto v = FACES_BY_SHARPNESS(60, {i + 1})->apply(P);
+
+        BOOST_TEST(v.size() == 4);
+
+        Vector_3 n_i(0, 0, 0);
+
+        for (auto &x: v) {
+            n_i += CGAL::Polygon_mesh_processing::compute_face_normal(x, P);
+        }
+
+        // The vertical components of the tip face normals cancel out
+        // and the sum thefore only has one non-zero component, along
+        // the positive or negative X or Y axis.
+
+        BOOST_TEST(n_i.z() == FT(0));
+        BOOST_TEST((n_i.x() == FT(0) || n_i.y() == FT(0)));
+
+        n += n_i;
+    }
+
+    // Since the four parts are pairwise opposite, the sum of the
+    // normals should vanish.
+
+    BOOST_TEST(n == Vector_3(0, 0, 0));
+
+    // We also test selection of more than one patches.  Patches 1 and
+    // 4 should be opposed and hence have complementary normals.
+
+    for (auto &x: FACES_BY_SHARPNESS(60, {1, 4})->apply(P)) {
+        n += CGAL::Polygon_mesh_processing::compute_face_normal(x, P);
+    }
+
+    BOOST_TEST(n == Vector_3(0, 0, 0));
+}
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -394,6 +394,21 @@ static int relative_selection(lua_State *L)
     return 1;
 }
 
+static int faces_by_sharpness(lua_State *L)
+{
+    const FT theta = checkrational(L, 1);
+    const int h = lua_gettop(L);
+    std::vector<int> v;
+    v.reserve(h - 1);
+
+    for (int i = 2; i <= h; i++) {
+        v.push_back(luaL_checkinteger(L, i));
+    }
+
+    tolua<std::shared_ptr<Face_selector>>(L, FACES_BY_SHARPNESS(theta, v));
+    return 1;
+}
+
 static int vertices_in(lua_State *L)
 {
     if (luaL_testudata(L, 1, "face_selector")) {
@@ -1452,6 +1467,11 @@ static int open_selection(lua_State *L)
 
         {"expand_selection", relative_selection<1>},
         {"contract_selection", relative_selection<-1>},
+
+        {"edges_by_sharpness",
+         primitive<EDGES_BY_SHARPNESS<>, std::shared_ptr<Edge_selector>, 1>},
+        {"faces_by_sharpness", faces_by_sharpness},
+
         {"complement", complement},
 
         {nullptr, nullptr}};

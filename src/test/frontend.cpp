@@ -1120,7 +1120,10 @@ WITH_SOURCE("lua",
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
             "    s.contract_selection("
-            "        s.faces_in(v.bounding_halfspace(0, 0, 1, -1)), 1))")
+            "        s.faces_in(v.bounding_halfspace(0, 0, 1, -1)), 1))"
+            "op.remesh(h.cuboid(2, 2, 2), s.edges_by_sharpness(90), 1)"
+            "op.color_selection("
+            "h.cuboid(2, 2, 2), s.faces_by_sharpness(45, 1, 2, 3))")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
             "        (gamma polyhedra) (gamma operations))"
@@ -1149,7 +1152,9 @@ WITH_SOURCE("scheme",
             "(color-selection"
             " (cuboid 2 2 2)"
             " (contract-selection"
-            "  (faces-in (bounding-halfspace 0 0 1 -1)) 1))")
+            "  (faces-in (bounding-halfspace 0 0 1 -1)) 1))"
+            "(remesh (cuboid 2 2 2) (edges-by-sharpness 90) 1)"
+            "(color-selection (cuboid 2 2 2) (faces-by-sharpness 45 1 2 3))")
 EXPECTING("cuboid(2,2,2)",
           "mesh(cuboid(2,2,2))",
           "color_selection(mesh(cuboid(2,2,2)),"
@@ -1165,7 +1170,10 @@ EXPECTING("cuboid(2,2,2)",
           "color_selection(mesh(cuboid(2,2,2)),"
           "faces_in(bounding_plane(plane(0,0,1,-1))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "vertices_in(bounding_plane(plane(0,0,1,-1))),55,55,55,255)")
+          "vertices_in(bounding_plane(plane(0,0,1,-1))),55,55,55,255)",
+          "remesh(cuboid(2,2,2),edges_by_sharpness(90),1,1)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "faces_by_sharpness(45,1,2,3),55,55,55,255)")
 
 #define EXPECTING_SELECTION_BOOLEAN_TAGS                                \
 EXPECTING("cuboid(2,2,2)",                                              \

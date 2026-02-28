@@ -16,6 +16,7 @@
 // this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include <CGAL/boost/graph/selection.h>
+#include <CGAL/Polygon_mesh_processing/detect_features.h>
 
 #include "kernel.h"
 #include "iterators.h"
@@ -365,6 +366,91 @@ std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
 Relative_edge_selector::apply(const Surface_mesh &mesh) const
 {
     return expand_or_contract_selection(mesh, *selector, steps);
+}
+
+// ## Feature-Based Selections
+
+// This selection returns edges whose incident faces have normals that
+// form an angle equal to, or larger than the specified threshold.
+// Parallel faces have zero angle, so specifying 0 will select all
+// edges while specifying, for instance 90, will select edges between
+// faces that are at right angles, or sharper still.
+
+template<typename T>
+static std::vector<typename boost::graph_traits<T>::edge_descriptor>
+select_sharp_edges(T &mesh, const FT &angle)
+{
+    using E = typename boost::graph_traits<T>::edge_descriptor;
+
+    std::unordered_set<E> set;
+
+    CGAL::Polygon_mesh_processing::detect_sharp_edges(
+        mesh, angle, CGAL::Boolean_property_map(set));
+
+    return std::vector(set.cbegin(), set.cend());
+}
+
+std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
+Sharp_edge_selector::apply(Polyhedron &mesh) const
+{
+    return select_sharp_edges(mesh, angle);
+}
+
+std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
+Sharp_edge_selector::apply(const Surface_mesh &mesh) const
+{
+    return select_sharp_edges(mesh, angle);
+}
+
+// The set of "sharp" edges describe above defines a segmentation of
+// the mesh into patches of faces lying between "sharp" edges.  This
+// selection returns faces contained in one or more such patches.  The
+// specified patches, but be positive integers.
+
+template<typename F, typename T>
+static std::vector<F> select_sharp_patch_faces(
+    T &mesh, const FT &angle, const std::vector<int> &patches)
+{
+    typedef typename boost::graph_traits<T>::edge_descriptor edge_descriptor;
+    typedef typename boost::graph_traits<T>::face_descriptor face_descriptor;
+
+    std::vector<F> v;
+    std::unordered_set<edge_descriptor> set;
+    std::map<face_descriptor, std::size_t> face_map;
+
+#ifndef NDEBUG
+    std::size_t n =
+#endif
+        CGAL::Polygon_mesh_processing::sharp_edges_segmentation(
+            mesh, angle,
+            CGAL::Boolean_property_map(set),
+            boost::associative_property_map<std::map<face_descriptor, std::size_t>>(
+                face_map));
+
+    for (const auto &[f, i]: face_map) {
+        assert(i - 1 < n);
+
+        if (std::find(patches.begin(), patches.end(), i) != patches.end()) {
+            v.push_back(f);
+        }
+    }
+
+    v.shrink_to_fit();
+    return v;
+}
+
+std::vector<Polyhedron::Facet_handle>
+Sharp_patch_face_selector::apply(Polyhedron &mesh) const
+{
+    return select_sharp_patch_faces<Polyhedron::Facet_handle>(
+        mesh, angle, patches);
+}
+
+std::vector<Surface_mesh::Face_index>
+Sharp_patch_face_selector::apply(const Surface_mesh &mesh) const
+{
+    return select_sharp_patch_faces<Surface_mesh::Face_index>(
+        mesh, angle, patches);
 }
 
 // Edges from vertices

@@ -219,6 +219,9 @@ void Remesh_operation<T>::evaluate()
                 CGAL::parameters::edge_is_constrained_map(
                     is_constrained).number_of_iterations(
                     iterations));
+
+            this->annotations.insert(
+                {"constrained", std::to_string(constrained.size())});
         } else {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
                 v, CGAL::to_double(target), *this->polyhedron,
@@ -238,6 +241,9 @@ void Remesh_operation<T>::evaluate()
                 CGAL::parameters::edge_is_constrained_map(
                     is_constrained).number_of_iterations(
                         iterations));
+
+            this->annotations.insert(
+                {"constrained", std::to_string(constrained.size())});
         } else {
             CGAL::Polygon_mesh_processing::isotropic_remeshing(
                 CGAL::faces(*this->polyhedron),

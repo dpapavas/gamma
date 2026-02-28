@@ -109,6 +109,42 @@ public:
         const Surface_mesh &mesh) const override;
 };
 
+// Feature-based
+
+class Sharp_edge_selector: public Edge_selector {
+    FT angle;
+
+public:
+    Sharp_edge_selector(const FT &theta): angle(theta) {}
+
+    std::string describe() const {
+        return compose_tag("edges_by_sharpness", angle);
+    }
+
+    std::vector<boost::graph_traits<Polyhedron>::edge_descriptor> apply(
+        Polyhedron &mesh) const override;
+    std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor> apply(
+        const Surface_mesh &mesh) const override;
+};
+
+class Sharp_patch_face_selector: public Face_selector {
+    FT angle;
+    const std::vector<int> patches;
+
+public:
+    Sharp_patch_face_selector(const FT &theta, const std::vector<int> &is):
+        angle(theta), patches(is) {}
+
+    std::string describe() const {
+        return compose_tag("faces_by_sharpness", angle, patches);
+    }
+
+    std::vector<Polyhedron::Facet_handle> apply(
+        Polyhedron &mesh) const override;
+    std::vector<Surface_mesh::Face_index> apply(
+        const Surface_mesh &mesh) const override;
+};
+
 // Relative
 
 class Relative_face_selector: public Face_selector {
