@@ -291,6 +291,18 @@ inline std::shared_ptr<R> BOUNDING_CYLINDER_BOUNDARY(const FT &r, const FT &h)
 }
 
 template<typename R = Bounding_volume>
+inline std::shared_ptr<R> BOUNDARY(const std::shared_ptr<Bounding_volume> &p)
+{
+    return p->mutate(Bounding_volume::BOUNDARY);
+}
+
+template<typename R = Bounding_volume>
+inline std::shared_ptr<R> INTERIOR(const std::shared_ptr<Bounding_volume> &p)
+{
+    return p->mutate(Bounding_volume::OPEN);
+}
+
+template<typename R = Bounding_volume>
 inline std::shared_ptr<R> COMPLEMENT(
     const std::shared_ptr<Bounding_volume> &p)
 {
@@ -778,6 +790,14 @@ inline std::shared_ptr<R> BOUNDARY(
     const std::shared_ptr<Polyhedron_operation<T>> &p)
 {
     return make_and_map<Polyhedron_boundary_operation, R>(
+        CONVERT_TO<Nef_polyhedron>(p));
+}
+
+template<typename T, typename R = Polyhedron_operation<Nef_polyhedron>>
+inline std::shared_ptr<R> INTERIOR(
+    const std::shared_ptr<Polyhedron_operation<T>> &p)
+{
+    return make_and_map<Polyhedron_interior_operation, R>(
         CONVERT_TO<Nef_polyhedron>(p));
 }
 

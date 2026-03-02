@@ -191,6 +191,19 @@ public:
     void evaluate() override;
 };
 
+class Polyhedron_interior_operation:
+    public Unary_operation<Polyhedron_operation<Nef_polyhedron>> {
+
+public:
+    using Unary_operation<Polyhedron_operation<Nef_polyhedron>>::Unary_operation;
+
+    std::string describe() const override {
+        return compose_tag("interior", operand);
+    }
+
+    void evaluate() override;
+};
+
 class Polyhedron_symmetric_difference_operation:
     public Binary_operation<Polyhedron_operation<Nef_polyhedron>> {
 

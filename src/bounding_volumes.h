@@ -32,10 +32,12 @@ public:
         UNSPECIFIED
     };
 
-protected:
     Mode mode;
 
-public:
+    virtual std::shared_ptr<Bounding_volume> mutate(Mode m) const {
+        return nullptr;
+    }
+
     virtual std::string describe() const = 0;
     virtual bool contains(const Point_3 &p) const = 0;
     virtual std::shared_ptr<Bounding_volume> transform(
@@ -87,6 +89,12 @@ public:
 
     std::shared_ptr<Bounding_volume> transform(
         const Aff_transformation_3 &T) const override;
+
+    std::shared_ptr<Bounding_volume> mutate(Mode m) const override {
+        auto p = std::make_shared<Bounding_halfspace>(*this);
+        p->mode = m;
+        return p;
+    }
 };
 
 class Bounding_box: public Bounding_volume
@@ -119,6 +127,12 @@ public:
         const Aff_transformation_3 &T) const override;
 
     bool get_bounds(FT (*v)[2]) const override;
+
+    std::shared_ptr<Bounding_volume> mutate(Mode m) const override {
+        auto p = std::make_shared<Bounding_box>(*this);
+        p->mode = m;
+        return p;
+    }
 };
 
 class Bounding_sphere: public Bounding_volume
@@ -150,6 +164,12 @@ public:
         const Aff_transformation_3 &T) const override;
 
     bool get_bounds(FT (*v)[2]) const override;
+
+    std::shared_ptr<Bounding_volume> mutate(Mode m) const override {
+        auto p = std::make_shared<Bounding_sphere>(*this);
+        p->mode = m;
+        return p;
+    }
 };
 
 class Bounding_cylinder: public Bounding_volume
@@ -185,6 +205,12 @@ public:
         const Aff_transformation_3 &T) const override;
 
     bool get_bounds(FT (*v)[2]) const override;
+
+    std::shared_ptr<Bounding_volume> mutate(Mode m) const override {
+        auto p = std::make_shared<Bounding_cylinder>(*this);
+        p->mode = m;
+        return p;
+    }
 };
 
 // Set operations

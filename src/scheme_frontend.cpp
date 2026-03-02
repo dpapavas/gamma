@@ -1095,6 +1095,38 @@ static SCM complement(SCM s)
         1, s, "bounding volume, selector, polygon, or polyhedron");
 }
 
+// These are similar, albeit only defined on volumes and polyhedra.
+
+#define DEFINE_BOUNDARY_OR_INTERIOR_OPERATION(FUNC, OP)                 \
+static SCM FUNC(SCM s)                                                  \
+{                                                                       \
+    if (std::shared_ptr<Bounding_volume> x;                             \
+        try_pop_argument(1, s, x)) {                                    \
+        if (const auto p = OP(x)) {                                     \
+            return to_scheme<std::shared_ptr<Bounding_volume>>(p);      \
+        }                                                               \
+                                                                        \
+        scm_misc_error(                                                 \
+            #FUNC, "cannot take " #FUNC " of this bounding volume",     \
+            SCM_EOL);                                                   \
+    }                                                                   \
+                                                                        \
+    if (Boxed_polyhedron p; try_pop_argument(1, s, p)) {                \
+        return std::visit(                                              \
+            [](auto &&x) {                                              \
+                return to_scheme<Boxed_polyhedron>(OP(x));              \
+            }, p);                                                      \
+    }                                                                   \
+                                                                        \
+    throw wrong_type_exception(                                         \
+        1, s, "bounding volume or polyhedron");                         \
+}
+
+DEFINE_BOUNDARY_OR_INTERIOR_OPERATION(boundary, BOUNDARY)
+DEFINE_BOUNDARY_OR_INTERIOR_OPERATION(interior, INTERIOR)
+
+#undef DEFINE_BOUNDARY_OR_INTERIOR_OPERATION
+
 // ### Functions in the `polygons` Library
 
 // A simple polygon is created from a sequence of at least 3 poionts.
@@ -1147,18 +1179,6 @@ static SCM regular_bipyramid(SCM s, SCM t, SCM u, SCM v)
 // We start with some trivial functions, which are mostly necessary
 // because they operate on boxed pointers and we have to call
 // `std::visit` on them.
-
-static SCM boundary(SCM s)
-{
-    Boxed_polyhedron a;
-
-    pop_argument(1, s, a);
-
-    return std::visit(
-        [](auto &&x) {
-            return to_scheme<Boxed_polyhedron>(BOUNDARY(x));
-        }, a);
-}
 
 static Boxed_polygon offset(Boxed_polygon &p, const FT &delta)
 {
@@ -1947,7 +1967,6 @@ static void define_selection(void *)
 
     DEFINE_FOREIGN_PROC("expand-selection", 2, 0, 0, relative_selection<+1>);
     DEFINE_FOREIGN_PROC("contract-selection", 2, 0, 0, relative_selection<-1>);
-    DEFINE_FOREIGN_PROC("complement", 1, 0, 0, complement);
 
     DEFINE_FOREIGN_PRIMITIVE(
         "edges-by-sharpness", EDGES_BY_SHARPNESS<>, std::shared_ptr<Edge_selector>, 1);
@@ -2013,7 +2032,9 @@ static void define_operations(void *)
     DEFINE_FOREIGN_PROC("union", 1, 0, 1, union_any);
     DEFINE_FOREIGN_PROC("difference", 1, 0, 1, difference_any);
     DEFINE_FOREIGN_PROC("intersection", 1, 0, 1, intersection_any);
+    DEFINE_FOREIGN_PROC("complement", 1, 0, 0, complement);
     DEFINE_FOREIGN_PROC("boundary", 1, 0, 0, boundary);
+    DEFINE_FOREIGN_PROC("interior", 1, 0, 0, interior);
     DEFINE_FOREIGN_PROC("clip", 1, 0, 1, clip_any);
     DEFINE_FOREIGN_PROC("corefine", 1, 0, 1, corefine_any);
 

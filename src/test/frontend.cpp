@@ -1491,6 +1491,76 @@ EXPECTING("cuboid(2,2,2)",
           "edges_partially_in(faces_in(bounding_plane(plane(0,0,1,-1)))),"
           "1,1)")
 
+DEFINE_TEST_CASE(bounding_volume_mutations)
+WITH_SOURCE("lua",
+            "v = require 'gamma.volumes'"
+            "s = require 'gamma.selection'"
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "for _, f in pairs{v.boundary, v.interior} do"
+            "    op.color_selection("
+            "        h.tetrahedron(1, 1, 1),"
+            "        s.vertices_in("
+            "            f(v.bounding_halfspace(1, 2, 3, 4))))"
+            "    op.color_selection("
+            "        h.tetrahedron(1, 1, 1),"
+            "        s.vertices_in("
+            "            f(v.bounding_box(10, 20, 30))))"
+            "    op.color_selection("
+            "        h.tetrahedron(1, 1, 1),"
+            "        s.vertices_in("
+            "            f(v.bounding_sphere(2))))"
+            "    op.color_selection("
+            "        h.tetrahedron(1, 1, 1),"
+            "        s.vertices_in("
+            "            f(v.bounding_cylinder(4, 2))))"
+            "end")
+WITH_SOURCE("scheme",
+            "(import (gamma transformation)"
+            "        (gamma volumes) (gamma selection)"
+            "        (gamma polyhedra) (gamma operations))"
+
+            "(map"
+            " (lambda (f)"
+            "  (begin"
+            "   (color-selection"
+            "    (tetrahedron 1 1 1)"
+            "    (vertices-in (f (bounding-halfspace 1 2 3 4))))"
+            "   (color-selection"
+            "    (tetrahedron 1 1 1)"
+            "    (vertices-in (f (bounding-box 10 20 30))))"
+            "   (color-selection"
+            "    (tetrahedron 1 1 1)"
+            "    (vertices-in (f (bounding-sphere 2))))"
+            "   (color-selection"
+            "    (tetrahedron 1 1 1)"
+            "    (vertices-in (f (bounding-cylinder 4 2))))))"
+            " (list boundary interior))")
+EXPECTING("tetrahedron(1,1,1)",
+          "mesh(tetrahedron(1,1,1))",
+          "color_selection(mesh(tetrahedron(1,1,1)),vertices_in("
+          "bounding_plane(plane(1,2,3,4))),55,55,55,255)",
+          "color_selection(mesh(tetrahedron(1,1,1)),vertices_in("
+          "bounding_box_boundary(plane(-1,0,0,5),plane(1,0,0,5),plane(0,-1,0,10),"
+          "plane(0,1,0,10),plane(0,0,-1,15),plane(0,0,1,15))),55,55,55,255)",
+          "color_selection(mesh(tetrahedron(1,1,1)),vertices_in("
+          "bounding_sphere_boundary(point(0,0,0),2)),55,55,55,255)",
+          "color_selection(mesh(tetrahedron(1,1,1)),vertices_in("
+          "bounding_cylinder_boundary(point(0,0,-1),vector(0,0,1),4,2)),"
+          "55,55,55,255)",
+
+          "color_selection(mesh(tetrahedron(1,1,1)),vertices_in("
+          "bounding_halfspace_interior(plane(1,2,3,4))),55,55,55,255)",
+          "color_selection(mesh(tetrahedron(1,1,1)),vertices_in("
+          "bounding_box_interior(plane(-1,0,0,5),plane(1,0,0,5),plane(0,-1,0,10),"
+          "plane(0,1,0,10),plane(0,0,-1,15),plane(0,0,1,15))),55,55,55,255)",
+          "color_selection(mesh(tetrahedron(1,1,1)),vertices_in("
+          "bounding_sphere_interior(point(0,0,0),2)),55,55,55,255)",
+          "color_selection(mesh(tetrahedron(1,1,1)),vertices_in("
+          "bounding_cylinder_interior(point(0,0,-1),vector(0,0,1),4,2)),"
+          "55,55,55,255)")
+
 // ## Front End Tests for Mesh Operations
 
 // These operations process geometry at the mesh level.  They're

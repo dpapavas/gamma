@@ -1,11 +1,11 @@
 (define-library (gamma selection)
   (export vertices-in faces-in faces-partially-in edges-in edges-partially-in
           expand-selection contract-selection edges-by-sharpness
-          faces-by-sharpness complement
+          faces-by-sharpness
 
           vertices-not-in faces-not-in faces-outside edges-not-in edges-outside)
 
-  (import (gamma %selection) (scheme base))
+  (import (gamma %selection) (only (gamma %operations) complement) (scheme base))
 
   (begin
     (define (vertices-not-in volume) (vertices-in (complement volume)))

@@ -741,6 +741,14 @@ void Polyhedron_boundary_operation::evaluate()
         operand->get_value()->boundary());
 }
 
+void Polyhedron_interior_operation::evaluate()
+{
+    assert(!polyhedron);
+
+    polyhedron = std::make_shared<Nef_polyhedron>(
+        operand->get_value()->interior());
+}
+
 ////////////////////////////
 // Subdivision operations //
 ////////////////////////////

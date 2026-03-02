@@ -4,4 +4,5 @@
           bounding-sphere bounding-sphere-boundary bounding-sphere-interior
           bounding-cylinder bounding-cylinder-boundary
           bounding-cylinder-interior complement)
-  (import (gamma %volumes) (only (gamma %selection) complement)))
+  (import (gamma %volumes)
+          (only (gamma %operations) complement boundary interior)))

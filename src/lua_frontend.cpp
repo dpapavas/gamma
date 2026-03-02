@@ -1346,10 +1346,46 @@ static int complement(lua_State *L)
         return 1;
     }
 
-    luaL_argerror(L, 1, nullptr);
+    luaL_argerror(
+        L, 1, "expected bounding volume, selector, polygon, or polyhedron");
 
     return 1;
 }
+
+#define DEFINE_BOUNDARY_OR_INTERIOR_OPERATION(FUNC, OP)                 \
+static int FUNC(lua_State *L)                                           \
+{                                                                       \
+    if (luaL_testudata(L, 1, "bounding_volume")) {                      \
+        if (const auto p = OP(                                          \
+                fromlua<std::shared_ptr<Bounding_volume>>(L, 1))) {     \
+            tolua<std::shared_ptr<Bounding_volume>>(L, p);              \
+        } else {                                                        \
+            luaL_argerror(                                              \
+                L, 1, "cannot take " #FUNC " of this bounding volume"); \
+        }                                                               \
+                                                                        \
+        return 1;                                                       \
+    }                                                                   \
+                                                                        \
+    if (luaL_testudata(L, 1, "polyhedron")) {                           \
+        std::visit(                                                     \
+            [&L](auto &&x) {                                            \
+                tolua<Boxed_polyhedron>(L, OP(x));                      \
+            },                                                          \
+            fromlua<Boxed_polyhedron>(L, 1));                           \
+                                                                        \
+        return 1;                                                       \
+    }                                                                   \
+                                                                        \
+    luaL_argerror(L, 1, "expected bounding volume or polyhedron");      \
+                                                                        \
+    return 1;                                                           \
+}
+
+DEFINE_BOUNDARY_OR_INTERIOR_OPERATION(boundary, BOUNDARY)
+DEFINE_BOUNDARY_OR_INTERIOR_OPERATION(interior, INTERIOR)
+
+#undef DEFINE_BOUNDARY_OR_INTERIOR_OPERATION
 
 #define PUSH_METATABLE(NAME, T)                  \
     type_name<T> = NAME;                        \
@@ -1448,6 +1484,8 @@ static int open_volumes(lua_State *L)
          std::shared_ptr<Bounding_volume>, 2>},
 
         {"complement", complement},
+        {"boundary", boundary},
+        {"interior", interior},
 
         {nullptr, nullptr}};
 
@@ -1535,6 +1573,8 @@ static int open_operations(lua_State *L)
         {"difference", difference_many},
         {"intersection", intersection_many},
         {"complement", complement},
+        {"boundary", boundary},
+        {"interior", interior},
         {"clip", clip_many},
         {"corefine", corefine_many},
         {"minkowski_sum", minkowski_sum},
