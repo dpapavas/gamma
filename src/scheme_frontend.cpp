@@ -1722,12 +1722,16 @@ DEFINE_COLOR_OPERATION(color_faces, COLOR_FACES)
 static SCM color_selection(SCM s, SCM t, SCM rest)
 {
     std::variant<std::shared_ptr<Face_selector>,
-                 std::shared_ptr<Vertex_selector>> q;
+                 std::shared_ptr<Vertex_selector>,
+                 std::shared_ptr<Edge_selector>> q;
 
     if (std::shared_ptr<Face_selector> x;
         try_pop_argument(2, t, x)) {
         q = x;
     } else if (std::shared_ptr<Vertex_selector> x;
+               try_pop_argument(2, t, x)) {
+        q = x;
+    } else if (std::shared_ptr<Edge_selector> x;
                try_pop_argument(2, t, x)) {
         q = x;
     } else {

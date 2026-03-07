@@ -1080,12 +1080,15 @@ DEFINE_COLOR_OPERATION(color_faces, COLOR_FACES)
 static int color_selection(lua_State *L)
 {
     std::variant<std::shared_ptr<Face_selector>,
-                 std::shared_ptr<Vertex_selector>> p;
+                 std::shared_ptr<Vertex_selector>,
+                 std::shared_ptr<Edge_selector>> p;
 
     if (luaL_testudata(L, 2, "face_selector")) {
         p = fromlua<std::shared_ptr<Face_selector>>(L, 2);
     } else if (luaL_testudata(L, 2, "vertex_selector")) {
         p = fromlua<std::shared_ptr<Vertex_selector>>(L, 2);
+    } else if (luaL_testudata(L, 2, "edge_selector")) {
+        p = fromlua<std::shared_ptr<Edge_selector>>(L, 2);
     } else {
         luaL_argerror(L, 2, "expected face or vertex selector");
     }
