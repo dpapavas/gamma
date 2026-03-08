@@ -1011,7 +1011,7 @@ static bool refresh_window(struct window *w)
 
             if (v->flags.faces) {
                 glUniform1f(flat.intensity, v == w->focus ? 1.0f : 0.75f);
-                glPolygonOffset(settings.edge_line_width, 1.0f);
+                glPolygonOffset(settings.edge_line_width, settings.edge_line_width);
                 glEnable(GL_POLYGON_OFFSET_FILL);
 
                 glDrawElements(GL_TRIANGLES, counts[1], GL_UNSIGNED_INT, 0);
@@ -1181,7 +1181,7 @@ struct object *objects;
 
 void refresh_object(
     const char *name,
-    size_t n, float *vertices,
+    size_t n, double *vertices,
     size_t m, unsigned int *triangles,
     size_t l, unsigned int *edges)
 {
@@ -1238,18 +1238,8 @@ void refresh_object(
 
             glBindBuffer(GL_ARRAY_BUFFER, o->vbo);
 
-#if 0
-            // In practice we would probably be able to do the
-            // following on virtually all platforms we're expected to
-            // run on.
-
-            glBufferData(GL_ARRAY_BUFFER,
-                         7 * n * sizeof(GLfloat), vertices,
-                         GL_DYNAMIC_DRAW);
-#else
-            // Still, technically, `GLlfoat` is not guaranteed to be
-            // the same as `float`, so we cast the values to
-            // `GLfloat`, just to be on the safe side.
+            // We need to convert vertex coordinates from the incoming
+            // `double`, to `GLlfoat`.
 
             glBufferData(GL_ARRAY_BUFFER,
                          7 * n * sizeof(GLfloat), nullptr,
@@ -1280,7 +1270,6 @@ void refresh_object(
             }
 
             glUnmapBuffer(GL_ARRAY_BUFFER);
-#endif
             glBindBuffer(GL_ARRAY_BUFFER, 0);
 
             // The situation is analogous for the EBO.  We use the

@@ -89,7 +89,7 @@ extern struct object *objects;
 
 void refresh_object(
     const char *name,
-    size_t n, float *vertices,
+    size_t n, double *vertices,
     size_t m, unsigned int *triangles,
     size_t l, unsigned int *edges);
 

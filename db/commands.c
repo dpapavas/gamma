@@ -62,28 +62,30 @@
 // point is inside a triangle.
 
 static bool point_in_triangle(
-    const float *p, const float *a, const float *b, const float *c)
+    const double *p, const double *a, const double *b, const double *c)
 {
     // We accomplish that by first calculating $p$'s barycentric
     // coordinates $u$ and $v$.
 
-    const float v_0[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
-    const float v_1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
-    const float v_2[3] = {p[0] - a[0], p[1] - a[1], p[1] - a[2]};
+    const double v_0[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+    const double v_1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    const double v_2[3] = {p[0] - a[0], p[1] - a[1], p[2] - a[2]};
 
-    const float vv_00 = v_0[0] * v_0[0] + v_0[1] * v_0[1] + v_0[2] * v_0[2];
-    const float vv_01 = v_0[0] * v_1[0] + v_0[1] * v_1[1] + v_0[2] * v_1[2];
-    const float vv_02 = v_0[0] * v_2[0] + v_0[1] * v_2[1] + v_0[2] * v_2[2];
-    const float vv_11 = v_1[0] * v_1[0] + v_1[1] * v_1[1] + v_1[2] * v_1[2];
-    const float vv_12 = v_1[0] * v_2[0] + v_1[1] * v_2[1] + v_1[2] * v_2[2];
+    const double vv_00 = v_0[0] * v_0[0] + v_0[1] * v_0[1] + v_0[2] * v_0[2];
+    const double vv_01 = v_0[0] * v_1[0] + v_0[1] * v_1[1] + v_0[2] * v_1[2];
+    const double vv_02 = v_0[0] * v_2[0] + v_0[1] * v_2[1] + v_0[2] * v_2[2];
+    const double vv_11 = v_1[0] * v_1[0] + v_1[1] * v_1[1] + v_1[2] * v_1[2];
+    const double vv_12 = v_1[0] * v_2[0] + v_1[1] * v_2[1] + v_1[2] * v_2[2];
 
-    const float d = 1.0f / (vv_00 * vv_11 - vv_01 * vv_01);
-    const float u = (vv_11 * vv_02 - vv_01 * vv_12) * d;
-    const float v = (vv_00 * vv_12 - vv_01 * vv_02) * d;
+    const double d = 1.0f / (vv_00 * vv_11 - vv_01 * vv_01);
+    const double u = (vv_11 * vv_02 - vv_01 * vv_12) * d;
+    const double v = (vv_00 * vv_12 - vv_01 * vv_02) * d;
 
-    // "Point $p$ is inside triangle $abc$" then is equivalent to:
+    // "Point $p$ is inside triangle $abc$" is then equivalent to the
+    // following (where we may need to be careful about floating point
+    // comparisons here, but not geometry has caused issues yet):
 
-    return (u >= 0.0f) && (v >= 0.0f) && (u + v < 1.0f);
+    return (u >= 0.0) && (v >= 0.0) && (u + v < 1.0);
 }
 
 // This is the triangulation routine.  It accepts a polygon of `n`
@@ -91,7 +93,7 @@ static bool point_in_triangle(
 // in the triangulation of the polygon in `t`.
 
 static void triangulate(
-    size_t n, unsigned int *s, float *vertices, unsigned int *t)
+    size_t n, unsigned int *s, double *vertices, unsigned int *t)
 {
     assert(n >= 3);
 
@@ -105,15 +107,15 @@ static void triangulate(
     // the polygon.  We calculate it by Newell's method below,
     // skipping normalization.
 
-    float w[3] = {};
+    double w[3] = {};
 
     if (n > 4) {
         for (size_t i = 0; i < n; i++) {
             const unsigned int l = s[i];
             const unsigned int m = s[(i + 1) % n];
 
-            const float *a = &vertices[7 * l];
-            const float *b = &vertices[7 * m];
+            const double *a = &vertices[7 * l];
+            const double *b = &vertices[7 * m];
 
             w[0] += (a[1] - b[1]) * (a[2] + b[2]);
             w[1] += (a[2] - b[2]) * (a[0] + b[0]);
@@ -123,7 +125,7 @@ static void triangulate(
 
     // We then proceed by:
 
-    for (size_t i = 0; i < n; i++) {
+    for (size_t i = 0; i < n;) {
         //   1. First handling some trivial cases: We just copy a
         //   triangle and make a fan of two triangles out of a quad,
         //   which is always convex.
@@ -148,15 +150,15 @@ static void triangulate(
         const unsigned int l = s[i];
         const unsigned int m = s[(i + 1) % n];
 
-        const float *a = &vertices[7 * k];
-        const float *b = &vertices[7 * l];
-        const float *c = &vertices[7 * m];
+        const double *a = &vertices[7 * k];
+        const double *b = &vertices[7 * l];
+        const double *c = &vertices[7 * m];
 
         //   3. calculating the vectors forming the angle $\angle
         //   abc$,
 
-        const float u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
-        const float v[3] = {c[0] - b[0], c[1] - b[1], c[2] - b[2]};
+        const double u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const double v[3] = {c[0] - b[0], c[1] - b[1], c[2] - b[2]};
 
         //   4. determining whether the angle is convex by comparing
         //   the directions of the cross product $u \times v$ and the
@@ -164,14 +166,18 @@ static void triangulate(
         //   \cdot (u \times v)$, skipping over the vertex if that is
         //   the case,
 
-        const float uxv[3] = {
+        const double uxv[3] = {
             u[1] * v[2] - u[2] * v[1],
             u[2] * v[0] - u[0] * v[2],
             u[0] * v[1] - u[1] * v[0]
         };
 
-        if (uxv[0] * w[0] + uxv[1] * w[1] + uxv[2] * w[2] < 0) {
-            continue;
+        //     We may need to be careful about floating point
+        //     comparisons here, but not geometry has caused issues
+        //     yet.
+
+        if (uxv[0] * w[0] + uxv[1] * w[1] + uxv[2] * w[2] < 0.0) {
+            goto next;
         }
 
         //   5. skipping over vertices, which aren't principal
@@ -194,18 +200,22 @@ static void triangulate(
         t += 3;
 
         //   7. then clip the tip vertex by removing it from the list
-        //   of vertices, after we can finally,
+        //   of vertices, after which we can finally,
 
-        for (size_t j = i; j < n - 1 ; s[j] = s[j + 1], j++);
-
-        n -= 1;
+        n--;
+        for (size_t j = i; j < n ; s[j] = s[j + 1], j++);
 
         //   8. start anew with the reduced polygon, unless it's
         //   already down to a triangle, which we output immediately.
 
         i = 0;
+        continue;
+
       next:
+        i++;
     }
+
+    assert(false);
 }
 
 // ## Extracting Edges
@@ -1143,18 +1153,18 @@ int read_commands(FILE *fp)
                 // We allocate a suitable buffer and read in all
                 // vertices.
 
-                static BUFFER_TYPE(float) vertices;
-                START_WITH(vertices, 7 * a);
+                static BUFFER_TYPE(double) vertices;
+                MAYBE_GROW_TO(vertices, 7 * a);
 
                 for (size_t i = 0; i < a; i++) {
-                    float * const p = &vertices.p[7 * i];
+                    double * const p = &vertices.p[7 * i];
 
                     // Each vertex is made up of:
 
                     //   1. 3 spatial coordinates, which are always required,
 
                     for (size_t j = 0; j < 3; j++) {
-                        if (do_scan(fp, "%f", &p[j]) != 1) {
+                        if (do_scan(fp, "%lf", &p[j]) != 1) {
                             print_error(
                                 "could not read coordinate %zu of vertex %zu\n",
                                 j, i);
@@ -1169,13 +1179,13 @@ int read_commands(FILE *fp)
                     //   components, we set the vertex to the default
                     //   color.
 
-                    memset(&p[3], 0, 4 * sizeof(float));
+                    memset(&p[3], 0, 4 * sizeof(double));
 
                     if (t[0] == 'C') {
                         bool q = false;
 
                         for (size_t j = 3; j < 7; j++) {
-                            if (do_scan(fp, "%f", &p[j]) != 1) {
+                            if (do_scan(fp, "%lf", &p[j]) != 1) {
                                 print_error(
                                     "could not read coordinate %zu of "
                                     "vertex %zu\n",
@@ -1195,10 +1205,10 @@ int read_commands(FILE *fp)
                     }
 
                     if (p[3] == 0 && p[4] == 0 && p[5] == 0 && p[6] == 0) {
-                        p[3] = (float)settings.default_vertex_color[0];
-                        p[4] = (float)settings.default_vertex_color[1];
-                        p[5] = (float)settings.default_vertex_color[2];
-                        p[6] = (float)settings.default_vertex_color[3];
+                        p[3] = (double)settings.default_vertex_color[0];
+                        p[4] = (double)settings.default_vertex_color[1];
+                        p[5] = (double)settings.default_vertex_color[2];
+                        p[6] = (double)settings.default_vertex_color[3];
                     }
                 }
 
@@ -1270,7 +1280,7 @@ int read_commands(FILE *fp)
                     //   bit complicated.
 
                     {
-                        float v[4] = {};
+                        double v[4] = {};
                         size_t j;
                         bool p = false;
 
@@ -1279,7 +1289,7 @@ int read_commands(FILE *fp)
                         //   ignore them.
 
                         for (j = 0; j < 4; j++) {
-                            const int k = try_scan(fp, "%f", &v[j]);
+                            const int k = try_scan(fp, "%lf", &v[j]);
 
                             if (k <= 0) {
                                 break;
@@ -1327,11 +1337,11 @@ int read_commands(FILE *fp)
 
                                 memcpy(
                                     &vertices.p[7 * alk], &vertices.p[7 * s[k]],
-                                    3 * sizeof(float));
+                                    3 * sizeof(double));
 
                                 memcpy(
                                     &vertices.p[7 * alk + 3], v,
-                                    4 * sizeof(float));
+                                    4 * sizeof(double));
 
                                 s[k] = alk;
                             }
