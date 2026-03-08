@@ -187,6 +187,31 @@ template void Refine_operation<Surface_mesh>::evaluate();
 
 // Remesh operation
 
+#define DO_REMESH(FACES)                                                \
+{                                                                       \
+    if (edge_selector) {                                                \
+        const auto v_ = edge_selector->apply(*this->polyhedron);        \
+        std::unordered_set<                                             \
+            typename boost::graph_traits<T>::edge_descriptor> set(      \
+                v_.begin(), v_.end());                                  \
+                                                                        \
+        assert(v_.size() == set.size());                                \
+                                                                        \
+        this->annotations.insert(                                       \
+            {"constrained", std::to_string(v_.size())});                \
+                                                                        \
+        CGAL::Polygon_mesh_processing::isotropic_remeshing(             \
+            FACES, CGAL::to_double(target), *this->polyhedron,          \
+            CGAL::parameters::edge_is_constrained_map(                  \
+                CGAL::Boolean_property_map(set)).number_of_iterations(  \
+                    iterations));                                       \
+    } else {                                                            \
+        CGAL::Polygon_mesh_processing::isotropic_remeshing(             \
+            FACES, CGAL::to_double(target), *this->polyhedron,          \
+            CGAL::parameters::number_of_iterations(iterations));        \
+    }                                                                   \
+}
+
 template<typename T>
 void Remesh_operation<T>::evaluate()
 {
@@ -194,68 +219,36 @@ void Remesh_operation<T>::evaluate()
 
     this->polyhedron = std::make_shared<T>(*this->operand->get_value());
 
-    std::unordered_set<
-        typename boost::graph_traits<T>::edge_descriptor> constrained;
-
-    if (edge_selector) {
-        const auto v = edge_selector->apply(*this->polyhedron);
-        constrained.insert(v.cbegin(), v.cend());
-    }
-
-    const auto is_constrained = CGAL::Boolean_property_map(constrained);
-
-    // Isotropic remeshing accepts a polygonal mesh, but the selected
-    // faces, must be triangulated.
+    // Isotropic remeshing accepts a polygonal mesh, but the to be
+    // remeshed faces, must be triangulated.
 
     if (face_selector) {
         CGAL::Polygon_mesh_processing::triangulate_faces(
             face_selector->apply(*this->polyhedron), *this->polyhedron);
-
-        const auto &v = face_selector->apply(*this->polyhedron);
-
-        if (edge_selector) {
-            CGAL::Polygon_mesh_processing::isotropic_remeshing(
-                v, CGAL::to_double(target), *this->polyhedron,
-                CGAL::parameters::edge_is_constrained_map(
-                    is_constrained).number_of_iterations(
-                    iterations));
-
-            this->annotations.insert(
-                {"constrained", std::to_string(constrained.size())});
-        } else {
-            CGAL::Polygon_mesh_processing::isotropic_remeshing(
-                v, CGAL::to_double(target), *this->polyhedron,
-                CGAL::parameters::number_of_iterations(
-                    iterations));
-        }
-
-        this->annotations.insert({"selected", std::to_string(v.size())});
     } else {
         CGAL::Polygon_mesh_processing::triangulate_faces(
             CGAL::faces(*this->polyhedron), *this->polyhedron);
+    }
 
-        if (edge_selector) {
-            CGAL::Polygon_mesh_processing::isotropic_remeshing(
-                CGAL::faces(*this->polyhedron),
-                CGAL::to_double(target), *this->polyhedron,
-                CGAL::parameters::edge_is_constrained_map(
-                    is_constrained).number_of_iterations(
-                        iterations));
+    // We must be careful to select constrained edges *after*
+    // triangulation, otherwise some of the passed constrained edges,
+    // may no longer belong to the mesh, by the time remeshing takes
+    // place.
 
-            this->annotations.insert(
-                {"constrained", std::to_string(constrained.size())});
-        } else {
-            CGAL::Polygon_mesh_processing::isotropic_remeshing(
-                CGAL::faces(*this->polyhedron),
-                CGAL::to_double(target), *this->polyhedron,
-                CGAL::parameters::number_of_iterations(
-                        iterations));
-        }
+    if (face_selector) {
+        const auto v = face_selector->apply(*this->polyhedron);
+        this->annotations.insert({"selected", std::to_string(v.size())});
+
+        DO_REMESH(v);
+    } else {
+        DO_REMESH(CGAL::faces(*this->polyhedron));
     }
 }
 
 template void Remesh_operation<Polyhedron>::evaluate();
 template void Remesh_operation<Surface_mesh>::evaluate();
+
+#undef DO_REMESH
 
 // Corefine polyhedra
 
