@@ -402,10 +402,10 @@ Sharp_edge_selector::apply(const Surface_mesh &mesh) const
     return select_sharp_edges(mesh, angle);
 }
 
-// The set of "sharp" edges describe above defines a segmentation of
+// The set of "sharp" edges described above defines a segmentation of
 // the mesh into patches of faces lying between "sharp" edges.  This
 // selection returns faces contained in one or more such patches.  The
-// specified patches, but be positive integers.
+// specified patches, must be positive integers.
 
 template<typename F, typename T>
 static std::vector<F> select_sharp_patch_faces(
@@ -414,23 +414,78 @@ static std::vector<F> select_sharp_patch_faces(
     typedef typename boost::graph_traits<T>::edge_descriptor edge_descriptor;
     typedef typename boost::graph_traits<T>::face_descriptor face_descriptor;
 
+    // First we run the sharp edge segmentation, noting the total
+    // number of returned patches `n`.
+
     std::vector<F> v;
     std::unordered_set<edge_descriptor> set;
     std::map<face_descriptor, std::size_t> face_map;
 
-#ifndef NDEBUG
     std::size_t n =
-#endif
         CGAL::Polygon_mesh_processing::sharp_edges_segmentation(
             mesh, angle,
             CGAL::Boolean_property_map(set),
             boost::associative_property_map<std::map<face_descriptor, std::size_t>>(
                 face_map));
 
+    // Numbers seem to be assigned to patches aribtrarily, so that
+    // even "small" changes to the mesh (e.g. changing the curve
+    // tolerance used to produce it) can change the nubmer of a given
+    // patch.
+
+    // This is inconvenient, so we reorder the numbering, in order to
+    // make it more stable.  The approach used below founds the
+    // bounding box of the faces contained in a given patch and
+    // reorders the patches accordingly.  This should result in patch
+    // numbering that don't change, as long as the shape of the mesh
+    // doesn't change substantially.
+
+    std::vector<std::pair<std::array<FT, 6>, std::size_t>> u(n);
+
+    const auto point_map = CGAL::get(CGAL::vertex_point, mesh);
+
+    for (const auto &[f, i]: face_map) {
+        assert (i > 0 && i <= n);
+
+        auto &t = u[i - 1];
+        auto &b = t.first;
+
+        for (auto x: CGAL::vertices_around_face(halfedge(f, mesh), mesh)) {
+            const Point_3 p = boost::get(point_map, x);
+
+            if (t.second == 0) {
+                t.second = i;
+
+                b[0] = b[3] = p[0];
+                b[1] = b[4] = p[1];
+                b[2] = b[5] = p[2];
+
+                continue;
+            }
+
+            for (std::size_t j = 0; j < 3; j++) {
+                if (b[j] > p[j]) {
+                    b[j] = p[j];
+                }
+
+                const size_t k = j + 3;
+                if (b[k] < p[j]) {
+                    b[k] = p[j];
+                }
+            }
+        }
+    }
+
+    std::sort(u.begin(), u.end());
+
+    // We can now extract and return the faces of the selected
+    // patches.
+
     for (const auto &[f, i]: face_map) {
         assert(i - 1 < n);
 
-        if (std::find(patches.begin(), patches.end(), i) != patches.end()) {
+        if (std::find(patches.begin(), patches.end(), u[i - 1].second)
+            != patches.end()) {
             v.push_back(f);
         }
     }
