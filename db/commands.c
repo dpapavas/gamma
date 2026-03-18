@@ -1494,7 +1494,7 @@ int read_commands(FILE *fp)
 
             //   5. a single output, written to disk,
 
-#define WITH_WRITE_OUTPUT                                               \
+#define WITH_OUTPUT                                                     \
             if (w) {                                                    \
                 const struct viewport *v = w->focus;                    \
                 const size_t n_0 = n - 1;                               \
@@ -1556,12 +1556,12 @@ int read_commands(FILE *fp)
             RUN WITH_ADDRESS WITH_DEFINITIONS WITH_RUN_OUTPUTS AND_ARGS;
         }
 
-        //   `write file` := Run the "inferior" process to output the
+        //   `output file` := Run the "inferior" process to output the
         //   geometry of the focused window to the specified file.
         //   The file format is determined by the file extension,
         //   which must correspond to a supported output format.
 
-        else if (!strcmp(s, "write")) {
+        else if (!strcmp(s, "output")) {
 
             if (try_scan(fp, "%63s", s) != 1) {
                 s[0] = '\0';
@@ -1569,13 +1569,14 @@ int read_commands(FILE *fp)
 
             PARSING_FINISHED;
 
-            RUN WITH_DEFINITIONS WITH_WRITE_OUTPUT AND_ARGS;
+            RUN WITH_DEFINITIONS WITH_OUTPUT AND_ARGS;
         }
 
 #undef RUN
 #undef WITH_ADDRESS
 #undef WITH_DEFINITIONS
 #undef WITH_RUN_OUTPUTS
+#undef WITH_OUTPUT
 #undef END_RUN
 
         //   `kill` := Terminate an ongoing run.

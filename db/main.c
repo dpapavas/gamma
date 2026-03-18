@@ -206,7 +206,7 @@ static char **completion_function(const char *text, int start, int end)
                 "quit", "exit", "window", "hide", "present", "resize", "focus",
                 "split", "target", "rotate", "translate", "pan", "zoom", "view",
                 "load", "run", "info", "set", "show", "bind", "unbind", "print",
-                "define", "undefine", "kill", "write", "toggle", nullptr});
+                "define", "undefine", "kill", "output", "toggle", nullptr});
     });
 
     //   2. completing keyword arguments for certain commands, or
@@ -286,7 +286,7 @@ static char **completion_function(const char *text, int start, int end)
         });
 
     WHEN_IN(
-        "write", {
+        "output", {
             return rl_completion_matches(
                 text, rl_filename_completion_function);
         });

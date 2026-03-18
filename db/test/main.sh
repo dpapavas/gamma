@@ -54,8 +54,8 @@ EOF
         return 1
 }
 
-test_write() {
-    (run --execute=- -c "write test.stl" |
+test_output() {
+    (run --execute=- -c "output test.stl" |
         match -Dname=value -o test.stl:one hello world) <<EOF
 set program echo
 set args hello world
@@ -63,7 +63,7 @@ define name value
 window test
 target one
 split
-write test.stl
+output test.stl
 EOF
 }
 
