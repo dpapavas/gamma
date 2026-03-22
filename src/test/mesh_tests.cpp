@@ -292,4 +292,84 @@ BOOST_DATA_TEST_CASE(corefine_plane,
     BOOST_TEST(P.size_of_vertices() == n);
 }
 
+BOOST_DATA_TEST_CASE(components, boost::unit_test::data::xrange(3), n)
+{
+    auto A = CUBOID(2, 2, 2), B = A;
+
+    // We set up a set of 5 cuboids, arranged in a cross pattern,
+    // centered on the origin.
+
+    for (auto [i, j]:
+             std::initializer_list<std::pair<int, int>> {
+             {-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
+        B = JOIN(B, TRANSFORM(A, TRANSLATION_3(3 * i, 3 * j, 0)));
+    }
+
+    // We extract:
+
+    //   1. the center cuboid,
+    //   2. the left and right cuboids,
+    //   3. the top and bottom cuboids,
+
+    const std::initializer_list<int> v[3] = {{3}, {1, 5}, {2, 4}};
+    const auto &result = evaluate(COMPONENTS(B, v[n]));
+
+    A.reset();
+    B.reset();
+
+    evaluate_operations();
+
+    // The first test case should consist of a single cuboid, the
+    // others of two.
+
+    const auto &P = *result.value;
+    const int c = (n > 0) + 1;
+    test_polyhedron(P, 8 * c, 36 * c, 12 * c, FT(8 * c));
+
+    // Due to the symmetry of the setup, all cases should have their
+    // centroid at the origin.
+
+    const auto C = mean_polyhedron_vertex(P);
+    BOOST_TEST(C == Point_3(0, 0, 0));
+}
+
+BOOST_DATA_TEST_CASE(components_with_holes, boost::unit_test::data::xrange(4), n)
+{
+    auto A = CUBOID(2, 2, 2), B = CUBOID(10, 4, 4);
+
+    // We set up a large cuboid, with three smaller cuboidal holes,
+    // all symmetric around the origin.
+
+    for (int i = -1; i < 2; i++) {
+        B = DIFFERENCE(B, TRANSFORM(A, TRANSLATION_3(3 * i, 0, 0)));
+    }
+
+    // The first two test cases select the outer boundary and one hole
+    // and should therefore consist of two cuboids.  The other two
+    // select only holes and should consist of a single cuboid.
+
+    const std::initializer_list<int> v[4] = {{1, 2}, {1, 4}, {4}, {2}};
+    const auto &result = evaluate(COMPONENTS(B, v[n]));
+
+    A.reset();
+    B.reset();
+
+    evaluate_operations();
+
+    const auto &P = *result.value;
+    const int i = (n < 2), j = i + 1;
+    test_polyhedron(P, 8 * j, 36 * j, 12 * j, FT(160 * i + (1 - 2 * i) * 8));
+
+    // In cases 2 3, where we extract holes, the centroid should
+    // coincide with that of the extracted hole (i.e. $x = \pm 3$).
+
+    // In cases 0 and 1, the hole is on the other side.  Furthermore,
+    // the outer boundary vertices cancel out due to symmetry, but
+    // they still double the total vertex count, so the centroid is
+    // now at $x = \mp 1.5$.
+
+    const auto C = mean_polyhedron_vertex(P);
+    BOOST_TEST(C == Point_3(FT(FT::ET(3 - 6 * (n % 2), 1 - 3 * i)), 0, 0));
+}
+
 BOOST_AUTO_TEST_SUITE_END()

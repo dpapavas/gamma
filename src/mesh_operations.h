@@ -211,4 +211,28 @@ public:
     void evaluate() override;
 };
 
+template<typename T>
+class Polyhedron_components_operation:
+    public Unary_operation<Polyhedron_operation<T>> {
+    std::vector<int> components;
+
+public:
+    Polyhedron_components_operation(
+        const std::shared_ptr<Polyhedron_operation<T>> &p,
+        const std::vector<int> &is):
+        Unary_operation<Polyhedron_operation<T>>(p),
+        components(is) {
+        std::sort(components.begin(), components.end());
+        for (auto it = components.begin();
+             it != components.end() && *it < 1;
+             it = components.erase(it));
+    }
+
+    void evaluate() override;
+
+    std::string describe() const override {
+        return compose_tag("components", this->operand, components);
+    }
+};
+
 #endif

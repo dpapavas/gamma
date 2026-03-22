@@ -2092,6 +2092,31 @@ EXPECTING(RECTANGLE_TAG,
           "nef(octahedron(1,1,1/2,1/2))",
           "minkowski_sum(nef(tetrahedron(5,5,5)),nef(octahedron(1,1,1/2,1/2)))")
 
+DEFINE_TEST_CASE(components)
+WITH_SOURCE("lua",
+            "g = require 'gamma.polygons'"
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.components(g.rectangle(2, 2), 1)"
+            "op.components(g.rectangle(2, 2), 0, -1, 3, 1)"
+            "op.components(h.tetrahedron(5, 5, 5), 1)"
+            "op.components(h.tetrahedron(5, 5, 5), -2, 5, 1)")
+WITH_SOURCE("scheme",
+            "(import (gamma polygons) (gamma polyhedra)"
+            "        (gamma operations))"
+
+            "(components (rectangle 2 2) 1)"
+            "(components (rectangle 2 2) 0 -1 3 1)"
+            "(components (tetrahedron 5 5 5) 1)"
+            "(components (tetrahedron 5 5 5) -2 5 1)")
+EXPECTING(RECTANGLE_TAG,
+          "components(" RECTANGLE_TAG ",1)",
+          "components(" RECTANGLE_TAG ",1,3)",
+          "tetrahedron(5,5,5)",
+          "components(tetrahedron(5,5,5),1)",
+          "components(tetrahedron(5,5,5),1,5)")
+
 DEFINE_TEST_CASE(subdivision)
 WITH_SOURCE("lua",
             "h = require 'gamma.polyhedra'"

@@ -1669,6 +1669,29 @@ static SCM deform(SCM s, SCM rest)
         }, a);
 }
 
+static SCM components(SCM s, SCM rest)
+{
+    std::vector<int> v;
+    pop_arguments(2, rest, v);
+
+    if (Boxed_polygon x; try_pop_argument(1, s, x)) {
+        return std::visit(
+                [&v](auto &&y) {
+                    return to_scheme<Boxed_polygon>(COMPONENTS(y, v));
+                }, x);
+    }
+
+    if (Boxed_polyhedron x; try_pop_argument(1, s, x)) {
+        return std::visit(
+                [&v](auto &&y) {
+                    return to_scheme<Boxed_polyhedron>(
+                        COMPONENTS(y, v));
+                }, x);
+    }
+
+    throw wrong_type_exception(1, s, "polygon or polyhedron");
+}
+
 #define DEFINE_COLOR_OPERATION(FUNC, OP)                                \
 static SCM FUNC(SCM s, SCM rest)                                        \
 {                                                                       \
@@ -2049,6 +2072,7 @@ static void define_operations(void *)
     DEFINE_FOREIGN_PROC("fair", 2, 1, 0, fair);
     DEFINE_FOREIGN_PROC("deform", 1, 0, 1, deform);
     DEFINE_FOREIGN_PROC("deflate", 1, 0, 1, deflate);
+    DEFINE_FOREIGN_PROC("components", 1, 0, 1, components);
 
     DEFINE_FOREIGN_PROC("color-selection", 2, 0, 1, color_selection);
     DEFINE_FOREIGN_PROC("color-vertices", 1, 0, 1, color_vertices);

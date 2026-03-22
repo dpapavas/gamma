@@ -817,6 +817,35 @@ static int minkowski_sum(lua_State *L)
     return 1;
 }
 
+static int components(lua_State *L)
+{
+    const int h = lua_gettop(L);
+    std::vector<int> v;
+    v.reserve(h - 1);
+
+    for (int i = 2; i <= h; i++) {
+        v.push_back(luaL_checkinteger(L, i));
+    }
+
+    if (luaL_testudata(L, 1, "polygon")) {
+        std::visit(
+            [&L, &v](auto &&x) {
+                tolua<Boxed_polygon>(L, COMPONENTS(x, v));
+            },
+            fromlua<Boxed_polygon>(L, 1));
+    } else if (luaL_testudata(L, 1, "polyhedron")) {
+        std::visit(
+            [&L, &v](auto &&x) {
+                tolua<Boxed_polyhedron>(L, COMPONENTS(x, v));
+            },
+            fromlua<Boxed_polyhedron>(L, 1));
+    } else {
+        luaL_argerror(L, 1, "expected polyhedron or polygon");
+    }
+
+    return 1;
+}
+
 static int flush(lua_State *L)
 {
     const FT lambda = checkrational(L, 2);
@@ -1580,6 +1609,7 @@ static int open_operations(lua_State *L)
         {"interior", interior},
         {"clip", clip_many},
         {"corefine", corefine_many},
+        {"components", components},
         {"minkowski_sum", minkowski_sum},
         {"hull", hull},
 

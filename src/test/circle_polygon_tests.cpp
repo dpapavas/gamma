@@ -28,6 +28,25 @@
 #include "fixtures.h"
 #include "circle_polygon_tests.h"
 
+// Document: program
+
+// # Circle Polygon Tests
+
+// These are tests for circle polygon operations and related
+// functionality.  We mainly test the results in two ways:
+
+//   1. By testing the general "topology" of the results: A string of
+//   the form "CC,CL LLLL" is provided which tests whether the result
+//   is made up of two polygons, one having an outer boundary of two
+//   circular (`C`) arcs and a hole made out of a circular arc (`C`)
+//   and a line (`L`) segment and the other made up of 4 line (`L`)
+//   segments and no holes.
+
+//   2. By testing the total area of the resulting polygons
+//   approximately.
+
+// These tests are facilitated by the functions below.
+
 FT polygon_area(const Circle_polygon_set &S)
 {
     Polygon_set T;
@@ -55,9 +74,9 @@ bool test_polygon_without_holes(const Circle_polygon &P,
 
 BOOST_FIXTURE_TEST_SUITE(circle_polygon, Evaluation_fixture)
 
-////////////////
-// Primitives //
-////////////////
+// ## Primitive Circle Polygon Operation Tests
+
+// These are tests for operations producing circle polygon primitives.
 
 BOOST_AUTO_TEST_CASE(circle)
 {
@@ -95,9 +114,9 @@ BOOST_DATA_TEST_CASE(sector,
     test_polygon(*result.value, edges);
 }
 
-/////////////////////
-// Transformations //
-/////////////////////
+// ## Circle Polygon Transformation Tests
+
+// These are tests for transformations of circle polygons.
 
 // Although a circle stays invariant under rotations, the following
 // tests reassembly of x-monotone curves during transformation.  The
@@ -150,9 +169,10 @@ BOOST_AUTO_TEST_CASE(flush, * boost::unit_test::tolerance(0.0005))
     test_polygon_area(*result.value, std::acos(-1) * 3);
 }
 
-/////////////////
-// Conversions //
-/////////////////
+// ## Circle Polygon Coversion Tests
+
+// These are tests for conversions between circle polygons and plain
+// line polygons.
 
 BOOST_AUTO_TEST_CASE(convert_rectangle)
 {
@@ -166,6 +186,9 @@ BOOST_AUTO_TEST_CASE(convert_rectangle)
                        "point(3/2,3/2),point(-3/2,3/2)))"));
     test_polygon(*result.value, "LLLL");
 }
+
+// Conversion from circle to plain polygons involves piecewise-linear
+// approximation of the curves and the results are tested by area.
 
 BOOST_AUTO_TEST_CASE(convert_segment, * boost::unit_test::tolerance(0.0025))
 {
@@ -223,9 +246,9 @@ BOOST_AUTO_TEST_CASE(convert_sectors, * boost::unit_test::tolerance(0.001))
     test_polygon_area(*result.value, std::atan(1) * 8.71);
 }
 
-////////////////////
-// Set operations //
-////////////////////
+// ## Circle Polygon Set Operation Tests
+
+// These are tests for set operations on circle polygons.
 
 BOOST_AUTO_TEST_CASE(join)
 {
@@ -339,7 +362,7 @@ BOOST_AUTO_TEST_CASE(
 
     evaluate_operations();
 
-    // The total area of the holes is 2 * (pi - 2), so each of the
+    // The total area of the holes is $2(\pi - 2)$, so each of the
     // four parts has area 2.
 
     test_polygon_area(*result.value, 8);
@@ -356,6 +379,70 @@ BOOST_AUTO_TEST_CASE(mixed_operations)
     evaluate_operations();
 
     test_polygon(*result.value, "LLLL,CC", "CC");
+}
+
+// ## Circle Polygon Components Operation Tests
+
+// This test ensures that both outer boundaries and holes are properly
+// extracted.
+
+BOOST_TEST_DECORATOR(* boost::unit_test::tolerance(0.002))
+BOOST_DATA_TEST_CASE(components, boost::unit_test::data::xrange(4), n)
+{
+    auto A = DIFFERENCE(CIRCLE(2), CIRCLE(1)), B = A;
+
+    // We set up a set of three circular rings placed on the x axis,
+    // symmetrically around the origin.
+
+    for (int i = -1; i < 2; i += 2) {
+        B = JOIN(B, TRANSFORM_CS(A, TRANSLATION_2(5 * i, 0)));
+    }
+
+    // The first two test cases select the first and last ring or hole
+    // respectively.  The other two also perform a symmetric
+    // difference with a rotated version, to test that the polygons
+    // centered at $\pm 5$ have been selected.
+
+    const std::initializer_list<int> v[2] = {{1, 2, 5, 6}, {6, 2}};
+    B = COMPONENTS(B, v[n % 2]);
+
+    if (n > 1) {
+        B = SYMMETRIC_DIFFERENCE(B, TRANSFORM_CS(B, basic_rotation(180)));
+    }
+
+    const auto &result = evaluate(B);
+
+    A.reset();
+    B.reset();
+
+    evaluate_operations();
+
+    const auto &P = *result.value;
+
+    // There first two cases are:
+
+    switch (n) {
+        //   1. two rings, i.e. two circles with circular holes and
+
+    case 0:
+        test_polygon(P, "CC,CC", "CC,CC");
+        test_polygon_area(P, 2 * (4 - 1) * std::acos(-1.0));
+        break;
+
+        //   2. two "holes", i.e. two circles.
+
+    case 1:
+        test_polygon(P, "CC", "CC");
+        test_polygon_area(P, 2 * std::acos(-1.0));
+        break;
+
+    // In the last two cases, due to symmetry, rotation by 180 degrees
+    // should leave the result unchanged, and the symmetric difference
+    // operation should return an empty set.
+
+    default:
+        BOOST_TEST(P.is_empty());
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

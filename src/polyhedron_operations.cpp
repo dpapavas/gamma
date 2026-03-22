@@ -435,7 +435,8 @@ void Polyhedron_convert_operation<Polyhedron, Nef_polyhedron>::evaluate()
     assert(!polyhedron);
 
     polyhedron = std::make_shared<Polyhedron>();
-    operand->get_value()->convert_to_polyhedron(*polyhedron);
+    CGAL::convert_nef_polyhedron_to_polygon_mesh(
+        *operand->get_value(), *polyhedron);
 }
 
 template<>

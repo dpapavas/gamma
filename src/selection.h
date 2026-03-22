@@ -129,11 +129,16 @@ public:
 
 class Sharp_patch_face_selector: public Face_selector {
     FT angle;
-    const std::vector<int> patches;
+    std::vector<int> patches;
 
 public:
     Sharp_patch_face_selector(const FT &theta, const std::vector<int> &is):
-        angle(theta), patches(is) {}
+        angle(theta), patches(is) {
+        std::sort(patches.begin(), patches.end());
+        for (auto it = patches.begin();
+             it != patches.end() && *it < 1;
+             it = patches.erase(it));
+    }
 
     std::string describe() const {
         return compose_tag("faces_by_sharpness", angle, patches);
@@ -373,5 +378,9 @@ struct compose_tag_helper<std::shared_ptr<T>,
         }
     }
 };
+
+template<typename T, typename F, typename S>
+std::vector<S> sort_face_patches(
+    const T &mesh, std::map<F, S> &map, std::size_t i_0, std::size_t n);
 
 #endif

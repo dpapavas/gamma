@@ -329,4 +329,31 @@ public:
     void evaluate() override;
 };
 
+// Polygon components
+
+template<typename T>
+class Polygon_components_operation:
+    public Unary_operation<Polygon_operation<T>> {
+
+public:
+    std::vector<int> components;
+
+    Polygon_components_operation(
+        const std::shared_ptr<Polygon_operation<T>> &p,
+        const std::vector<int> &is):
+        Unary_operation<Polygon_operation<T>>(p),
+        components(is) {
+        std::sort(components.begin(), components.end());
+        for (auto it = components.begin();
+             it != components.end() && *it < 1;
+             it = components.erase(it));
+    }
+
+    std::string describe() const override {
+        return compose_tag("components", this->operand, components);
+    }
+
+    void evaluate() override;
+};
+
 #endif

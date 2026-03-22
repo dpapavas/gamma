@@ -26,7 +26,17 @@
 #include "polyhedron_operations.h"
 #include "mesh_operations.h"
 
-// Color selected vertices/faces
+// Document: program
+
+// # Mesh Operations
+
+// The following operation work on polygon or triangle meshes and
+// mostly use functionality in CGAL's Polygon Mesh Processing package.
+
+// ## Coloring Vertices and Faces
+
+// Color can be selected either by a specific RGB triple, or via an
+// index into the color map defined below.
 
 const CGAL::IO::Color Color_operation::palette[13] = {
     CGAL::IO::Color(55, 55, 55),
@@ -45,11 +55,16 @@ const CGAL::IO::Color Color_operation::palette[13] = {
     CGAL::IO::Color(199, 0, 122)
 };
 
+// This utility function applies colors to selected elements (either
+// faces or vertices of a mesh).
+
 template<typename T>
 static void apply_color(
     Surface_mesh &P, const T &elements, CGAL::IO::Color color)
 {
     using U = typename T::iterator::value_type;
+
+    // First, determine the name of the color map.
 
     const char *s;
     if constexpr (std::is_same_v<U, Surface_mesh::Face_index>) {
@@ -59,7 +74,12 @@ static void apply_color(
         s = "v:color";
     }
 
+    // Look up or create the map if it doesn't exist.
+
     auto [map, p] = P.add_property_map<U, std::optional<CGAL::IO::Color>>(s);
+
+    // For each element, we either assign the color if the element is
+    // uncolored, or mix it with the current color.
 
     for (const auto &x: elements) {
         if (p || !map[x].has_value()) {
@@ -76,6 +96,9 @@ static void apply_color(
         }
     }
 }
+
+// The following operations then apply a color either to all vertices
+// or faces, or a selection of them.
 
 template<typename T>
 void Color_selection_operation<T>::evaluate()
@@ -109,7 +132,10 @@ void Color_faces_operation::evaluate()
     apply_color(*polyhedron, polyhedron->faces(), color);
 }
 
-// Perturb selected vertices
+// ## Perturbing Vertices
+
+// This operation applies a random perturbation to the vertices of a
+// mesh.
 
 template<typename T>
 void Perturb_operation<T>::evaluate()
@@ -144,7 +170,10 @@ void Perturb_operation<T>::evaluate()
 template void Perturb_operation<Polyhedron>::evaluate();
 template void Perturb_operation<Surface_mesh>::evaluate();
 
-// Refine selected vertices
+// ## Refining Faces
+
+// This operation refines all or part of the mesh, amplifying the face
+// density by the given factor.
 
 template<typename T>
 void Refine_operation<T>::evaluate()
@@ -185,7 +214,11 @@ void Refine_operation<T>::evaluate()
 template void Refine_operation<Polyhedron>::evaluate();
 template void Refine_operation<Surface_mesh>::evaluate();
 
-// Remesh operation
+// ## Isotropic remeshing
+
+// This operand remeshes all or part of a mesh uniformly, so that the
+// edges of the resulting mesh do not exceed the specified target
+// length.
 
 #define DO_REMESH(FACES)                                                \
 {                                                                       \
@@ -232,7 +265,7 @@ void Remesh_operation<T>::evaluate()
 
     // We must be careful to select constrained edges *after*
     // triangulation, otherwise some of the passed constrained edges,
-    // may no longer belong to the mesh, by the time remeshing takes
+    // may no longer belong to the mesh by the time remeshing takes
     // place.
 
     if (face_selector) {
@@ -250,7 +283,10 @@ template void Remesh_operation<Surface_mesh>::evaluate();
 
 #undef DO_REMESH
 
-// Corefine polyhedra
+// ## Polyhedron Corefinement
+
+// This operation introduces into a mesh the edges belonging to its
+// intersection with another mesh.
 
 template<typename T>
 void Corefine_operation<T>::evaluate()
@@ -270,7 +306,10 @@ void Corefine_operation<T>::evaluate()
 template void Corefine_operation<Polyhedron>::evaluate();
 template void Corefine_operation<Surface_mesh>::evaluate();
 
-// Corefine polyhedron with plane
+// ## Polyhedron-Plane Corefinement
+
+// This is similar to `Corefine_operation`, but the added edges belong to the
+// intersection of the mesh with the specified plane.
 
 #include <CGAL/Polygon_mesh_processing/bbox.h>
 #include <CGAL/Polygon_mesh_processing/stitch_borders.h>
@@ -295,9 +334,9 @@ void Corefine_with_plane_operation<T>::evaluate()
         return;
     }
 
-    // Create a triangulated surface out of the intersection, which
-    // can either be a single triangle, a polygon, or a single point
-    // (which is of no interest.
+    // We need to create a triangulated surface out of the
+    // intersection, which can be either a single triangle, a polygon,
+    // or a single point (which is of no interest).
 
     T B;
 
@@ -319,10 +358,84 @@ void Corefine_with_plane_operation<T>::evaluate()
 
     CGAL::Polygon_mesh_processing::corefine(*this->polyhedron, B);
 
-    // The output can have duplicatd vertices; fix that.
+    // The output can have duplicated vertices; fix that.
 
     CGAL::Polygon_mesh_processing::stitch_borders(*this->polyhedron);
 }
 
 template void Corefine_with_plane_operation<Polyhedron>::evaluate();
 template void Corefine_with_plane_operation<Surface_mesh>::evaluate();
+
+#include <CGAL/Polygon_mesh_processing/connected_components.h>
+
+// ## Connected Polyhedron Components
+
+// The following operation extracts connected components from a
+// polyhedron.  Connected components are closed surfaces, not volumes,
+// so in a hollow sphere for instance, both outer and inner surfaces
+// can be selected independently.  This allows selective removal of
+// holes as well as extraction of holes as new meshes.
+
+template<typename T>
+void Polyhedron_components_operation<T>::evaluate()
+{
+    typedef typename boost::graph_traits<T>::face_descriptor face_descriptor;
+    typedef typename boost::graph_traits<T>::faces_size_type faces_size_type;
+
+    assert(!this->polyhedron);
+
+    const T &M = *this->operand->get_value();
+
+    // First, we identify connected components in the operand.
+
+    std::map<face_descriptor, faces_size_type> map;
+    const auto property_map = boost::associative_property_map<decltype(map)>(map);
+
+    const std::size_t n =
+        CGAL::Polygon_mesh_processing::connected_components(M, property_map);
+
+    this->annotations.insert({"components", std::to_string(n)});
+
+    // We sort the components by their bounding boxes, to ensure
+    // stable numbering.
+
+    const auto v = sort_face_patches(M, map, 0, n);
+    auto u = components;
+    for (auto &x: u) {
+        x = v[x - 1];
+    }
+
+    // We can then copy the selected components.
+
+    const auto F = CGAL::Face_filtered_graph<T>(M, u, property_map);
+
+    std::shared_ptr<T> p = std::make_shared<T>(), q = std::make_shared<T>();
+
+    CGAL::copy_face_graph(F, *p);
+
+    // The results may need to be reorientied, if inwardly oriented
+    // hole components have been selected without their outwardly
+    // oriented bounding components.  Since CGAL's orientation
+    // functions work on triangle meshes only, we make a copy of the
+    // result, triangulate it and check its orientation.
+
+    *q = *p;
+    CGAL::Polygon_mesh_processing::triangulate_faces(CGAL::faces(*q), *q);
+    if (CGAL::Polygon_mesh_processing::is_outward_oriented(*q)) {
+        // If it is oriented properly, we assign the untriangulated
+        // copy as the result, to avoid triangulating the initial
+        // mesh.
+
+        this->polyhedron = p;
+        return;
+    }
+
+    // If not, we reorient the triangulated mesh and use that as the
+    // result.
+
+    CGAL::Polygon_mesh_processing::orient(*q);
+    this->polyhedron = q;
+}
+
+template void Polyhedron_components_operation<Polyhedron>::evaluate();
+template void Polyhedron_components_operation<Surface_mesh>::evaluate();

@@ -3,9 +3,11 @@ set(program_SOURCES src/operation.h src/operation.cpp src/evaluation.cpp
   src/main.cpp src/extrusion_operation.cpp src/sink_operations.cpp
 
   src/boxed_operations.h src/frontend.h src/frontend.cpp src/scheme_frontend.cpp
+  src/mesh_operations.cpp src/misc_polygon_operations.cpp
 
   src/test/fixtures.h src/test/rewrites.cpp src/test/frontend.cpp
-  src/test/selection.cpp
+  src/test/selection.cpp src/test/circle_polygon_tests.cpp
+  src/test/conic_polygon_tests.cpp src/test/polygon_tests.cpp
 
   db/common.h db/main.c db/windows.c db/viewports.c db/commands.c
 

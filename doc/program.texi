@@ -41,7 +41,9 @@
 @include src_basic_operations_h.texi
 @include src_evaluation_cpp.texi
 @include src_rewrites_cpp.texi
+@include src_misc_polygon_operations_cpp.texi
 @include src_extrusion_operation_cpp.texi
+@include src_mesh_operations_cpp.texi
 @include src_sink_operations_cpp.texi
 
 @part Part II:@* The Front End
@@ -52,6 +54,9 @@
 @part Part III:@* The Tests
 @include src_test_fixtures_h.texi
 @include src_test_rewrites_cpp.texi
+@include src_test_polygon_tests_cpp.texi
+@include src_test_circle_polygon_tests_cpp.texi
+@include src_test_conic_polygon_tests_cpp.texi
 @include src_test_selection_cpp.texi
 @include src_test_frontend_cpp.texi
 

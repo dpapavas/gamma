@@ -28,6 +28,17 @@
 #include "fixtures.h"
 #include "conic_polygon_tests.h"
 
+// Document: program
+
+// # Conic Polygon Tests
+
+// These are tests for conic polygon operations and related
+// functionality.  Results are tested as for circle polygons with the
+// difference that polygons can now additionaly contain elliptic arc
+// segments, marked "E".
+
+// Tests are facilitated by the functions below.
+
 FT polygon_area(const Conic_polygon_set &S)
 {
     Polygon_set T;
@@ -42,8 +53,8 @@ bool test_polygon_without_holes(const Conic_polygon &P,
     std::string s;
     s.reserve(P.size());
 
-    // Test the given edge sequence (L for linear, C for circular and
-    // E for elliptic segment) against the given polygon.
+    // Test the given edge sequence ("L" for linear, "C" for circular
+    // and "E" for elliptic segment) against the given polygon.
 
     for (auto c = P.curves_begin(); c != P.curves_end(); c++) {
         if (c->orientation() == CGAL::COLLINEAR) {
@@ -63,9 +74,10 @@ bool test_polygon_without_holes(const Conic_polygon &P,
 
 BOOST_FIXTURE_TEST_SUITE(conic_polygon, Evaluation_fixture)
 
-////////////////////////////////////
-// Conversion from other polygons //
-////////////////////////////////////
+// ## Conic Polygon Coversion Tests
+
+// These are tests for conversions between conic, circle and plain
+// line polygons.
 
 BOOST_AUTO_TEST_CASE(convert_rectangle)
 {
@@ -117,9 +129,38 @@ BOOST_DATA_TEST_CASE(convert_sector,
     test_polygon(*result.value, edges);
 }
 
-/////////////////////
-// Transformations //
-/////////////////////
+// Conversion to plain polygons involves piecewise-linear
+// approximation of the curves and the results are tested by area.
+
+BOOST_AUTO_TEST_CASE(convert_ellipses, * boost::unit_test::tolerance(0.001))
+{
+    const auto &result = evaluate(
+        CONVERT_TO<Polygon_set>(
+            JOIN(ELLIPSE(1, 1),
+                 DIFFERENCE(ELLIPSE(6, 3), ELLIPSE(2, 2)))));
+
+    evaluate_operations();
+
+    test_polygon_area(*result.value, std::acos(-1) * (6 * 3 - 4 + 1));
+}
+
+BOOST_TEST_DECORATOR(* boost::unit_test::tolerance(0.001))
+BOOST_DATA_TEST_CASE(convert_elliptic_sector,
+                     (boost::unit_test::data::make({0, 1})
+                      ^ boost::unit_test::data::make({"LLE", "LLEE"})),
+                     i, edges)
+{
+    const auto &result = evaluate(
+        CONVERT_TO<Polygon_set>(ELLIPTIC_SECTOR(4, 2, i * 180 + 45)));
+
+    evaluate_operations();
+
+    test_polygon_area(*result.value, std::acos(-1) * (4 * i + 1));
+}
+
+// ## Conic Polygon Transformation Tests
+
+// These are tests for transformations of conic polygons.
 
 BOOST_DATA_TEST_CASE(transform_circles,
                      boost::unit_test::data::make({
@@ -128,8 +169,9 @@ BOOST_DATA_TEST_CASE(transform_circles,
                              TRANSLATION_2(2, 2) * basic_rotation(1)}), T)
 {
     // Transformations resulting in non-uniform scaling of circles
-    // (and only those), should result in conics.  We start with plain
-    // translation and/or rotation.
+    // (and only those), should result in conics.  We start with:
+
+    //   1. plain translation and/or rotation,
 
     {
         const auto &result = evaluate(TRANSFORM_CS(CIRCLE(1), T));
@@ -139,7 +181,7 @@ BOOST_DATA_TEST_CASE(transform_circles,
         test_polygon(*result.value, "CC");
     }
 
-    // Add uniforma scaling; we should still end up with a circle.
+    //   2. add uniform scaling which should still result in a circle,
 
     {
         const auto &result = evaluate(
@@ -150,7 +192,7 @@ BOOST_DATA_TEST_CASE(transform_circles,
         test_polygon(*result.value, "CC");
     }
 
-    // Non-uniform scaling; expect an ellipse.
+    //   3. add non-uniform scaling, expecting an ellipse and finally
 
     {
         const auto &result = evaluate(
@@ -161,7 +203,7 @@ BOOST_DATA_TEST_CASE(transform_circles,
         test_polygon(*result.value, "EE");
     }
 
-    // Shearing; again, expect an ellipse.
+    //   4. add shearing, again expecting an ellipse.
 
     {
         const auto &result = evaluate(
@@ -196,7 +238,9 @@ BOOST_AUTO_TEST_CASE(flush, * boost::unit_test::tolerance(0.0005))
     test_polygon_area(*result.value, std::acos(-1) * 6);
 }
 
-// Primitives (converted and transformed)
+// ## Primitive Conic Polygon Operation Tests
+
+// These are tests for operations producing conic polygon primitives.
 
 BOOST_AUTO_TEST_CASE(ellipse)
 {
@@ -223,9 +267,9 @@ BOOST_DATA_TEST_CASE(sector,
     test_polygon(*result.value, edges);
 }
 
-////////////////////
-// Set operations //
-////////////////////
+// ## Conic Polygon Set Operation Tests
+
+// These are tests for set operations on conic polygons.
 
 BOOST_AUTO_TEST_CASE(join)
 {
@@ -341,34 +385,47 @@ BOOST_AUTO_TEST_CASE(mixed_operations)
     test_polygon(*result.value, "EE,CC", "CC");
 }
 
-/////////////////////////////
-// Conversions to segments //
-/////////////////////////////
+// ## Conic Polygon Components Operation Tests
 
-BOOST_AUTO_TEST_CASE(convert_ellipses, * boost::unit_test::tolerance(0.001))
+// This test is similar to `circle_polygon/components`, except here we
+// set up an ellipse with 3 circular holes.
+
+BOOST_TEST_DECORATOR(* boost::unit_test::tolerance(0.002))
+BOOST_DATA_TEST_CASE(components, boost::unit_test::data::xrange(4), n)
 {
-    const auto &result = evaluate(
-        CONVERT_TO<Polygon_set>(
-            JOIN(ELLIPSE(1, 1),
-                 DIFFERENCE(ELLIPSE(6, 3), ELLIPSE(2, 2)))));
+    auto A = DIFFERENCE(ELLIPSE(7, 3), CIRCLE(2));
+
+    for (int i = -1; i < 2; i += 2) {
+        A = DIFFERENCE(A, TRANSFORM_CS(CIRCLE(1), TRANSLATION_2(4 * i, 0)));
+    }
+
+    const std::initializer_list<int> v[2] = {{1, 2, 4}, {4, 2}};
+    A = COMPONENTS(A, v[n % 2]);
+
+    if (n > 1) {
+        A = SYMMETRIC_DIFFERENCE(A, TRANSFORM(A, basic_rotation(180)));
+    }
+
+    const auto &result = evaluate(A);
+
+    A.reset();
 
     evaluate_operations();
 
-    test_polygon_area(*result.value, std::acos(-1) * (6 * 3 - 4 + 1));
-}
+    const auto &P = *result.value;
 
-BOOST_TEST_DECORATOR(* boost::unit_test::tolerance(0.001))
-BOOST_DATA_TEST_CASE(convert_elliptic_sector,
-                     (boost::unit_test::data::make({0, 1})
-                      ^ boost::unit_test::data::make({"LLE", "LLEE"})),
-                     i, edges)
-{
-    const auto &result = evaluate(
-        CONVERT_TO<Polygon_set>(ELLIPTIC_SECTOR(4, 2, i * 180 + 45)));
+    switch (n) {
+    case 0:
+        test_polygon(P, "EE,CC,CC");
+        break;
 
-    evaluate_operations();
+    case 1:
+        test_polygon(P, "CC", "CC");
+        break;
 
-    test_polygon_area(*result.value, std::acos(-1) * (4 * i + 1));
+    default:
+        BOOST_TEST(P.is_empty());
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

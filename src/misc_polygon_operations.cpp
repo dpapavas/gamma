@@ -22,25 +22,40 @@
 #include "circle_polygon_types.h"
 #include "conic_polygon_types.h"
 
-// Store
+// Document: program
+
+// # Generic Polygon Operations
+
+// These operations apply to polygons of all types and are therfore
+// implemented as class templates.
+
+// ## Storing Polygons
+
+// The function template below serializes a polygon or circle polygon
+// to an output stream.  The geometry is stored using exact
+// arithmetic, so that an exact copy can be restored using the
+// `load_polygon` function below.
 
 template<typename T>
 static void store_polygon(std::ostream &s, const T &P)
 {
-    // Store number of vertices/edges.
+    // We store the number of vertices and edges, followed by the
+    // edges, one per line.
 
     s << P.size() << '\n';
 
     if constexpr (std::is_same_v<T, Polygon>) {
-        // Plain segment; store vertices.
-
         for (auto v = P.vertices_begin(); v != P.vertices_end(); v++) {
+            // For plain segment polygons we just store the vertices
+            // in order.
+
             s << v->x().exact() << " " << v->y().exact() << '\n';
         }
     } else {
-        // Circle-segment; store edges as (source, target, curve).
-
         for (auto c = P.curves_begin(); c != P.curves_end(); c++) {
+            // For circle polygons, we store the edges as "source_x
+            // source_y target_x target_y curve".
+
             if constexpr (std::is_same_v<T, Circle_polygon>) {
 #define STORE_SQRT_EXTENSION(X) {                       \
                     const auto &x = X;                  \
@@ -56,6 +71,9 @@ static void store_polygon(std::ostream &s, const T &P)
                 STORE_SQRT_EXTENSION(c->target().y());
 
 #undef STORE_SQRT_EXTENSION
+
+                // The curve is stored as a letter code (`L`, or `C`)
+                // plus the supporting curve.
 
                 if (c->is_linear()) {
                     const auto &L = c->supporting_line();
@@ -80,11 +98,15 @@ static void store_polygon(std::ostream &s, const T &P)
     }
 }
 
+// This is the `store` method, called when we determine that this
+// polygon is actually worth storing to disk.
+
 template<typename T>
 bool Polygon_operation<T>::store() const
 {
-    // Conics aren't supported.  Storing point coordinates exactly is
-    // not very straightforward.
+    // Conics aren't supported.  Serializing point coordinates, which
+    // are expression trees of type `CORE::Expr`, exactly is not very
+    // straightforward.
 
     if constexpr (std::is_same_v<T, Conic_polygon>) {
         return Operation::store();
@@ -153,7 +175,9 @@ template bool Polygon_operation<Polygon_set>::store() const;
 template bool Polygon_operation<Circle_polygon_set>::store() const;
 template bool Polygon_operation<Conic_polygon_set>::store() const;
 
-// Load; see storing functions for commentary.
+// ## Loading Polygons
+
+// This mirros the code in ref: Storing Polygons.
 
 template<typename T>
 static void load_polygon(std::istream &s, T &P)
@@ -322,7 +346,9 @@ template bool Polygon_operation<Polygon_set>::load();
 template bool Polygon_operation<Circle_polygon_set>::load();
 template bool Polygon_operation<Conic_polygon_set>::load();
 
-// Complement
+// ## Polygon Complement
+
+// This operation computes the complement of a polygon set.
 
 #include <CGAL/Boolean_set_operations_2.h>
 
@@ -338,3 +364,207 @@ void Polygon_complement_operation<T>::evaluate()
 template void Polygon_complement_operation<Polygon_set>::evaluate();
 template void Polygon_complement_operation<Circle_polygon_set>::evaluate();
 template void Polygon_complement_operation<Conic_polygon_set>::evaluate();
+
+// ## Polygon Components
+
+// Since polygons and their holes are ordered aribitrarily, we need to
+// sort each polygon, to ensure a stable order when extracting
+// components below.  We sort a set of polygons by their bounding
+// boxes using the following function.
+
+// As we'll need to sort entire polygons with holes, by their
+// boundaries, as well as the holes within each one, we use the
+// function `f` to extract the polygon from the to-be-sorted items.
+
+template<typename T, typename U>
+static void sort_polygon_components(std::vector<T> &v, U f)
+{
+    using V = std::remove_reference_t<decltype(f(std::declval<T &>()))>;
+
+    // We first create a map from the polygons (their pointer to be
+    // exact) to their bounding boxes.  Conic polygons need to be
+    // handled separately when construcing bounding boxes, using a
+    // functor, to which each of their arcs is fed in succession.
+
+    std::unordered_map<V *, CGAL::Bbox_2> map;
+
+    for (auto &x: v) {
+        auto k = f(x);
+
+        if constexpr (std::is_same_v<V, Conic_polygon_set::Polygon_2>) {
+            const auto construct_bbox = Conic_traits().construct_bbox_2_object();
+            CGAL::Bbox_2 b = construct_bbox(*(k.curves_begin()));
+
+            for (auto it = ++k.curves_begin(); it != k.curves_end(); ++it) {
+                b += construct_bbox(*it);
+            }
+
+            map[&k] = b;
+        } else {
+            map[&k] = k.bbox();
+        }
+    }
+
+    // We now sort the given vector by looking up the map for each
+    // item and comparing the resulting bounding boxes
+    // lexicographically.
+
+    std::sort(
+        v.begin(), v.end(), [&map, &f](auto &x, auto &y) {
+            auto k = f(x), l = f(y);
+            const CGAL::Bbox_2 &a = map[&k], &b = map[&l];
+
+            if (a.xmin() != b.xmin()) {
+                return a.xmin() < b.xmin();
+            }
+
+            if (a.xmax() != b.xmax()) {
+                return a.xmax() < b.xmax();
+            }
+
+            if (a.ymin() != b.ymin()) {
+                return a.ymin() < b.ymin();
+            }
+
+            return a.ymax() < b.ymax();
+        });
+}
+
+// This operation extracts components, which can be either boundaries
+// or holes, from a polygon set.  This turns out to be more
+// complicated to implement than one might expect.  Perhaps there's an
+// easier way to do this.
+
+template<typename T>
+void Polygon_components_operation<T>::evaluate()
+{
+    assert(!this->polygon);
+
+    auto &S = *this->operand->get_value();
+
+    if (components.empty() || S.is_empty()) {
+        return;
+    }
+
+    // We first extract the polygons with holes from the operand into
+    // a vector of vectors, each having the boundary at index 0
+    // followed by any holes.
+
+    const int n = S.number_of_polygons_with_holes();
+    std::vector<typename T::Polygon_with_holes_2> v;
+
+    v.reserve(n);
+    S.polygons_with_holes(std::back_inserter(v));
+
+    std::vector<std::vector<typename T::Polygon_2>> u;
+    u.reserve(n);
+
+    for (const typename T::Polygon_with_holes_2 &P: v) {
+        std::vector<typename T::Polygon_2> w;
+        w.reserve(P.number_of_holes() + 1);
+        w.push_back(P.outer_boundary());
+        w.insert(w.end(), P.holes_begin(), P.holes_end());
+
+        u.emplace_back(std::move(w));
+        assert(w.empty());
+    }
+
+    // We now sort:
+
+    //   1. the outer boundaries of each polygon with holes in the
+    //   operand and
+
+    sort_polygon_components(
+        u, [](std::vector<typename T::Polygon_2> &x) {
+            return x.front();
+        });
+
+    //   2. separately the holes.
+
+    for (auto &w: u) {
+        sort_polygon_components(
+            w, [](typename T::Polygon_2 &x) {
+                return x;
+            });
+    }
+
+    // We're now ready to start extracting components.
+
+    this->polygon = std::make_shared<T>();
+
+    // This gets a bit tricky, as we need to juggle multiple vectors.
+    // We have in turn:
+
+    //   1. the index of the currently considered component as if the
+    //   vector `u` were flattened,
+
+    int i = 1;
+
+    //   2. an iterator for the sorted polygons with holes,
+
+    auto it_u = u.begin();
+
+    //   3. an iterator for the selected components, which have
+    //   already been sorted and finally
+
+    auto it_c = components.begin();
+
+    do {
+        //   4. An iterator for the currently considered component as
+        //   a polygon.
+
+        auto it = it_u->begin();
+
+        // This outer loop iterates through entire polygons with
+        // holes.
+        if (i++ == *it_c) {
+            // If the polygon's outer boundary has been selected, we:
+
+            //   1. make a new polygon with holes out of it,
+
+            typename T::Polygon_with_holes_2 P(*it);
+
+            if (++it_c == components.end()) {
+                goto skip;
+            }
+
+            //   2.  go through its holes, adding any that are
+            // selected and finally
+
+            while (++it != it_u->end()) {
+                if (i++ == *it_c) {
+                    P.add_hole(*it);
+
+                    if (++it_c == components.end()) {
+                        goto skip;
+                    }
+                }
+            }
+
+            //   3. add it to the result.
+
+          skip:
+            this->polygon->insert(P);
+        } else {
+            // If the polygon's outer boundary hasn't been selected,
+            // we just go through the holes, adding any that are
+            // selected as separate polygons to the result, after
+            // reorienting them.
+
+            while (++it != it_u->end()) {
+                if (i++ == *it_c) {
+                    it->reverse_orientation();
+                    this->polygon->insert(*it);
+
+                    if (++it_c == components.end()) {
+                        continue;
+                    }
+                }
+            }
+        }
+    } while (++it_u != u.end() && it_c != components.end());
+}
+
+template void Polygon_components_operation<Polygon_set>::evaluate();
+template void Polygon_components_operation<Circle_polygon_set>::evaluate();
+template void Polygon_components_operation<Conic_polygon_set>::evaluate();

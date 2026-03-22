@@ -571,6 +571,13 @@ inline std::shared_ptr<R> COMPLEMENT(
     return make_and_map<Polygon_complement_operation<T>, R>(p);
 }
 
+template<typename T, typename R = Polygon_operation<T>>
+inline std::shared_ptr<R> COMPONENTS(
+    const std::shared_ptr<Polygon_operation<T>> &p, const std::vector<int> &is)
+{
+    return make_and_map<Polygon_components_operation<T>, R>(p, is);
+}
+
 template<typename R = Polyhedron_operation<Polyhedron>, typename T>
 inline std::shared_ptr<R> EXTRUSION(
     const std::shared_ptr<Polygon_operation<T>> &p,
@@ -973,6 +980,9 @@ DEFINE_MESH_OPERATION(
     DEFLATE,
     const int n, const FT w_H, const FT w_M)
 FOR(Deflate_operation, n, w_H, w_M)
+
+DEFINE_MESH_OPERATION(COMPONENTS, const std::vector<int> &is)
+FOR(Polyhedron_components_operation, is)
 
 #undef DEFINE_MESH_OPERATION
 

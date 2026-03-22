@@ -5,7 +5,7 @@
           complement boundary interior clip deflate color-selection color-vertices
           color-faces subdivide-catmull-clark subdivide-doo-sabin subdivide-loop
           subdivide-sqrt-3 remesh perturb refine fair smooth-shape
-          deform corefine complement
+          deform corefine complement components
 
           linear-extrusion angular-extrusion)
 
