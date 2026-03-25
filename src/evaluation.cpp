@@ -1056,7 +1056,7 @@ void evaluate_operations()
                 }
             }
 
-            it++;
+            ++it;
         }
     }
 

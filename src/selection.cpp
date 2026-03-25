@@ -460,7 +460,7 @@ std::vector<S> sort_face_patches(
     std::vector<S> v;
     v.reserve(u.size());
 
-    for (auto it = u.cbegin(); it != u.cend(); it++) {
+    for (auto it = u.cbegin(); it != u.cend(); ++it) {
         v.push_back(it->second);
     }
 

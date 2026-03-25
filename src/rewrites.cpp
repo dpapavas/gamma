@@ -169,7 +169,7 @@ static bool try_fold_associative_operation(Operation *op)
 
     for (auto it = op->predecessors.begin();
          it != op->predecessors.end();
-         it++) {
+         ++it) {
         if (auto p = dynamic_cast<T *>(*it);
             p && walk_chain<BOTH>(p)) {
             return false;
@@ -332,7 +332,7 @@ static bool try_fold_difference_operation(Operation *op)
 
     for (auto it = op->predecessors.begin();
          it != op->predecessors.end();
-         it++) {
+         ++it) {
         if (auto p = dynamic_cast<T *>(*it);
             p && walk_chain<LEFT>(p)) {
             return false;

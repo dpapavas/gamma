@@ -197,13 +197,13 @@ BOOST_AUTO_TEST_CASE(__VA_ARGS__)                                       \
              it_1 != end_1 || it_2 != end_2;) {                         \
             if (it_2 == end_2 || (it_1 != end_1 && *it_1 < *it_2)) {    \
                 BOOST_ERROR(a << ": extra tag '" << *it_1 << "' found"); \
-                it_1++;                                                 \
+                ++it_1;                                                 \
             } else if (it_1 == end_1 || (it_2 != end_2 && *it_1 > *it_2)) { \
                 BOOST_ERROR(a << ": tag '" << *it_2 << "' not found");  \
-                it_2++;                                                 \
+                ++it_2;                                                 \
             } else {                                                    \
-                it_1++;                                                 \
-                it_2++;                                                 \
+                ++it_1;                                                 \
+                ++it_2;                                                 \
             }                                                           \
         }                                                               \
                                                                         \

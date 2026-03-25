@@ -1115,9 +1115,7 @@ static void make_icosahedron(Polyhedron &P, const FT &r, const FT &tau)
 {
     CGAL::make_icosahedron(P, Point_3(CGAL::ORIGIN), r);
 
-    for (auto it = P.points_begin();
-         it != P.points_end();
-         it++) {
+    for (auto it = P.points_begin(); it != P.points_end(); ++it) {
         *it = project_to_sphere(CGAL::to_double(it->x()),
                                 CGAL::to_double(it->y()),
                                 CGAL::to_double(it->z()),

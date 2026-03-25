@@ -78,16 +78,16 @@ static void match_selection(
     // but without the need for defining comparators and
     // allocating extra vectors to store matching pairs).
 
-    for (auto [pit, vit] = std::pair(pairs.begin(), v.begin());
-         pit != pairs.end() && vit != v.end(); ) {
+    for (auto [it_p, it_v] = std::pair(pairs.begin(), v.begin());
+         it_p != pairs.end() && it_v != v.end(); ) {
 
-        if (pit->first < *vit) {
-            ++pit;
+        if (it_p->first < *it_v) {
+            ++it_p;
         } else  {
-            if (!(*vit < pit->first)) {
-                *it = (pit++)->second;
+            if (!(*it_v < it_p->first)) {
+                *it = (it_p++)->second;
             }
-            ++vit;
+            ++it_v;
         }
     }
 }
