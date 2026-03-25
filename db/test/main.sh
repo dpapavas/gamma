@@ -87,6 +87,7 @@ test_set() {
     program hello world
     args --hello --world
     present-on-reload no
+    recenter-on-reload no
     resize-on-split yes
     default-vertex-color 0.1 0.2 0.3 0.4
     edge-line-width 2.3

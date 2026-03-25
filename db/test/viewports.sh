@@ -83,21 +83,21 @@ test_translate_3() {
         viewports 1 "0, 0" "1000, 1000" "1.2, 3.4, 5.6" "0, 0, 0" 0.7 50 test " vef" "*"
 }
 
-test_pan_invalid() { run -c "pan bogus" | syntax_error; }
-test_pan_invalid_1() { run -c "pan 1 bogus" | syntax_error; }
-test_pan_invalid_2() { run -c "pan 1 2 bogus" | syntax_error; }
-test_pan_0() {
-    run -c "pan 1 2" -c "pan" |
+test_track_invalid() { run -c "track bogus" | syntax_error; }
+test_track_invalid_1() { run -c "track 1 bogus" | syntax_error; }
+test_track_invalid_2() { run -c "track 1 2 bogus" | syntax_error; }
+test_track_0() {
+    run -c "track 1 2" -c "track" |
         viewports 1 "0, 0" "1000, 1000" "0, 0, 0" "0, 0, 0" 0.7 50 test " vef" "*"
 }
 
-test_pan_1() {
-    run -c "rotate 90 0 90" -c "pan 1" |
+test_track_1() {
+    run -c "rotate 90 0 90" -c "track 1" |
         viewports 1 "0, 0" "1000, 1000" "0, 0, 1" "90, 0, 90" 0.7 50 test " vef" "*"
 }
 
-test_pan_2() {
-    run -c "rotate 90 0 90" -c "pan 1 2" |
+test_track_2() {
+    run -c "rotate 90 0 90" -c "track 1 2" |
         viewports 1 "0, 0" "1000, 1000" "2, 0, 1" "90, 0, 90" 0.7 50 test " vef" "*"
 }
 

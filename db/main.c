@@ -204,7 +204,7 @@ static char **completion_function(const char *text, int start, int end)
             nullptr,
             (char *[]) {
                 "quit", "exit", "window", "hide", "present", "resize", "focus",
-                "split", "target", "rotate", "translate", "pan", "zoom", "view",
+                "split", "target", "rotate", "translate", "track", "zoom", "view",
                 "load", "run", "info", "set", "show", "bind", "unbind", "print",
                 "define", "undefine", "kill", "output", "toggle", nullptr});
     });
@@ -235,10 +235,11 @@ static char **completion_function(const char *text, int start, int end)
 
     {
         char *v[] = {
-            "program", "args", "quiet", "present-on-reload", "resize-on-split",
-            "print-frames", "default-vertex-color", "default-view", "default-zoom",
-            "default-rotation", "default-translation", "edge-line-width",
-            "mouse-sensitivity", "vertex-point-size", nullptr};
+            "program", "args", "quiet", "present-on-reload", "recenter-on-reload",
+            "resize-on-split", "print-frames", "default-vertex-color",
+            "default-view", "default-zoom", "default-rotation",
+            "default-translation", "edge-line-width", "mouse-sensitivity",
+            "vertex-point-size", nullptr};
 
         WHEN_IN_1("set", {
                 return MATCHES(nullptr, v);

@@ -263,6 +263,7 @@ static int compare_edges(const void *a, const void *b)
 
 struct settings settings = {
     .present_on_reload = true,
+    .recenter_on_reload = true,
     .default_zoom = 0.7f,
     .default_view = 50.0f,
     .default_vertex_color = {0.78, 0.78, 0.78, 1},
@@ -970,18 +971,18 @@ int read_commands(FILE *fp)
             glfwPostEmptyEvent();
         }
 
-        //   `pan x [y]` := Pan the focused viewport by the given
-        //   displacements in the horizontal and vertical direction.
-        //   If no displacements are given, reset the viewport's
-        //   translation.  If a horizontal displacement is given, but
-        //   the vertical displacement is not specified, it is assumed
-        //   to be zero.
+        //   `track x [y]` := Track the focused viewport by the given
+        //   displacements perpendicularly and along the camera
+        //   viewing direction.  If no displacements are given, reset
+        //   the viewport's translation.  If less than three
+        //   displacements are specified, the rest are assumed to be
+        //   zero.
 
-        else if (!strcmp(s, "pan")) {
-            float v[2] = {};
+        else if (!strcmp(s, "track")) {
+            float v[3] = {};
             size_t i;
 
-            for (i = 0; i < 2 && try_scan(fp, "%f", &v[i]) == 1; i++);
+            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
 
             PARSING_FINISHED;
             NEEDS_WINDOW;
@@ -989,7 +990,7 @@ int read_commands(FILE *fp)
             if (i == 0) {
                 translate_viewport(w->focus, NAN, NAN, NAN);
             } else {
-                pan_viewport(w->focus, v[0], v[1]);
+                track_viewport(w->focus, v[0], v[1], v[2]);
             }
 
             glfwPostEmptyEvent();
@@ -2178,6 +2179,13 @@ int read_commands(FILE *fp)
                 SET_BOOLEAN(fp, settings.present_on_reload);
             }
 
+            //   `recenter-on-reload` := Recenter the view when the
+            //   contents of a viewport are reloaded.
+
+            else if (!strcmp(s, "recenter-on-reload")) {
+                SET_BOOLEAN(fp, settings.recenter_on_reload);
+            }
+
             //   `resize-on-split` := Resize the window accordingly
             //   when splitting viewports.
 
@@ -2277,6 +2285,8 @@ int read_commands(FILE *fp)
                 SHOW_BOOLEAN(settings.quiet);
             } else if (!strcmp(s, "present-on-reload")) {
                 SHOW_BOOLEAN(settings.present_on_reload);
+            } else if (!strcmp(s, "recenter-on-reload")) {
+                SHOW_BOOLEAN(settings.recenter_on_reload);
             } else if (!strcmp(s, "resize-on-split")) {
                 SHOW_BOOLEAN(settings.resize_on_split);
             } else if (!strcmp(s, "print-frames")) {

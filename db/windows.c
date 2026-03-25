@@ -32,7 +32,7 @@ struct window *windows;
 static enum: int {
     IDLE = 0,
     ROTATING = GLFW_MOUSE_BUTTON_LEFT + 1,
-    PANNING = GLFW_MOUSE_BUTTON_RIGHT + 1,
+    TRACKING = GLFW_MOUSE_BUTTON_RIGHT + 1,
     ZOOMING = GLFW_MOUSE_BUTTON_MIDDLE + 1
 } mode;
 
@@ -56,7 +56,7 @@ static void key_callback(
 }
 
 // The following callback handles mouse motion.  Modes such as
-// rotation, zooming and panning are concerned with relative motion,
+// rotation, zooming and tracking are concerned with relative motion,
 // so we need to calculate the position relative to the previous
 // callback.  We keep the cursor location in a couple of variables.
 
@@ -99,7 +99,7 @@ static void cursor_position_callback(GLFWwindow *window, double x, double y)
     // Camera manipulation modes are handled in their own functions.
 
     case ROTATING:
-    case PANNING:
+    case TRACKING:
     case ZOOMING:
         {
             const GLfloat c = settings.mouse_sensitivity;
@@ -112,11 +112,11 @@ static void cursor_position_callback(GLFWwindow *window, double x, double y)
                     c * (GLfloat)(x - previous_x),
                     c * (GLfloat)(y - previous_y),
                     0);
-            } else if (mode == PANNING) {
-                // The appropriate panning sensitivity depends on the
+            } else if (mode == TRACKING) {
+                // The appropriate tracking sensitivity depends on the
                 // current viewport projecton.  If we're viewing a
                 // large object, zoomed out to fill the viewport, we
-                // want to pan faster (in terms of world units per
+                // want to track faster (in terms of world units per
                 // mouse motion pixels) than when viewing a small
                 // object, or when zoomed into a detail of a large
                 // object.
@@ -132,10 +132,11 @@ static void cursor_position_callback(GLFWwindow *window, double x, double y)
                 const GLfloat dim = fmaxf(w, h / a);
                 const float d = c * dim / v->zoom / 2.0f;
 
-                pan_viewport(
+                track_viewport(
                     v,
                     -d * (GLfloat)(x - previous_x),
-                    d * (GLfloat)(y - previous_y));
+                    d * (GLfloat)(y - previous_y),
+                    0);
             }
         }
 
@@ -604,7 +605,7 @@ struct window *find_window(const char *name)
         0.1f, 1.0f,
         ((settings.default_view > 0.0f ? settings.default_view : 50.0f) / 2.0f
          / 180.0f * M_PI),
-        settings.default_zoom,
+        settings.default_zoom, 0.0f,
         {0.0f, 0.0f, 0.0f},
         EYE, EYE,
         0,
@@ -1214,6 +1215,21 @@ void refresh_object(
                 o->ebo = 0;
             }
 
+            // We also make a note of whether the viewport was
+            // centered on its previous target, to retain the
+            // centering for the new object.
+
+            bool centered = true, empty = true;
+
+            if (v->object) {
+                auto b = v->object->bounds;
+
+                empty = false;
+                centered = (v->translation[0] == (b[0] + b[3]) / 2.0f
+                            && v->translation[1] == (b[1] + b[4]) / 2.0f
+                            && v->translation[2] == (b[2] + b[5]) / 2.0f);
+            }
+
             // Now we need to update the object with the new geometry.
 
             o->counts[0] = n;
@@ -1364,15 +1380,29 @@ void refresh_object(
 
             // Having calculated the object's AABB, we can recenter
             // the viewport, but we only do so if the user hasn't
-            // adjusted the translation already.  We want to help, not
+            // adjusted the camera already.  We want to help, not
             // annoy.
 
-            if (v->translation[0] == 0.0f
-                && v->translation[1] == 0.0f
-                && v->translation[2] == 0.0f) {
-                translate_viewport(v, NAN, NAN, NAN);
-            } else {
-                v->stale.projection = true;
+            if (settings.recenter_on_reload) {
+                if (empty || (
+                        centered
+                        && v->zoom == settings.default_zoom
+                        && !memcmp(
+                            v->rotation,
+                            (GLfloat [16]) {
+                                1.0f, 0.0f, 0.0f, 0.0f,
+                                0.0f, 1.0f, 0.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 0.0f, 1.0f},
+                            sizeof(GLfloat [16])))) {
+                    translate_viewport(v, NAN, NAN, NAN);
+                } else {
+                    // If the camera has been adjusted, we retain its
+                    // position, rotation and zoom.
+
+                    v->zoom = NAN;
+                    v->stale.projection = true;
+                }
             }
 
             // Finally we present the window found to be showing the

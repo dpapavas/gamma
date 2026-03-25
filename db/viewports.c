@@ -56,11 +56,15 @@ static void multiply_matrix_4(
 // The following functions manipulate the viewing and projection
 // transformations of a viewport.
 
-void pan_viewport(struct viewport *v, float x, float y)
+void track_viewport(struct viewport *v, float x, float y, float z)
 {
-    v->translation[0] += x * v->rotation[0] + y * v->rotation[4];
-    v->translation[1] += x * v->rotation[1] + y * v->rotation[5];
-    v->translation[2] += x * v->rotation[2] + y * v->rotation[6];
+    v->translation[0] +=
+        x * v->rotation[0] + y * v->rotation[4] + z * v->rotation[8];
+    v->translation[1] +=
+        x * v->rotation[1] + y * v->rotation[5] + z * v->rotation[9];
+    v->translation[2] +=
+        x * v->rotation[2] + y * v->rotation[6] + z * v->rotation[10];
+
     v->stale.projection = true;
 }
 
@@ -165,8 +169,6 @@ void refresh_viewport(struct viewport *v, struct window *w)
     // 1$ should result in the object's AABB filling up the viewport
     // along one dimension, without exceeding it in the other.
 
-    GLfloat zeta = v->zoom;
-
     // In other words, the zoom factor depends on both the shape of
     // the AABB and that of the viewport.  We capture the relationship
     // by calculating the object's effective dimension as:
@@ -211,6 +213,8 @@ void refresh_viewport(struct viewport *v, struct window *w)
     const GLfloat nf = n - f;
 
     // Now we can turn to the calculation of the projection matrix.
+    // If no zoom is provided (`v->zoom` is `NAN`), we keep the
+    // existing projection and back-calculate the zoom factor.
 
     if (v->projection == ORTHOGRAPHIC) {
         // For orthographic projection, we use `dim` to define the
@@ -232,8 +236,17 @@ void refresh_viewport(struct viewport *v, struct window *w)
         n += rho;
         f += rho;
 
-        P[0] = 2.0f * zeta / dim;
-        P[5] = P[0] / a;
+        GLfloat P_0;
+
+        if (isnan(v->zoom)) {
+            P_0 = v->parameter;
+            v->zoom = P_0 * dim / 2.0f;
+        } else {
+            P_0 = v->parameter = 2.0f * v->zoom / dim;
+        }
+
+        P[0] = P_0;
+        P[5] = P_0 / a;
         P[10] = 2.0f / nf;
         P[11] = (n + f) / nf;
         P[15] = 1.0f;
@@ -257,20 +270,25 @@ void refresh_viewport(struct viewport *v, struct window *w)
         const GLfloat phi_2 = v->angle;
         const GLfloat tanphi_2 = tan(phi_2);
 
-        rho = dim / (2.0f * zeta * tanphi_2) - v->object->bounds[2];
-
-        // We also clamp the zoom factor, so as to prevent the near
-        // plane from slipping into the positive Z halfspace.
-
-        const GLfloat n_min = -nf / 1000.0f;
-
-        if ((n + rho) < n_min) {
-            rho = n_min - n;
-            zeta = dim / (rho + v->object->bounds[2]) / 2.0f / tanphi_2;
+        if (isnan(v->zoom)) {
+            rho = v->parameter;
+            v->zoom = dim / (rho + v->object->bounds[2]) / 2.0f / tanphi_2;
+        } else {
+            rho = dim / (2.0f * v->zoom * tanphi_2) - v->object->bounds[2];
+            v->parameter = rho;
         }
 
         n += rho;
         f += rho;
+
+        // We also clamp the near plane distance, to prevent it from
+        // slipping into the positive Z halfspace.
+
+        const GLfloat n_min = -nf / 1000.0f;
+
+        if (n < n_min) {
+            n = n_min;
+        }
 
         // Given the FOV half-angle `phi_2`, we can compute the right
         // x-coordinate of the projection plane as $\tan{\phi\over{2}}
@@ -286,6 +304,9 @@ void refresh_viewport(struct viewport *v, struct window *w)
         P[11] = 2.0f * n * f / nf;
         P[14] = -1.0f;
     }
+
+    v->near = n;
+    v->far = f;
 
     // We apply our translation by $(0, 0, -\rho)$ by
     // post-multiplying the projection matrix $P$ with the
@@ -307,8 +328,4 @@ void refresh_viewport(struct viewport *v, struct window *w)
                  + v->translation[1] * p[1]
                  + v->translation[2] * p[2]);
     }
-
-    v->near = n;
-    v->far = f;
-    v->zoom = zeta;
 }

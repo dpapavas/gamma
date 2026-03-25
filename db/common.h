@@ -45,7 +45,7 @@ struct settings {
     char *program;
 
     bool quiet, batch;
-    bool present_on_reload, resize_on_split, print_frames;
+    bool present_on_reload, recenter_on_reload, resize_on_split, print_frames;
 
     double default_vertex_color[4], vertex_point_size, edge_line_width;
     double default_view, default_zoom;
@@ -172,7 +172,7 @@ struct viewport {
     enum projection projection;
     GLfloat near, far;
     GLfloat angle;
-    GLfloat zoom, translation[3], rotation[16], matrix[16];
+    GLfloat zoom, parameter, translation[3], rotation[16], matrix[16];
 
     GLuint vao;
 
@@ -182,7 +182,7 @@ struct viewport {
 };
 
 enum direction {HORIZONTALLY, VERTICALLY};
-void pan_viewport(struct viewport *v, float x, float y);
+void track_viewport(struct viewport *v, float x, float y, float z);
 void translate_viewport(struct viewport *v, float x, float y, float z);
 void rotate_viewport(struct viewport *v, float alpha, float beta, float gamma);
 void zoom_viewport(struct viewport *v, float zeta);
