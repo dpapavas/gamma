@@ -48,7 +48,15 @@ static void key_callback(
         const struct key_binding *p = find_key_binding(mods, key);
 
         if (p) {
-            FILE *fp = fmemopen((char *)p->command, strlen(p->command), "r");
+            const size_t n = strlen(p->command);
+
+            FILE *fp = fmemopen(nullptr, n, "r+");
+
+            for (const char *c = p->command; *c; c++) {
+                fputc(*c == ';' ? '\n' : *c, fp);
+            }
+
+            fseek(fp, 0, SEEK_SET);
             read_commands(fp);
             fclose(fp);
         }
