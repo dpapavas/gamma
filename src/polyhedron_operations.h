@@ -226,8 +226,8 @@ class Polyhedron_clip_operation:
 public:
     Polyhedron_clip_operation(
         const std::shared_ptr<Polyhedron_operation<T>> &p,
-        const Plane_3 &Pi):
-        Unary_operation<Polyhedron_operation<T>>(p), plane(Pi) {}
+        const Plane_3 &pi):
+        Unary_operation<Polyhedron_operation<T>>(p), plane(pi) {}
 
     void evaluate() override;
 

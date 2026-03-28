@@ -36,25 +36,25 @@
 // The following return lambdas for use with `std::visit`.  They're
 // needed in every front end, so we define them here.
 
-inline auto make_polyhedron_clip_visitor(const Plane_3 &Pi) {
-    return [&Pi](auto &&x) {
+inline auto make_polyhedron_clip_visitor(const Plane_3 &pi) {
+    return [&pi](auto &&x) {
         using T = typename std::remove_reference_t<decltype(*x)>;
 
         if (Options::polyhedron_booleans == Polyhedron_booleans_mode::NEF) {
             return Boxed_polyhedron(
-                CLIP(CONVERT_TO<Nef_polyhedron>(x), Pi));
+                CLIP(CONVERT_TO<Nef_polyhedron>(x), pi));
         } else if (
             Options::polyhedron_booleans == Polyhedron_booleans_mode::COREFINE
             && std::is_same_v<T, Polyhedron_operation<Nef_polyhedron>>) {
             return Boxed_polyhedron(
-                CLIP(CONVERT_TO<Polyhedron>(x), Pi));
+                CLIP(CONVERT_TO<Polyhedron>(x), pi));
         } else {
-            return Boxed_polyhedron(CLIP(x, Pi));
+            return Boxed_polyhedron(CLIP(x, pi));
         }
     };
 }
 
-#define make_polyhedron_boolean_visitor(OP)                            \
+#define make_polyhedron_boolean_visitor(OP)                             \
 [](auto &&x, auto &&y) {                                                \
     using T = typename std::remove_reference_t<decltype(*x)>;           \
     using U = typename std::remove_reference_t<decltype(*y)>;           \

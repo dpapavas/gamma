@@ -31,7 +31,7 @@ public:
     virtual std::vector<Polyhedron::Facet_handle> apply(
         Polyhedron &mesh) const = 0;
     virtual std::vector<Surface_mesh::Face_index> apply(
-        const Surface_mesh &mesh) const = 0;
+        Surface_mesh &mesh) const = 0;
 };
 
 class Vertex_selector {
@@ -40,7 +40,7 @@ public:
     virtual std::vector<Polyhedron::Vertex_handle> apply(
         Polyhedron &mesh) const = 0;
     virtual std::vector<Surface_mesh::Vertex_index> apply(
-        const Surface_mesh &mesh) const = 0;
+        Surface_mesh &mesh) const = 0;
 };
 
 class Edge_selector {
@@ -49,7 +49,7 @@ public:
     virtual std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
     apply(Polyhedron &mesh) const = 0;
     virtual std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
-    apply(const Surface_mesh &mesh) const = 0;
+    apply(Surface_mesh &mesh) const = 0;
 };
 
 // Bounded
@@ -70,7 +70,7 @@ public:
     std::vector<Polyhedron::Facet_handle> apply(
         Polyhedron &mesh) const override;
     std::vector<Surface_mesh::Face_index> apply(
-        const Surface_mesh &mesh) const override;
+        Surface_mesh &mesh) const override;
 };
 
 class Bounded_vertex_selector: public Vertex_selector {
@@ -87,7 +87,7 @@ public:
     std::vector<Polyhedron::Vertex_handle> apply(
         Polyhedron &mesh) const override;
     std::vector<Surface_mesh::Vertex_index> apply(
-        const Surface_mesh &mesh) const override;
+        Surface_mesh &mesh) const override;
 };
 
 class Bounded_edge_selector: public Edge_selector {
@@ -106,7 +106,7 @@ public:
     std::vector<boost::graph_traits<Polyhedron>::edge_descriptor> apply(
         Polyhedron &mesh) const override;
     std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor> apply(
-        const Surface_mesh &mesh) const override;
+        Surface_mesh &mesh) const override;
 };
 
 // Feature-based
@@ -124,7 +124,7 @@ public:
     std::vector<boost::graph_traits<Polyhedron>::edge_descriptor> apply(
         Polyhedron &mesh) const override;
     std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor> apply(
-        const Surface_mesh &mesh) const override;
+        Surface_mesh &mesh) const override;
 };
 
 class Sharp_patch_face_selector: public Face_selector {
@@ -147,7 +147,49 @@ public:
     std::vector<Polyhedron::Facet_handle> apply(
         Polyhedron &mesh) const override;
     std::vector<Surface_mesh::Face_index> apply(
-        const Surface_mesh &mesh) const override;
+        Surface_mesh &mesh) const override;
+};
+
+// By intersection
+
+class Intersecting_face_selector: public Face_selector {
+public:
+    std::variant<Segment_3, Ray_3, Line_3, Plane_3> query;
+
+    template<typename Q>
+    Intersecting_face_selector(const Q &x): query(x) {}
+
+    std::string describe() const {
+        return std::visit(
+            [] (auto &&x) {
+                return compose_tag("faces_through", x);
+            }, query);
+    }
+
+    std::vector<Polyhedron::Facet_handle> apply(
+        Polyhedron &mesh) const override;
+    std::vector<Surface_mesh::Face_index> apply(
+        Surface_mesh &mesh) const override;
+};
+
+class Intersecting_edge_selector: public Edge_selector {
+public:
+    std::variant<Segment_3, Ray_3, Line_3, Plane_3> query;
+
+    template<typename Q>
+    Intersecting_edge_selector(const Q &x): query(x) {}
+
+    std::string describe() const {
+        return std::visit(
+            [] (auto &&x) {
+                return compose_tag("edges_through", x);
+            }, query);
+    }
+
+    std::vector<boost::graph_traits<Polyhedron>::edge_descriptor> apply(
+        Polyhedron &mesh) const override;
+    std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor> apply(
+        Surface_mesh &mesh) const override;
 };
 
 // Relative
@@ -169,7 +211,7 @@ public:
     std::vector<Polyhedron::Facet_handle> apply(
         Polyhedron &mesh) const override;
     std::vector<Surface_mesh::Face_index> apply(
-        const Surface_mesh &mesh) const override;
+        Surface_mesh &mesh) const override;
 };
 
 class Relative_vertex_selector: public Vertex_selector {
@@ -189,7 +231,7 @@ public:
     std::vector<Polyhedron::Vertex_handle> apply(
         Polyhedron &mesh) const override;
     std::vector<Surface_mesh::Vertex_index> apply(
-        const Surface_mesh &mesh) const override;
+        Surface_mesh &mesh) const override;
 };
 
 class Relative_edge_selector: public Edge_selector {
@@ -209,7 +251,7 @@ public:
     std::vector<boost::graph_traits<Polyhedron>::edge_descriptor> apply(
         Polyhedron &mesh) const override;
     std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor> apply(
-        const Surface_mesh &mesh) const override;
+        Surface_mesh &mesh) const override;
 };
 
 // Converting
@@ -229,7 +271,7 @@ public:                                                                 \
     std::vector<Polyhedron::Vertex_handle> apply(                       \
         Polyhedron &mesh) const override;                               \
     std::vector<Surface_mesh::Vertex_index> apply(                      \
-        const Surface_mesh &mesh) const override;                       \
+        Surface_mesh &mesh) const override;                             \
 };
 
 DEFINE_CONVERTING_VERTEX_SELECTOR(Face)
@@ -255,7 +297,7 @@ public:                                                                 \
     std::vector<Polyhedron::Facet_handle> apply(                        \
         Polyhedron &mesh) const override;                               \
     std::vector<Surface_mesh::Face_index> apply(                        \
-        const Surface_mesh &mesh) const override;                       \
+        Surface_mesh &mesh) const override;                             \
 };
 
 DEFINE_CONVERTING_FACE_SELECTOR(Vertex)
@@ -281,7 +323,7 @@ public:                                                                 \
     std::vector<boost::graph_traits<Polyhedron>::edge_descriptor> apply( \
         Polyhedron &mesh) const override;                               \
     std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor> apply( \
-        const Surface_mesh &mesh) const override;                       \
+        Surface_mesh &mesh) const override;                             \
 };
 
 DEFINE_CONVERTING_EDGE_SELECTOR(Vertex)
@@ -291,23 +333,21 @@ DEFINE_CONVERTING_EDGE_SELECTOR(Face)
 
 // Boolean set operations
 
-#define DEFINE_SET_OPERATION(OP, WHAT, T, HANDLE, INDEX)        \
-class Set_## OP ##_## WHAT ##_selector: public T {              \
-    std::vector<std::shared_ptr<T>> selectors;                  \
-                                                                \
-public:                                                         \
-    Set_## OP ##_## WHAT ##_selector(                           \
-        std::vector<std::shared_ptr<T>> &&v):                   \
-    selectors(std::move(v)) {}                                  \
-                                                                \
-    std::string describe() const {                              \
-        return compose_tag(#OP, selectors);                     \
-    }                                                           \
-                                                                \
-    std::vector<HANDLE> apply(                                  \
-        Polyhedron &mesh) const override;                       \
-    std::vector<INDEX> apply(                                   \
-        const Surface_mesh &mesh) const override;               \
+#define DEFINE_SET_OPERATION(OP, WHAT, T, HANDLE, INDEX)                \
+class Set_## OP ##_## WHAT ##_selector: public T {                      \
+    std::vector<std::shared_ptr<T>> selectors;                          \
+                                                                        \
+public:                                                                 \
+    Set_## OP ##_## WHAT ##_selector(                                   \
+        std::vector<std::shared_ptr<T>> &&v):                           \
+    selectors(std::move(v)) {}                                          \
+                                                                        \
+    std::string describe() const {                                      \
+        return compose_tag(#OP, selectors);                             \
+    }                                                                   \
+                                                                        \
+    std::vector<HANDLE> apply(Polyhedron &mesh) const override;         \
+    std::vector<INDEX> apply(Surface_mesh &mesh) const override;        \
 };
 
 DEFINE_SET_OPERATION(union, face, Face_selector,
@@ -351,7 +391,7 @@ public:                                                                 \
     std::vector<HANDLE> apply(                                          \
         Polyhedron &mesh) const override;                               \
     std::vector<INDEX> apply(                                           \
-        const Surface_mesh &mesh) const override;                       \
+        Surface_mesh &mesh) const override;                             \
 };
 
 DEFINE_COMPLEMENT_OPERATION(face, Face_selector,

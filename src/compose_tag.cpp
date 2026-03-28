@@ -89,12 +89,50 @@ void compose_tag_helper<Vector_3>::compose(
 }
 
 template<>
+void compose_tag_helper<Segment_3>::compose(
+    std::ostringstream &s, const Segment_3 &st)
+{
+    s << "segment(";
+
+    compose_tag_helper<Point_3>::compose(s, st.source());
+    compose_tag_helper<Point_3>::compose(s, st.target());
+
+    s.seekp(-1, std::ios_base::end);
+    s << "),";
+}
+
+template<>
+void compose_tag_helper<Ray_3>::compose(
+    std::ostringstream &s, const Ray_3 &st)
+{
+    s << "ray(";
+
+    compose_tag_helper<Point_3>::compose(s, st.source());
+    compose_tag_helper<Point_3>::compose(s, st.point(1));
+
+    s.seekp(-1, std::ios_base::end);
+    s << "),";
+}
+
+template<>
+void compose_tag_helper<Line_3>::compose(
+    std::ostringstream &s, const Line_3 &l)
+{
+    const auto d = l.direction();
+
+    s << "line("
+      << d.dx().exact() << ","
+      << d.dy().exact() << ","
+      << d.dz().exact() << "),";
+}
+
+template<>
 void compose_tag_helper<Plane_3>::compose(
-    std::ostringstream &s, const Plane_3 &Pi)
+    std::ostringstream &s, const Plane_3 &pi)
 {
     s << "plane("
-      << Pi.a().exact() << ","
-      << Pi.b().exact() << ","
-      << Pi.c().exact() << ","
-      << Pi.d().exact() << "),";
+      << pi.a().exact() << ","
+      << pi.b().exact() << ","
+      << pi.c().exact() << ","
+      << pi.d().exact() << "),";
 }

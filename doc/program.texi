@@ -45,6 +45,7 @@
 @include src_extrusion_operation_cpp.texi
 @include src_mesh_operations_cpp.texi
 @include src_sink_operations_cpp.texi
+@include src_selection_cpp.texi
 
 @part Part II:@* The Front End
 

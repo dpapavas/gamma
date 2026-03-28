@@ -346,8 +346,7 @@ void Corefine_with_plane_operation<T>::evaluate()
         assert(v.size() >= 4);
 
         CGAL::convex_hull_3(v.begin(), v.end(), B);
-    } else if (const Kernel::Triangle_3 *t =
-               std::get_if<Kernel::Triangle_3>(&*r)) {
+    } else if (const Triangle_3 *t = std::get_if<Triangle_3>(&*r)) {
         CGAL::make_triangle(t->vertex(0), t->vertex(1), t->vertex(2), B);
     } else {
         return;

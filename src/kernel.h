@@ -34,7 +34,11 @@ typedef Kernel::Vector_2 Vector_2;
 typedef Kernel::Point_3 Point_3;
 typedef Kernel::Line_3 Line_3;
 typedef Kernel::Vector_3 Vector_3;
+typedef Kernel::Segment_3 Segment_3;
+typedef Kernel::Ray_3 Ray_3;
+typedef Kernel::Line_3 Line_3;
 typedef Kernel::Plane_3 Plane_3;
 typedef Kernel::Sphere_3 Sphere_3;
+typedef Kernel::Triangle_3 Triangle_3;
 
 #endif

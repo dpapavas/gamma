@@ -832,4 +832,198 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_faces, T, types)
     BOOST_TEST(n == Vector_3(0, 0, 0));
 }
 
+// ## Intersection-Based Selection Tests
+
+// To test intersection selection of faces or edges, we create a
+// simple cuboid and apply various queries to it.
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(intersecting_edges, T, types)
+{
+    const auto &result = evaluate(
+        [] {
+            return CONVERT_TO<T>(CUBOID(2, 2, 2));
+        });
+
+    evaluate_operations();
+    auto &P = *result.value;
+    const auto map = CGAL::get(CGAL::vertex_point, P);
+
+    // Queries include:
+
+    //   1. segment, where we aim for the edge vertical edge through
+    //   $(1, 1, 0)$,
+
+    {
+        auto v = EDGES_THROUGH(
+            Segment_3(
+                Point_3(0, 0, 0),
+                Point_3(FT(FT::ET(9, 10)), FT(FT::ET(9, 10)), 0)))->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+
+        auto u = EDGES_THROUGH(
+            Segment_3(Point_3(0, 0, 0), Point_3(1, 1, 0)))->apply(P);
+
+        BOOST_REQUIRE(u.size() == 1);
+        for (const auto &x: {CGAL::source(u[0], P), CGAL::target(u[0], P)}) {
+            const auto &p = boost::get(map, x);
+            BOOST_TEST((p.x() == 1 && p.y() == 1));
+        }
+    }
+
+    //   2. ray, aiming for the same,
+
+    {
+        auto v = EDGES_THROUGH(
+            Ray_3(Point_3(0, 0, 0), Point_3(1, 0, 0)))->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+
+        auto u = EDGES_THROUGH(
+            Ray_3(
+                Point_3(0, 0, 0),
+                Point_3(FT(FT::ET(1, 2)), FT(FT::ET(1, 2)), 0)))->apply(P);
+
+        BOOST_REQUIRE(u.size() == 1);
+        for (const auto &x: {CGAL::source(u[0], P), CGAL::target(u[0], P)}) {
+            const auto &p = boost::get(map, x);
+            BOOST_TEST((p.x() == 1 && p.y() == 1));
+        }
+    }
+
+    //   2. line, aiming for the opposing edge as well, or
+
+    {
+        auto v = EDGES_THROUGH(
+            Line_3(Point_3(0, 0, 0), Point_3(1, 0, 0)))->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+
+        auto u = EDGES_THROUGH(
+            Line_3(
+                Point_3(0, 0, 0),
+                Point_3(FT(FT::ET(1, 2)), FT(FT::ET(1, 2)), 0)))->apply(P);
+
+        BOOST_REQUIRE(u.size() == 2);
+        for (const auto &x: u) {
+            const auto p = boost::get(map, CGAL::source(x, P));
+            const auto q = boost::get(map, CGAL::target(x, P));
+
+            BOOST_TEST(
+                (CGAL::abs(p.x()) == 1
+                 && p.x() == p.y() && p.y() == q.x() && q.x() == q.y()));
+        }
+    }
+
+    //   3. plane, cutting through all vertical edges.
+
+    {
+        auto v = EDGES_THROUGH(Plane_3(0, 0, 1, FT(FT::ET(11, 10))))->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+
+        auto u = EDGES_THROUGH(Plane_3(0, 0, 1, 0))->apply(P);
+
+        BOOST_REQUIRE(u.size() == 4);
+        for (const auto &x: u) {
+            const auto d = (boost::get(map, CGAL::source(x, P))
+                            - boost::get(map, CGAL::target(x, P)));
+
+            BOOST_TEST((d.x() == 0 && d.y() == 0));
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(intersecting_faces, T, types)
+{
+    const auto &result = evaluate(
+        [] {
+            return CONVERT_TO<T>(CUBOID(2, 2, 2));
+        });
+
+    evaluate_operations();
+    auto &P = *result.value;
+
+    // Similarly to the test on edges, queries include:
+
+    //   1. segment, where we aim for the face at $x = 1$,
+
+    {
+        auto v = FACES_THROUGH(
+            Segment_3(
+                Point_3(0, 0, 0),
+                Point_3(FT(FT::ET(9, 10)), 0, 0)))->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+
+        auto u = FACES_THROUGH(
+            Segment_3(Point_3(0, 0, 0), Point_3(1, 0, 0)))->apply(P);
+
+        BOOST_REQUIRE(u.size() == 1);
+        BOOST_TEST(
+            (CGAL::Polygon_mesh_processing::compute_face_normal(u[0], P)
+             == Vector_3(1, 0, 0)));
+    }
+
+    //   2. ray, aiming for the same,
+
+    {
+        auto v = FACES_THROUGH(
+            Ray_3(
+                Point_3(FT(FT::ET(11, 10)), 0, 0), Point_3(2, 0, 0)))->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+
+        auto u = FACES_THROUGH(
+            Ray_3(
+                Point_3(0, 0, 0), Point_3(FT(FT::ET(1, 2)), 0, 0)))->apply(P);
+
+        BOOST_REQUIRE(u.size() == 1);
+        BOOST_TEST(
+            (CGAL::Polygon_mesh_processing::compute_face_normal(u[0], P)
+             == Vector_3(1, 0, 0)));
+    }
+
+    //   2. line, aiming for the opposing face as well, or
+
+    {
+        auto v = FACES_THROUGH(
+            Line_3(
+                Point_3(0, FT(FT::ET(11, 10)), 0),
+                Point_3(1, FT(FT::ET(11, 10)), 0)))->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+
+        auto u = FACES_THROUGH(
+            Line_3(
+                Point_3(0, 0, 0), Point_3(FT(FT::ET(1, 2)), 0, 0)))->apply(P);
+
+        BOOST_REQUIRE(u.size() == 2);
+        for (const auto &x: u) {
+            const auto n =
+                CGAL::Polygon_mesh_processing::compute_face_normal(x, P);
+
+            BOOST_TEST((n == Vector_3(1, 0, 0) || n == Vector_3(-1, 0, 0)));
+        }
+    }
+
+    //   3. plane, cutting through all vertical faces.
+
+    {
+        auto v = FACES_THROUGH(Plane_3(0, 0, 1, FT(FT::ET(11, 10))))->apply(P);
+
+        BOOST_TEST(v.size() == 0);
+
+        auto u = FACES_THROUGH(Plane_3(0, 0, 1, 0))->apply(P);
+
+        BOOST_REQUIRE(u.size() == 4);
+        for (const auto &x: u) {
+            const auto n =
+                CGAL::Polygon_mesh_processing::compute_face_normal(x, P);
+
+            BOOST_TEST(n.z() == 0);
+        }
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()

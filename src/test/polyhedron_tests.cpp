@@ -284,19 +284,17 @@ DEFINE_CONVERSION_TEST_CASE(Surface_mesh)
 
 BOOST_AUTO_TEST_CASE(rotation, * boost::unit_test::tolerance(0.0001))
 {
-    const auto &result = evaluate(
-        [] {
-            const double v[] = {1, 1, 1};
+    const double v[] = {1, 1, 1};
 
-            return INTERSECTION(
-                TRANSFORM(
-                    UNIT_TETRAHEDRON,
-                    basic_rotation(90, 1)
-                    * basic_rotation(90, 2)),
-                TRANSFORM(
-                    UNIT_TETRAHEDRON,
-                    axis_angle_rotation(120, v)));
-        });
+    const auto &result = evaluate(
+        INTERSECTION(
+            TRANSFORM(
+                UNIT_TETRAHEDRON,
+                basic_rotation(90, 1)
+                * basic_rotation(90, 2)),
+            TRANSFORM(
+                UNIT_TETRAHEDRON,
+                axis_angle_rotation(120, v))));
 
     evaluate_operations();
 

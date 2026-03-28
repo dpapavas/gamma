@@ -374,6 +374,61 @@ static int selector_bnot(lua_State *L)
         L, COMPLEMENT(fromlua<std::shared_ptr<T>>(L, 1)));
 }
 
+// Feature-based selections
+
+static int faces_by_sharpness(lua_State *L)
+{
+    const FT theta = checkrational(L, 1);
+    const int h = lua_gettop(L);
+    std::vector<int> v;
+    v.reserve(h - 1);
+
+    for (int i = 2; i <= h; i++) {
+        v.push_back(luaL_checkinteger(L, i));
+    }
+
+    tolua<std::shared_ptr<Face_selector>>(L, FACES_BY_SHARPNESS(theta, v));
+    return 1;
+}
+
+// Intersecting selections
+
+#define DEFINE_SELECTOR(NAME, T, SEL, FUNC)                             \
+static int NAME(lua_State *L)                                           \
+{                                                                       \
+    luaL_checkudata(L, 1, "point_3d");                                  \
+    luaL_checkudata(L, 2, "point_3d");                                  \
+                                                                        \
+    return tolua<std::shared_ptr<SEL>>(                                 \
+        L, FUNC(T(fromlua<Point_3>(L, 1), fromlua<Point_3>(L, 2))));    \
+}
+
+DEFINE_SELECTOR(faces_through_segment, Segment_3, Face_selector, FACES_THROUGH)
+DEFINE_SELECTOR(faces_through_ray, Ray_3, Face_selector, FACES_THROUGH)
+DEFINE_SELECTOR(faces_through_line, Line_3, Face_selector, FACES_THROUGH)
+
+DEFINE_SELECTOR(edges_through_segment, Segment_3, Edge_selector, EDGES_THROUGH)
+DEFINE_SELECTOR(edges_through_ray, Ray_3, Edge_selector, EDGES_THROUGH)
+DEFINE_SELECTOR(edges_through_line, Line_3, Edge_selector, EDGES_THROUGH)
+
+#undef DEFINE_SELECTOR
+
+#define DEFINE_SELECTOR(NAME, T, SEL, FUNC)     \
+static int NAME(lua_State *L)                   \
+{                                               \
+    luaL_checkudata(L, 1, "plane_3d");          \
+                                                \
+    return tolua<std::shared_ptr<SEL>>(         \
+        L, FUNC(fromlua<Plane_3>(L, 1)));       \
+}
+
+DEFINE_SELECTOR(faces_through_plane, Plane_3, Face_selector, FACES_THROUGH)
+DEFINE_SELECTOR(edges_through_plane, Plane_3, Edge_selector, EDGES_THROUGH)
+
+#undef DEFINE_SELECTOR
+
+// Selections based on other selections
+
 template<int I>
 static int relative_selection(lua_State *L)
 {
@@ -391,21 +446,6 @@ static int relative_selection(lua_State *L)
         luaL_argerror(L, 1, "invalid type, expected selector");
     }
 
-    return 1;
-}
-
-static int faces_by_sharpness(lua_State *L)
-{
-    const FT theta = checkrational(L, 1);
-    const int h = lua_gettop(L);
-    std::vector<int> v;
-    v.reserve(h - 1);
-
-    for (int i = 2; i <= h; i++) {
-        v.push_back(luaL_checkinteger(L, i));
-    }
-
-    tolua<std::shared_ptr<Face_selector>>(L, FACES_BY_SHARPNESS(theta, v));
     return 1;
 }
 
@@ -629,15 +669,15 @@ static int polyhedron_ ##NAME(lua_State *L)     \
 
 #define MAYBE_CLIP(MAYBE_FLIP) {                                        \
     int i;                                                              \
-    for (i = 0; i < 2 && !luaL_testudata(L, i + 1, "plane"); i++);      \
+    for (i = 0; i < 2 && !luaL_testudata(L, i + 1, "plane_3d"); i++);   \
                                                                         \
     if (i < 2) {                                                        \
-        const Plane_3 &Pi = fromlua<Plane_3>(L, i + 1)MAYBE_FLIP;       \
+        const Plane_3 &pi = fromlua<Plane_3>(L, i + 1)MAYBE_FLIP;       \
                                                                         \
         tolua<Boxed_polyhedron>(                                        \
             L,                                                          \
             std::visit(                                                 \
-                make_polyhedron_clip_visitor(Pi),                       \
+                make_polyhedron_clip_visitor(pi),                       \
                 fromlua<Boxed_polyhedron>(L, 2 - i)));                  \
                                                                         \
         return 1;                                                       \
@@ -763,7 +803,7 @@ DEFINE_SET_OPERATION(intersection, INTERSECTION)
 static int clip_2(lua_State *L)
 {
     luaL_checkudata(L, 1, "polyhedron");
-    luaL_checkudata(L, 2, "plane");
+    luaL_checkudata(L, 2, "plane_3d");
 
     return polyhedron_mul(L);
 }
@@ -772,7 +812,7 @@ DEFINE_FOLDED_OPERATION(clip)
 
 static int corefine_2(lua_State *L)
 {
-    if (luaL_testudata(L, 2, "plane")) {
+    if (luaL_testudata(L, 2, "plane_3d")) {
         const auto &pi = fromlua<Plane_3>(L, 2);
 
         return std::visit(
@@ -1542,6 +1582,16 @@ static int open_selection(lua_State *L)
          primitive<EDGES_BY_SHARPNESS<>, std::shared_ptr<Edge_selector>, 1>},
         {"faces_by_sharpness", faces_by_sharpness},
 
+        {"faces_through_segment", faces_through_segment},
+        {"faces_through_ray", faces_through_ray},
+        {"faces_through_line", faces_through_line},
+        {"faces_through_plane", faces_through_plane},
+
+        {"edges_through_segment", edges_through_segment},
+        {"edges_through_ray", edges_through_ray},
+        {"edges_through_line", edges_through_line},
+        {"edges_through_plane", edges_through_plane},
+
         {"complement", complement},
 
         {nullptr, nullptr}};
@@ -1871,7 +1921,7 @@ int run_lua(const char *input, char **first, char **last)
 
         PUSH_METATABLE("point_2d", Point_2);
         PUSH_METATABLE("point_3d", Point_3);
-        PUSH_METATABLE("plane", Plane_3);
+        PUSH_METATABLE("plane_3d", Plane_3);
 
         PUSH_METATABLE("transformation_2d", Aff_transformation_2);
         SET_KEY("__mul", transformation_2_mul);

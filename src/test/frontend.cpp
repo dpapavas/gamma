@@ -1175,6 +1175,86 @@ EXPECTING("cuboid(2,2,2)",
           "color_selection(mesh(cuboid(2,2,2)),"
           "faces_by_sharpness(45,1,2,3),55,55,55,255)")
 
+DEFINE_TEST_CASE(selection_through)
+WITH_SOURCE("lua",
+            "v = require 'gamma.volumes'"
+            "s = require 'gamma.selection'"
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.edges_through_segment(point(0, 0, 0), point(2, 0, 0)))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.edges_through_ray(point(0, 0, 0), point(2, 0, 0)))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.edges_through_line(point(0, 0, 0), point(2, 0, 0)))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.edges_through_plane(plane(0, 0, 1, 0)))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.faces_through_segment(point(0, 0, 0), point(2, 0, 0)))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.faces_through_ray(point(0, 0, 0), point(2, 0, 0)))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.faces_through_line(point(0, 0, 0), point(2, 0, 0)))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.faces_through_plane(plane(0, 0, 1, 0)))")
+WITH_SOURCE("scheme",
+            "(import (gamma volumes) (gamma selection)"
+            "        (gamma polyhedra) (gamma operations))"
+
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (edges-through-segment (point 0 0 0) (point 2 0 0)))"
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (edges-through-ray (point 0 0 0) (point 2 0 0)))"
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (edges-through-line (point 0 0 0) (point 2 0 0)))"
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (edges-through-plane (plane 0 0 1 0)))"
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (faces-through-segment (point 0 0 0) (point 2 0 0)))"
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (faces-through-ray (point 0 0 0) (point 2 0 0)))"
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (faces-through-line (point 0 0 0) (point 2 0 0)))"
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (faces-through-plane (plane 0 0 1 0)))")
+EXPECTING("cuboid(2,2,2)",
+          "mesh(cuboid(2,2,2))",
+
+          "color_selection(mesh(cuboid(2,2,2)),vertices_in("
+          "edges_through(segment(point(0,0,0),point(2,0,0)))),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),vertices_in("
+          "edges_through(ray(point(0,0,0),point(2,0,0)))),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),vertices_in("
+          "edges_through(line(2,0,0))),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),vertices_in("
+          "edges_through(plane(0,0,1,0))),55,55,55,255)",
+
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "faces_through(segment(point(0,0,0),point(2,0,0))),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "faces_through(ray(point(0,0,0),point(2,0,0))),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "faces_through(line(2,0,0)),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "faces_through(plane(0,0,1,0)),55,55,55,255)")
+
 #define EXPECTING_SELECTION_BOOLEAN_TAGS                                \
 EXPECTING("cuboid(2,2,2)",                                              \
           "mesh(cuboid(2,2,2))",                                        \

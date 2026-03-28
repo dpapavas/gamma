@@ -1006,6 +1006,43 @@ static SCM faces_by_sharpness(SCM s, SCM t)
         FACES_BY_SHARPNESS(theta, v));
 }
 
+// As are selections based on intersection with primitives such as
+// planes and lines.
+
+#define DEFINE_SELECTOR(NAME, T, SEL, FUNC)                     \
+static SCM NAME(SCM s, SCM t)                                   \
+{                                                               \
+    Point_3 a, b;                                               \
+                                                                \
+    pop_argument(1, s, a);                                      \
+    pop_argument(2, t, b);                                      \
+                                                                \
+    return to_scheme<std::shared_ptr<SEL>>(FUNC(T(a, b)));      \
+}
+
+DEFINE_SELECTOR(faces_through_segment, Segment_3, Face_selector, FACES_THROUGH)
+DEFINE_SELECTOR(faces_through_ray, Ray_3, Face_selector, FACES_THROUGH)
+DEFINE_SELECTOR(faces_through_line, Line_3, Face_selector, FACES_THROUGH)
+
+DEFINE_SELECTOR(edges_through_segment, Segment_3, Edge_selector, EDGES_THROUGH)
+DEFINE_SELECTOR(edges_through_ray, Ray_3, Edge_selector, EDGES_THROUGH)
+DEFINE_SELECTOR(edges_through_line, Line_3, Edge_selector, EDGES_THROUGH)
+
+#undef DEFINE_SELECTOR
+
+#define DEFINE_SELECTOR(NAME, T, SEL, FUNC)                     \
+static SCM NAME(SCM s)                                          \
+{                                                               \
+    T x;                                                        \
+    pop_argument(1, s, x);                                      \
+    return to_scheme<std::shared_ptr<SEL>>(FUNC(x));            \
+}
+
+DEFINE_SELECTOR(faces_through_plane, Plane_3, Face_selector, FACES_THROUGH)
+DEFINE_SELECTOR(edges_through_plane, Plane_3, Edge_selector, EDGES_THROUGH)
+
+#undef DEFINE_SELECTOR
+
 // Selections can also be derived by expanding or contracting.
 
 template<int SIGN>
@@ -1438,11 +1475,11 @@ static SCM corefine_2(SCM s, SCM t)
 
     //   2. a plane.
 
-    if (Plane_3 Pi;
-        try_pop_argument(2, t, Pi)) {
+    if (Plane_3 pi;
+        try_pop_argument(2, t, pi)) {
         return std::visit(
-            [&Pi](auto &&x) {
-                return to_scheme<Boxed_polyhedron>(COREFINE(x, Pi));
+            [&pi](auto &&x) {
+                return to_scheme<Boxed_polyhedron>(COREFINE(x, pi));
             }, p);
     }
 
@@ -1458,13 +1495,13 @@ DEFINE_FOLDED_OPERATION(corefine)
 static SCM clip_2(SCM s, SCM t)
 {
     Boxed_polyhedron a;
-    Plane_3 Pi;
+    Plane_3 pi;
 
     pop_argument(1, s, a);
-    pop_argument(2, t, Pi);
+    pop_argument(2, t, pi);
 
     return to_scheme<Boxed_polyhedron>(
-        std::visit(make_polyhedron_clip_visitor(Pi), a));
+        std::visit(make_polyhedron_clip_visitor(pi), a));
 }
 
 DEFINE_FOLDED_OPERATION(clip)
@@ -1999,6 +2036,16 @@ static void define_selection(void *)
         "edges-by-sharpness", EDGES_BY_SHARPNESS<>, std::shared_ptr<Edge_selector>, 1);
 
     DEFINE_FOREIGN_PROC("faces-by-sharpness", 1, 0, 1, faces_by_sharpness);
+
+    DEFINE_FOREIGN_PROC("faces-through-segment", 1, 1, 0, faces_through_segment);
+    DEFINE_FOREIGN_PROC("faces-through-ray", 1, 1, 0, faces_through_ray);
+    DEFINE_FOREIGN_PROC("faces-through-line", 1, 1, 0, faces_through_line);
+    DEFINE_FOREIGN_PROC("faces-through-plane", 1, 1, 0, faces_through_plane);
+
+    DEFINE_FOREIGN_PROC("edges-through-segment", 1, 1, 0, edges_through_segment);
+    DEFINE_FOREIGN_PROC("edges-through-ray", 1, 1, 0, edges_through_ray);
+    DEFINE_FOREIGN_PROC("edges-through-line", 1, 1, 0, edges_through_line);
+    DEFINE_FOREIGN_PROC("edges-through-plane", 1, 1, 0, edges_through_plane);
 }
 
 static void define_polygons(void *)

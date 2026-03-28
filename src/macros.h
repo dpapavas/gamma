@@ -168,6 +168,18 @@ inline std::shared_ptr<R> FACES_BY_SHARPNESS(
     return std::make_shared<Sharp_patch_face_selector>(theta, is);
 }
 
+template<typename R = Edge_selector, typename Q>
+inline std::shared_ptr<R> EDGES_THROUGH(const Q &pi)
+{
+    return std::make_shared<Intersecting_edge_selector>(pi);
+}
+
+template<typename R = Face_selector, typename Q>
+inline std::shared_ptr<R> FACES_THROUGH(const Q &pi)
+{
+    return std::make_shared<Intersecting_face_selector>(pi);
+}
+
 #define DEFINE_SELECTOR_SET_OPERATIONS(WHAT, WHICH)                     \
 template<typename R = WHAT ##_selector>                                 \
 inline std::shared_ptr<R> JOIN(                                         \
@@ -727,9 +739,9 @@ inline std::shared_ptr<R> POLYHEDRON_HULL_CLOSE(
 
 template<typename T, typename R = Polyhedron_operation<T>>
 inline std::shared_ptr<R> CLIP(
-    const std::shared_ptr<Polyhedron_operation<T>> &p, const Plane_3 &Pi)
+    const std::shared_ptr<Polyhedron_operation<T>> &p, const Plane_3 &pi)
 {
-    return make_and_map<Polyhedron_clip_operation<T>, R>(p, Pi);
+    return make_and_map<Polyhedron_clip_operation<T>, R>(p, pi);
 }
 
 template<typename T, typename R = Polyhedron_operation<T>, typename U>
