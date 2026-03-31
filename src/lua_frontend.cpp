@@ -380,6 +380,14 @@ static int faces_by_sharpness(lua_State *L)
 {
     const FT theta = checkrational(L, 1);
     const int h = lua_gettop(L);
+
+    if (h == 2 && luaL_testudata(L, 2, "face_selector")) {
+        const auto p = fromlua<std::shared_ptr<Face_selector>>(L, 2);
+
+        tolua<std::shared_ptr<Face_selector>>(L, FACES_BY_SHARPNESS(theta, p));
+        return 1;
+    }
+
     std::vector<int> v;
     v.reserve(h - 1);
 

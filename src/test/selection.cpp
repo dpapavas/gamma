@@ -834,6 +834,56 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_faces, T, types)
     BOOST_TEST(n == Vector_3(0, 0, 0));
 }
 
+// This is similar, with the difference, that we select the sides of
+// two prisms, by shooting a horizontal line through them, to select
+// one side face in each and then selecting all others in the same
+// components.
+
+BOOST_TEST_DECORATOR(* boost::unit_test::tolerance(1e-15))
+BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_expanding_faces, T, types)
+{
+    const auto &result = evaluate(
+        CONVERT_TO<T>(
+            JOIN(
+                TRANSFORM(
+                    CONVERT_TO<Nef_polyhedron>(PRISM(8, 1, 3)),
+                    TRANSLATION_3(2, 0, 0)),
+                TRANSFORM(
+                    CONVERT_TO<Nef_polyhedron>(PRISM(12, 1, 3)),
+                    TRANSLATION_3(-2, 0, 0)))));
+
+    evaluate_operations();
+    auto &P = *result.value;
+
+    auto v = FACES_BY_SHARPNESS(
+        90, FACES_THROUGH(
+            Line_3(Point_3(0, 0, 0), Point_3(1, 0, 0))))->apply(P);
+
+    // We exepect as many quad faces as there are sides in a dodecagon
+    // and an octagon.
+
+    BOOST_TEST(v.size() == 20);
+
+    Vector_3 n(0, 0, 0);
+
+    for (auto &x: v) {
+        const auto n_i = CGAL::Polygon_mesh_processing::compute_face_normal(x, P);
+
+        // Each face should be vertical.
+
+        BOOST_TEST(n_i.z() == FT(0));
+
+        // We also accumulate the normals.  Their sum should vanish as
+        // the sides are symmetrical around the z axis.
+
+        n += n_i;
+    }
+
+    for (int i = 0; i < 3; i++) {
+        BOOST_TEST(CGAL::to_double(n[i]) == 0.0);
+    }
+}
+
 // ## Intersection-Based Selection Tests
 
 // To test intersection selection of faces or edges, we create a

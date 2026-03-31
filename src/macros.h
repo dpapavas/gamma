@@ -168,6 +168,13 @@ inline std::shared_ptr<R> FACES_BY_SHARPNESS(
     return std::make_shared<Sharp_patch_face_selector>(theta, is);
 }
 
+template<typename R = Face_selector>
+inline std::shared_ptr<R> FACES_BY_SHARPNESS(
+    const FT &theta, const std::shared_ptr<Face_selector> &p)
+{
+    return std::make_shared<Sharp_patch_expanding_face_selector>(theta, p);
+}
+
 template<typename R = Edge_selector, typename Q>
 inline std::shared_ptr<R> EDGES_THROUGH(const Q &pi)
 {

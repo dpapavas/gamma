@@ -606,9 +606,10 @@ sort_face_patches(
 // selection returns faces contained in one or more such patches.  The
 // specified patches, must be positive integers.
 
-template<typename F, typename T>
-static std::vector<F> select_sharp_patch_faces(
-    T &mesh, const FT &angle, const std::vector<int> &patches)
+template<typename T>
+static std::vector<typename boost::graph_traits<T>::face_descriptor>
+select_sharp_patch_faces(
+    const T &mesh, const FT &angle, const std::vector<int> &patches)
 {
     typedef typename boost::graph_traits<T>::edge_descriptor edge_descriptor;
     typedef typename boost::graph_traits<T>::face_descriptor face_descriptor;
@@ -616,21 +617,21 @@ static std::vector<F> select_sharp_patch_faces(
     // First we run the sharp edge segmentation, noting the total
     // number of returned patches `n`.
 
-    std::vector<F> v;
+    std::vector<face_descriptor> v;
     std::unordered_set<edge_descriptor> set;
-    std::map<face_descriptor, std::size_t> face_map;
+    std::map<face_descriptor, std::size_t> map;
 
     std::size_t n =
         CGAL::Polygon_mesh_processing::sharp_edges_segmentation(
             mesh, angle,
             CGAL::Boolean_property_map(set),
-            boost::associative_property_map<decltype(face_map)>(face_map));
+            boost::associative_property_map<decltype(map)>(map));
 
     // We can now extract and return the faces of the selected
     // patches.
 
-    const auto u = sort_face_patches(mesh, face_map, 1, n);
-    for (const auto &[f, i]: face_map) {
+    const auto u = sort_face_patches(mesh, map, 1, n);
+    for (const auto &[f, i]: map) {
         assert(i - 1 < n);
 
         if (std::find(patches.begin(), patches.end(), u[i - 1])
@@ -646,15 +647,69 @@ static std::vector<F> select_sharp_patch_faces(
 std::vector<Polyhedron::Facet_handle>
 Sharp_patch_face_selector::apply(Polyhedron &mesh) const
 {
-    return select_sharp_patch_faces<Polyhedron::Facet_handle>(
-        mesh, angle, patches);
+    return select_sharp_patch_faces(mesh, angle, patches);
 }
 
 std::vector<Surface_mesh::Face_index>
 Sharp_patch_face_selector::apply(Surface_mesh &mesh) const
 {
-    return select_sharp_patch_faces<Surface_mesh::Face_index>(
-        mesh, angle, patches);
+    return select_sharp_patch_faces(mesh, angle, patches);
+}
+
+// This form of the sharp patch face selector determines the patches
+// to be returned from the faces returned by a given selector.
+
+template<typename T>
+static std::vector<typename boost::graph_traits<T>::face_descriptor>
+select_sharp_patch_faces(
+    const T &mesh, const FT &angle, const Face_selector &selector)
+{
+    typedef typename boost::graph_traits<T>::edge_descriptor edge_descriptor;
+    typedef typename boost::graph_traits<T>::face_descriptor face_descriptor;
+
+    // First we run the sharp edge segmentation, as before.
+
+    std::vector<face_descriptor> v;
+    std::unordered_set<edge_descriptor> set;
+    std::map<face_descriptor, std::size_t> map;
+
+    CGAL::Polygon_mesh_processing::sharp_edges_segmentation(
+        mesh, angle,
+        CGAL::Boolean_property_map(set),
+        boost::associative_property_map<decltype(map)>(map));
+
+    std::unordered_set<std::size_t> patches;
+
+    // We then run the seeding selector and collect the set of all
+    // patches its faces belong to.
+
+    for (const auto &x: selector.apply(const_cast<T &>(mesh))) {
+        patches.insert(map[x]);
+    }
+
+    // Finally, we extract and return the faces of the collected
+    // patches.
+
+    for (const auto &[f, i]: map) {
+        if (patches.count(i) > 0) {
+            v.push_back(f);
+        }
+    }
+
+    v.shrink_to_fit();
+    return v;
+}
+
+std::vector<Polyhedron::Facet_handle>
+Sharp_patch_expanding_face_selector::apply(Polyhedron &mesh) const
+{
+    return select_sharp_patch_faces(mesh, angle, *selector);
+}
+
+std::vector<Surface_mesh::Face_index>
+Sharp_patch_expanding_face_selector::apply(Surface_mesh &mesh) const
+{
+    return select_sharp_patch_faces(mesh, angle, *selector);
 }
 
 // ## Selections by Intersection

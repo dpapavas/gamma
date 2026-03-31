@@ -150,6 +150,25 @@ public:
         Surface_mesh &mesh) const override;
 };
 
+class Sharp_patch_expanding_face_selector: public Face_selector {
+    FT angle;
+    std::shared_ptr<Face_selector> selector;
+
+public:
+    Sharp_patch_expanding_face_selector(
+        const FT &theta, const std::shared_ptr<Face_selector> &p):
+        angle(theta), selector(p) {}
+
+    std::string describe() const {
+        return compose_tag("faces_by_sharpness", angle, selector);
+    }
+
+    std::vector<Polyhedron::Facet_handle> apply(
+        Polyhedron &mesh) const override;
+    std::vector<Surface_mesh::Face_index> apply(
+        Surface_mesh &mesh) const override;
+};
+
 // By intersection
 
 class Intersecting_face_selector: public Face_selector {

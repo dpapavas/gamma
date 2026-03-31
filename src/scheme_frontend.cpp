@@ -997,9 +997,15 @@ DEFINE_SELECTOR(
 static SCM faces_by_sharpness(SCM s, SCM t)
 {
     FT theta;
-    std::vector<int> v;
-
     pop_argument(1, s, theta);
+
+    if (std::shared_ptr<Face_selector> x;
+        scm_is_null(scm_cdr(t)) && try_pop_argument(2, t, x)) {
+        return to_scheme<std::shared_ptr<Face_selector>>(
+            FACES_BY_SHARPNESS(theta, x));
+    }
+
+    std::vector<int> v;
     pop_arguments(2, t, v);
 
     return to_scheme<std::shared_ptr<Face_selector>>(
