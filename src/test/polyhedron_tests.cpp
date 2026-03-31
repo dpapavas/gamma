@@ -508,13 +508,28 @@ BOOST_DATA_TEST_CASE(extrude_many,
 
     if (n == 1 && q == 0) {
         test_polyhedron(*result.value, 4, 8, 1);
+    } else if (n == 1 && q == 1) {
+        // There are 3 halfedges per triangle for a total of 24 + 8
+        // border halfedges.
+
+        test_polyhedron(*result.value, 8, 32, 8);
     } else {
+        // For each of the $n - 1$ segments, there are 4 outer side
+        // faces + 4 inner ones when there's a hole.  Add to that 1 or
+        // 8 faces for each of two ends respectively.
+
+        const int m = 4 * (q + 1) * (n - 1) + 2 * (q == 0 ? 1 : 8);
+
         test_polyhedron(
             *result.value,
             4 * n * (q + 1),
-            ((n == 1) * (q + 1) * 4 + (1 + (n > 1)) * (q == 0 ? 6 : 24)
-             + 24 * (q + 1) * (n - 1)),
-            (1 + (n > 1)) * (q == 0 ? 2 : 8) + 8 * (q + 1) * (n - 1));
+
+            // All faces are quads, which have 4 halfedges each,
+            // except for the 8 triangules making up the ends with
+            // holes which have 3 each.
+
+            4 * m - q * 2 * 8,
+            m);
     }
 
     if (n > 1) {

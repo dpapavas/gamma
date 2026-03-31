@@ -369,54 +369,126 @@ void Extrusion_operation::evaluate()
         Polyhedron P;
 
         // For normal, i.e. not degenerate extrusions, we use a series
-        // of steps to convert this soup to a proper polyhedron.  If
-        // any of these steps fail, we attempt to repair the soup and
-        // try again.
+        // of steps to convert this soup to a proper polyhedron.
 
         if (transformations.size() > 1) {
             bool p = false;
 
             while (true) {
-                try {
-                    if (!CGAL::Polygon_mesh_processing::orient_polygon_soup(
-                            points, polygons)) {
-                        CGAL_error_msg("extrusion cannot be oriented");
-                        break;
-                    }
+                // Extrusions might have duplicated vertices, or even
+                // edges.  One example might be extrusions with two
+                // identical transformations, which might come about
+                // even in the absence of programmer error, eg. when
+                // the extrusion depends on user input.  Another
+                // typical case is when a profile is extruded
+                // radially.  If the profile has an edge on the axis
+                // of revolution, it will be present multiple times in
+                // the output, once for each step.
 
-                    CGAL::Polygon_mesh_processing::merge_duplicate_points_in_polygon_soup(
-                        points, polygons);
+                // We therefore begin by merging duplicate vertices
+                // (which will also merge any duplicate edges).
 
-                    CGAL::Polygon_mesh_processing::polygon_soup_to_polygon_mesh(
-                        points, polygons, P);
+                CGAL::Polygon_mesh_processing::
+                    merge_duplicate_points_in_polygon_soup(points, polygons);
+
+                // The extrusion might still not be a valid mesh.  For
+                // instance, in the radial extrusion example described
+                // above, even afer merging duplicate vertices and
+                // edges, the soup would still have an internal
+                // vertical edge in its center; the result of merging
+                // the multiple edges of "hole" of zero radius.
+
+                // The desired mesh is obvious in this case, and it
+                // can be recovered by repairing the soup.
+
+                if (!CGAL::Polygon_mesh_processing::
+                    is_polygon_soup_a_polygon_mesh(polygons)) {
+                    message(NOTE, "extrusion in not a valid polygon mesh");
+                    goto repair;
+                }
+
+                // We then orient the soup.  This will only result in
+                // "consistent" orientation, i.e. all neighboring
+                // faces will be oriented consistently, but the mesh
+                // might still be inside out.  Furthermore if the mesh
+                // consists of multiple connected components, they
+                // might not all be oriented the same way.
+
+                if (!CGAL::Polygon_mesh_processing::
+                    orient_polygon_soup(points, polygons)) {
+                    message(NOTE, "extrusion cannot be oriented");
+                    goto repair;
+                }
+
+                // Still, we can convert the soup to a mesh.
+
+                CGAL::Polygon_mesh_processing::polygon_soup_to_polygon_mesh(
+                    points, polygons, P);
+
+                {
+                    Polyhedron T(P);
+
+                    // The following orientation related functions
+                    // only operate on triangulated meshes, so we make
+                    // a copy and triangulate it.
 
                     CGAL::Polygon_mesh_processing::triangulate_faces(
-                        P.facet_handles(), P);
+                        T.facet_handles(), T);
 
-                    CGAL::Polygon_mesh_processing::orient_to_bound_a_volume(P);
-                    break;
-                } catch(const CGAL::Failure_exception &e) {
-                    if (p) {
-                        throw;
+                    assert(CGAL::is_closed(T));
+
+                    if (CGAL::Polygon_mesh_processing::does_bound_a_volume(T)) {
+                        // If the mesh does bound a volume, i.e. if it
+                        // consists of only one oriented component, or
+                        // of multiple components, oriented the same
+                        // way, we only need to test for proper
+                        // orientation and flip it if necessary.
+
+                        if (!CGAL::Polygon_mesh_processing::
+                            is_outward_oriented(T)) {
+                            // We do so on the original,
+                            // untriangulated mesh, so as to avoid
+                            // returning a triangulated result.
+
+                            CGAL::Polygon_mesh_processing::
+                                reverse_face_orientations(P);
+                        }
+                    } else {
+                        // We may also need to reorient each connected
+                        // component, so as to make the mesh bound a
+                        // volume.
+                        CGAL::Polygon_mesh_processing::
+                            orient_to_bound_a_volume(T);
+
+                        // It may still be inside out though.
+
+                        if (!CGAL::Polygon_mesh_processing::
+                            is_outward_oriented(T)) {
+                            CGAL::Polygon_mesh_processing::
+                                reverse_face_orientations(T);
+                        }
+
+                        // Here, we need to return the triangulated
+                        // version.
+
+                        CGAL::copy_face_graph(T, *polyhedron);
+                        return;
                     }
-
-                    std::ostringstream s;
-                    std::string t;
-
-                    s << "attempted to repair extrusion";
-                    if (const std::string &m = e.message(); !m.empty()) {
-                        s << " (" << m << ")";
-                    }
-
-                    t = s.str();
-                    message(NOTE, t);
-
-                    P.clear();
-                    CGAL::Polygon_mesh_processing::repair_polygon_soup(
-                        points, polygons);
-
-                    p = true;
                 }
+                break;
+
+              repair:
+                if (p) {
+                    CGAL_error_msg("extrusion does not produce a valid mesh");
+                }
+
+                P.clear();
+                CGAL::Polygon_mesh_processing::repair_polygon_soup(
+                    points, polygons);
+
+                message(NOTE, "attempted to repair extrusion");
+
+                p = true;
             }
         }
 

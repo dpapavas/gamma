@@ -439,7 +439,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 
     const auto a = FACES_PARTIALLY_IN(BOUNDING_PLANE(0, 0, 1, 0));
 
-    BOOST_TEST(a->apply(P).size() == 16);
+    BOOST_TEST(a->apply(P).size() == 8);
 
     //   2. expand to $-2 <= z <= 2$ (but without the caps),
 
@@ -448,7 +448,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 
     std::sort(bv.begin(), bv.end());
 
-    BOOST_TEST(bv.size() == 32);
+    BOOST_TEST(bv.size() == 16);
 
     //   3. make the same selection, but through joining (so it should
     //   be sorted),
@@ -467,7 +467,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 
     std::sort(dv.begin(), dv.end());
 
-    BOOST_TEST(dv.size() == 36);
+    BOOST_TEST(dv.size() == 18);
 
     //   5. select only the caps.
 
@@ -476,7 +476,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_faces, T, types)
 
     std::sort(ev.begin(), ev.end());
 
-    BOOST_TEST(ev.size() == 4);
+    BOOST_TEST(ev.size() == 2);
     BOOST_TEST(INTERSECTION({b, e})->apply(P).size() == 0);
     BOOST_TEST(JOIN({b, e})->apply(P) == dv);
     BOOST_TEST(COMPLEMENT(b)->apply(P) == ev);
@@ -504,7 +504,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 
     const auto a = EDGES_PARTIALLY_IN(BOUNDING_PLANE(0, 0, 1, 0));
 
-    BOOST_TEST(a->apply(P).size() == 20);
+    BOOST_TEST(a->apply(P).size() == 12);
 
     //   2. expand it to $-2 < z < 2$ (but without the caps),
 
@@ -513,7 +513,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 
     std::sort(bv.begin(), bv.end());
 
-    BOOST_TEST(bv.size() == 44);
+    BOOST_TEST(bv.size() == 28);
 
     //   3. make the same selection, but through joining (so it should
     //   be sorted),
@@ -532,7 +532,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 
     std::sort(dv.begin(), dv.end());
 
-    BOOST_TEST(dv.size() == 54);
+    BOOST_TEST(dv.size() == 36);
 
     //   5. select only the edges of the caps.
 
@@ -541,15 +541,17 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(relative_edges, T, types)
 
     std::sort(ev.begin(), ev.end());
 
-    BOOST_TEST(ev.size() == 10);
+    BOOST_TEST(ev.size() == 8);
     BOOST_TEST(INTERSECTION({b, e})->apply(P).size() == 0);
     BOOST_TEST(JOIN({b, e})->apply(P) == dv);
     BOOST_TEST(COMPLEMENT(b)->apply(P) == ev);
 }
 
-// ### Selection Conversion (Vertices in Selected Faces, etc.)
+// ### Selection Conversion
 
-// Here we test conversion between selections of different elements.
+// Here we test conversion between selections of different elements,
+// such as vertices in selected faces, etc.
+
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(conversion, T, types)
 {
