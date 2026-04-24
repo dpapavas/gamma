@@ -1388,6 +1388,76 @@ static int deform(lua_State *L)
     }
 }
 
+#define DEFINE_CHAMFERING_OPERATION(NAME, OP, MODE)                     \
+static int NAME(lua_State *L)                                           \
+{                                                                       \
+    std::shared_ptr<Edge_selector> p;                                   \
+    FT l, m;                                                            \
+    int k = 2;                                                          \
+                                                                        \
+    if (luaL_testudata(L, k, "edge_selector")) {                        \
+        p = fromlua<std::shared_ptr<Edge_selector>>(L, k++);            \
+    }                                                                   \
+                                                                        \
+    l = checkrational(L, k++);                                          \
+                                                                        \
+    if (!lua_isnone(L, k)) {                                            \
+        m = checkrational(L, k);                                        \
+    } else {                                                            \
+        m = l;                                                          \
+    }                                                                   \
+                                                                        \
+    return std::visit(                                                  \
+        [&L, &p, &l, &m](auto &&x) {                                    \
+            return tolua<Boxed_polyhedron>(L, OP(x, p, l, m, MODE));    \
+        },                                                              \
+        fromlua<Boxed_polyhedron>(L, 1));                               \
+}
+
+DEFINE_CHAMFERING_OPERATION(
+    chamfer_inner, CHAMFER, Chamfering_operation_mode::INNER)
+DEFINE_CHAMFERING_OPERATION(
+    chamfer_outer, CHAMFER, Chamfering_operation_mode::OUTER)
+
+DEFINE_CHAMFERING_OPERATION(
+    make_inner_chamfer, MAKE_CHAMFER, Chamfering_operation_mode::INNER)
+DEFINE_CHAMFERING_OPERATION(
+    make_outer_chamfer, MAKE_CHAMFER, Chamfering_operation_mode::OUTER)
+
+#undef DEFINE_CHAMFERING_OPERATION
+
+#define DEFINE_FILLETING_OPERATION(NAME, OP, MODE)                      \
+static int NAME(lua_State *L)                                           \
+{                                                                       \
+    std::shared_ptr<Edge_selector> p;                                   \
+    FT r;                                                               \
+    int k = 2;                                                          \
+                                                                        \
+    if (luaL_testudata(L, k, "edge_selector")) {                        \
+        p = fromlua<std::shared_ptr<Edge_selector>>(L, k++);            \
+    }                                                                   \
+                                                                        \
+    r = checkrational(L, k);                                            \
+                                                                        \
+    return std::visit(                                                  \
+        [&L, &p, &r](auto &&x) {                                        \
+            return tolua<Boxed_polyhedron>(L, OP(x, p, r, MODE));       \
+        },                                                              \
+        fromlua<Boxed_polyhedron>(L, 1));                               \
+}
+
+DEFINE_FILLETING_OPERATION(
+    fillet_inner, FILLET, Chamfering_operation_mode::INNER)
+DEFINE_FILLETING_OPERATION(
+    fillet_outer, FILLET, Chamfering_operation_mode::OUTER)
+
+DEFINE_FILLETING_OPERATION(
+    make_inner_fillet, MAKE_FILLET, Chamfering_operation_mode::INNER)
+DEFINE_FILLETING_OPERATION(
+    make_outer_fillet, MAKE_FILLET, Chamfering_operation_mode::OUTER)
+
+#undef DEFINE_FILLETING_OPERATION
+
 static int complement(lua_State *L)
 {
     if (luaL_testudata(L, 1, "bounding_volume")) {
@@ -1681,6 +1751,16 @@ static int open_operations(lua_State *L)
         {"deform", deform},
         {"smooth_shape", smooth_shape},
         {"deflate", deflate},
+
+        {"chamfer_inner", chamfer_inner},
+        {"chamfer_outer", chamfer_outer},
+        {"make_inner_chamfer", make_inner_chamfer},
+        {"make_outer_chamfer", make_outer_chamfer},
+
+        {"fillet_inner", fillet_inner},
+        {"fillet_outer", fillet_outer},
+        {"make_inner_fillet", make_inner_fillet},
+        {"make_outer_fillet", make_outer_fillet},
 
         {"subdivide_catmull_clark", subdivide_catmull_clark},
         {"subdivide_doo_sabin", subdivide_doo_sabin},

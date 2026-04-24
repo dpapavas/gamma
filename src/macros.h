@@ -28,6 +28,7 @@
 #include "extrusion_operation.h"
 #include "sink_operations.h"
 #include "mesh_operations.h"
+#include "chamfering_operations.h"
 #include "deform_operations.h"
 #include "evaluation.h"
 
@@ -1003,7 +1004,34 @@ FOR(Deflate_operation, n, w_H, w_M)
 DEFINE_MESH_OPERATION(COMPONENTS, const std::vector<int> &is)
 FOR(Polyhedron_components_operation, is)
 
+// Chamfer operations
+
+DEFINE_MESH_OPERATION(
+    CHAMFER,
+    const std::shared_ptr<Edge_selector> &q,
+    const FT &l, const FT &m, Chamfering_operation_mode d)
+FOR(Chamfering_operation, q, l, m, d)
+
+DEFINE_MESH_OPERATION(
+    MAKE_CHAMFER,
+    const std::shared_ptr<Edge_selector> &q,
+    const FT &l, const FT &m, Chamfering_operation_mode d)
+FOR(Make_chamfering_operation, q, l, m, d)
+
+DEFINE_MESH_OPERATION(
+    FILLET,
+    const std::shared_ptr<Edge_selector> &q,
+    const FT &r, Chamfering_operation_mode d)
+FOR(Fillet_operation, q, r, d)
+
+DEFINE_MESH_OPERATION(
+    MAKE_FILLET,
+    const std::shared_ptr<Edge_selector> &q,
+    const FT &r, Chamfering_operation_mode d)
+FOR(Make_fillet_operation, q, r, d)
+
 #undef DEFINE_MESH_OPERATION
+#undef FOR
 
 template<typename T, typename U,
          typename R = Polyhedron_operation<

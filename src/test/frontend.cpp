@@ -400,10 +400,14 @@ EXPECTING_SUCCESS(true)
 DEFINE_TEST_CASE(tolerances)
 WITH_SOURCE("lua",
             "assert(set_curve_tolerance(0.5) > 0, \"set curve failed\");"
-            "assert(set_projection_tolerance(0.25) > 0, \"set projection failed\");"
+            "assert("
+            "    set_projection_tolerance(0.25) > 0,"
+            "    \"set projection failed\");"
             "assert(set_sine_tolerance(0.125) > 0, \"set sine failed\");"
             "assert(set_curve_tolerance() == 0.5, \"get curve failed\");"
-            "assert(set_projection_tolerance() == 0.25, \"get projection failed\");"
+            "assert("
+            "    set_projection_tolerance() == 0.25,"
+            "    \"get projection failed\");"
             "assert(set_sine_tolerance() == 0.125, \"get sine failed\");")
 WITH_SOURCE("scheme",
             "(assert (positive? (set-curve-tolerance! 10)))"
@@ -751,10 +755,12 @@ WITH_SOURCE("lua",
             "op = require 'gamma.operations'"
 
             "op.extrusion(g.rectangle(2, 2))"
-            "op.extrusion(g.rectangle(2, 2),"
+            "op.extrusion("
+            "    g.rectangle(2, 2),"
             "    t.translation(0, 0, 0),"
             "    t.translation(0, 0, 2))"
-            "op.extrusion(g.circle(100),"
+            "op.extrusion("
+            "    g.circle(100),"
             "    t.translation(0, 0, 0),"
             "    t.translation(0, 0, 2))")
 WITH_SOURCE("scheme",
@@ -2017,6 +2023,94 @@ EXPECTING("cuboid(2,2,2)",
           "deflate(remesh(cuboid(2,2,2),1/8,1),"
           "vertices_in(bounding_plane(plane(0,0,1,-1))),"
           "3,1/4,1/8)")
+
+// There are eight similar chamfering or filleting calls, so we define
+// a macro.
+
+#define DEFINE_CHAMFERING_TEST_CASE(WHAT, WHICH, ARG)                   \
+DEFINE_TEST_CASE(WHAT ##_## WHICH)                                      \
+WITH_SOURCE("lua",                                                      \
+            "t = require 'gamma.transformation'"                        \
+            "v = require 'gamma.volumes'"                               \
+            "s = require 'gamma.selection'"                             \
+            "h = require 'gamma.polyhedra'"                             \
+            "op = require 'gamma.operations'"                           \
+                                                                        \
+            "op." #WHAT "_" #WHICH "("                                  \
+            "    h.cuboid(2, 2, 2),"                                    \
+            "    s.edges_in(v.bounding_plane(0, 0, 1, 1)), 0.25)"       \
+            "op.make_" #WHICH "_" #WHAT "("                             \
+            "    h.cuboid(2, 2, 2),"                                    \
+            "    s.edges_in(v.bounding_plane(0, 0, 1, -1)), 0.25)"      \
+)                                                                       \
+WITH_SOURCE("scheme",                                                   \
+            "(import (gamma transformation)"                            \
+            "        (gamma volumes) (gamma selection)"                 \
+            "        (gamma polyhedra) (gamma operations))"             \
+                                                                        \
+            "(" #WHAT "-" #WHICH ""                                     \
+            " (cuboid 2 2 2)"                                           \
+            " (edges-in (bounding-plane 0 0 1 1)) 1/4)"                 \
+            "(make-" #WHICH "-" #WHAT ""                                \
+            " (cuboid 2 2 2)"                                           \
+            " (edges-in (bounding-plane 0 0 1 -1)) 1/4)"                \
+)                                                                       \
+EXPECTING("cuboid(2,2,2)",                                              \
+          "" #WHAT "_" #WHICH "(cuboid(2,2,2),"                         \
+          "edges_in(bounding_plane(plane(0,0,1,1))),"                   \
+          "1/4," #ARG ")",                                              \
+          "make_" #WHICH "_" #WHAT "(cuboid(2,2,2),"                    \
+          "edges_in(bounding_plane(plane(0,0,1,-1))),"                  \
+          "1/4," #ARG ")")
+
+// The only snag is that filleting calls don't take a second argument,
+// although the resulting operation does take one; the curve
+// tolerance.
+
+DEFINE_CHAMFERING_TEST_CASE(chamfer, outer, 1/4)
+DEFINE_CHAMFERING_TEST_CASE(chamfer, inner, 1/4)
+DEFINE_CHAMFERING_TEST_CASE(fillet, outer, 1/1024)
+DEFINE_CHAMFERING_TEST_CASE(fillet, inner, 1/1024)
+
+#undef DEFINE_CHAMFERING_TEST_CASE
+
+// Chamfering operations optionally take two length parameters, so we
+// need to make a special test for these.
+
+DEFINE_TEST_CASE(assymetric_chamfer)
+WITH_SOURCE("lua",
+            "t = require 'gamma.transformation'"
+            "v = require 'gamma.volumes'"
+            "s = require 'gamma.selection'"
+            "h = require 'gamma.polyhedra'"
+            "op = require 'gamma.operations'"
+
+            "op.chamfer_outer("
+            "    h.cuboid(2, 2, 2),"
+            "    s.edges_in(v.bounding_plane(0, 0, 1, 1)), 0.25, 0.125)"
+            "op.make_outer_chamfer("
+            "    h.cuboid(2, 2, 2),"
+            "    s.edges_in(v.bounding_plane(0, 0, 1, -1)), 0.125, 0.25)"
+)
+WITH_SOURCE("scheme",
+            "(import (gamma transformation)"
+            "        (gamma volumes) (gamma selection)"
+            "        (gamma polyhedra) (gamma operations))"
+
+            "(chamfer-outer"
+            " (cuboid 2 2 2)"
+            " (edges-in (bounding-plane 0 0 1 1)) 1/4 1/8)"
+            "(make-outer-chamfer"
+            " (cuboid 2 2 2)"
+            " (edges-in (bounding-plane 0 0 1 -1)) 1/8 1/4)"
+)
+EXPECTING("cuboid(2,2,2)",
+          "chamfer_outer(cuboid(2,2,2),"
+          "edges_in(bounding_plane(plane(0,0,1,1))),"
+          "1/4,1/8)",
+          "make_outer_chamfer(cuboid(2,2,2),"
+          "edges_in(bounding_plane(plane(0,0,1,-1))),"
+          "1/8,1/4)")
 
 DEFINE_TEST_CASE(color_selection)
 WITH_SOURCE("lua",

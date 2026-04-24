@@ -13,6 +13,7 @@ add_executable(
 
   polyhedron_tests.cpp polygon_tests.cpp circle_polygon_tests.cpp
   conic_polygon_tests.cpp store.cpp mesh_tests.cpp deform_tests.cpp
+  chamfering_tests.cpp
 
   frontend.cpp rewrites.cpp selection.cpp)
 

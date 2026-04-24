@@ -59,12 +59,9 @@ inline auto make_polyhedron_clip_visitor(const Plane_3 &pi) {
     using T = typename std::remove_reference_t<decltype(*x)>;           \
     using U = typename std::remove_reference_t<decltype(*y)>;           \
                                                                         \
-    if (Options::polyhedron_booleans                                    \
-        == Polyhedron_booleans_mode::NEF) {                             \
+    if (Options::polyhedron_booleans == Polyhedron_booleans_mode::NEF) { \
         return Boxed_polyhedron(                                        \
-            OP(                                                         \
-                CONVERT_TO<Nef_polyhedron>(x),                          \
-                CONVERT_TO<Nef_polyhedron>(y)));                        \
+            OP(CONVERT_TO<Nef_polyhedron>(x), CONVERT_TO<Nef_polyhedron>(y))); \
     } else {                                                            \
         if constexpr (                                                  \
             std::is_same_v<T, Polyhedron_operation<Nef_polyhedron>>     \
@@ -89,6 +86,29 @@ inline auto make_polyhedron_clip_visitor(const Plane_3 &pi) {
             return Boxed_polyhedron(OP(x, CONVERT_TO<Polyhedron>(y)));  \
         } else {                                                        \
             return Boxed_polyhedron(OP(x, y));                          \
+        }                                                               \
+    }                                                                   \
+}
+
+// Chamfering oprations are boolean operations too, under the hood.
+// We therefore follow the same logic as above, albeit with the second
+// argument (the chamfer geometry) being idectically a polygon mesh.
+
+#define make_polyhedron_chamfer_visitor(OP, ...)                        \
+[&](auto &&x) {                                                         \
+    using T = typename std::remove_reference_t<decltype(*x)>;           \
+                                                                        \
+    if (Options::polyhedron_booleans == Polyhedron_booleans_mode::NEF) { \
+        return Boxed_polyhedron(                                        \
+            OP(CONVERT_TO<Nef_polyhedron>(x), __VA_ARGS__));            \
+    } else {                                                            \
+        if (std::is_same_v<T, Polyhedron_operation<Nef_polyhedron>>     \
+            && (Options::polyhedron_booleans                            \
+                == Polyhedron_booleans_mode::COREFINE)) {               \
+            return Boxed_polyhedron(                                    \
+                OP(CONVERT_TO<Polyhedron>(x), __VA_ARGS__));            \
+        } else {                                                        \
+            return Boxed_polyhedron(OP(x, __VA_ARGS__));                \
         }                                                               \
     }                                                                   \
 }

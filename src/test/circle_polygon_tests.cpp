@@ -30,7 +30,7 @@
 
 // Document: program
 
-// # Circle Polygon Tests
+// # Circle Polygon Operation Tests
 
 // These are tests for circle polygon operations and related
 // functionality.  We mainly test the results in two ways:

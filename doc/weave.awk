@@ -114,7 +114,7 @@ $0 ~ "^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*" {
 
 # Blank lines
 
-!(in_example || in_listing || in_graph || in_print) && /^[[:space:]]*$/ {
+!(in_example || in_listing) && /^[[:space:]]*$/ {
   if (in_text && text) {
     close_list()
     flush_text()
@@ -166,7 +166,7 @@ $0 ~ "^[[:space:]]*" prefix {
 
   # Lists and tables
 
-  if (/^ {2,}/ && (in_indent || !(in_example || in_listing || in_graph || in_print))) {
+  if (/^ {2,}/ && (in_indent || !(in_example || in_listing || in_displaymath || in_graph || in_print || in_geometry))) {
     in_indent = 1
 
     sub(/^ */, "")
@@ -284,6 +284,12 @@ $0 ~ "^[[:space:]]*" prefix {
     print "node [penwidth=0.5, fontname=\"mono\", fontsize=8]" | in_graph
     print "edge [penwidth=0.5, arrowsize=0.5]" | in_graph
     print "edge [fontname=\"sans\", fontsize=8]" | in_graph
+  } else if (/^```geometry/) {
+    text = text "\n@latex\n\\begin{figure}[h]\n\\begin{tikzpicture}\n"
+    in_geometry = 1
+  } else if (/^```displaymath/) {
+    text = text "\n@displaymath"
+    in_displaymath = 1
   } else if (/^```/) {
     if (in_graph) {
       print "}" | in_graph
@@ -301,6 +307,12 @@ $0 ~ "^[[:space:]]*" prefix {
       } else if (in_example) {
         text = text "\n@end example\n"
         in_example = 0
+      } else if (in_geometry) {
+        text = text "\n\\end{tikzpicture}\n\\centering\n\\end{figure}\n@end latex\n"
+        in_geometry = 0
+      } else if (in_displaymath) {
+        text = text "\n@end displaymath\n"
+        in_displaymath = 0
       } else if ($0 != "```") {
         split($0, v)
         text = text "\n@latex\n\\begin{lstlisting}[style=" substr(v[1], 4) "]"
@@ -338,7 +350,7 @@ $0 ~ "^[[:space:]]*" prefix {
     print $0 | in_graph
   } else if (in_print) {
     print $0 | in_print
-  } else if (in_example || in_listing) {
+  } else if (in_example || in_displaymath || in_listing || in_geometry) {
     text = text "\n" $0
   } else  {
     # Structure

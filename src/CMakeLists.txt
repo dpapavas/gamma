@@ -27,6 +27,7 @@ add_library(
   polygon_operations.cpp circle_polygon_operations.cpp
   conic_polygon_operations.cpp misc_polygon_operations.cpp
   sink_operations.cpp mesh_operations.cpp deform_operations.cpp
+  chamfering_operations.cpp
 
   bounding_volumes.cpp compressed_stream.cpp compose_tag.cpp
   evaluation.cpp projection.cpp rewrites.cpp selection.cpp sandbox.cpp

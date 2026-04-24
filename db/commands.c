@@ -77,15 +77,23 @@ static bool point_in_triangle(
     const double vv_11 = v_1[0] * v_1[0] + v_1[1] * v_1[1] + v_1[2] * v_1[2];
     const double vv_12 = v_1[0] * v_2[0] + v_1[1] * v_2[1] + v_1[2] * v_2[2];
 
-    const double d = 1.0f / (vv_00 * vv_11 - vv_01 * vv_01);
-    const double u = (vv_11 * vv_02 - vv_01 * vv_12) * d;
-    const double v = (vv_00 * vv_12 - vv_01 * vv_02) * d;
+    const double d = (vv_00 * vv_11 - vv_01 * vv_01);
+
+    // If the denominator `d` is zero, the triangle $\triangle abc$
+    // under consideration is degenerate.  We return `true` to discard
+    // it.
+
+    if (d == 0.0f) {
+        return true;
+    }
+
+    const double u = (vv_11 * vv_02 - vv_01 * vv_12) / d;
+    const double v = (vv_00 * vv_12 - vv_01 * vv_02) / d;
 
     // "Point $p$ is inside triangle $abc$" is then equivalent to the
-    // following (where we may need to be careful about floating point
-    // comparisons here, but not geometry has caused issues yet):
+    // following:
 
-    return (u >= 0.0) && (v >= 0.0) && (u + v < 1.0);
+    return (u > 0.0f) && (v > 0.0f) && (u + v < 1.0f);
 }
 
 // This is the triangulation routine.  It accepts a polygon of `n`
@@ -109,7 +117,7 @@ static void triangulate(
 
     double w[3] = {};
 
-    if (n > 4) {
+    if (n > 3) {
         for (size_t i = 0; i < n; i++) {
             const unsigned int l = s[i];
             const unsigned int m = s[(i + 1) % n];
@@ -126,20 +134,11 @@ static void triangulate(
     // We then proceed by:
 
     for (size_t i = 0; i < n;) {
-        //   1. First handling some trivial cases: We just copy a
-        //   triangle and make a fan of two triangles out of a quad,
-        //   which is always convex.
+        //   1. First handling the trivial case of a triangle, which
+        //   we just copy.
 
         if (n == 3) {
             memcpy(t, s, 3 * sizeof(unsigned int));
-            return;
-        }
-
-        if (n == 4) {
-            memcpy(t, s, 3 * sizeof(unsigned int));
-            t[3] = s[0];
-            t[4] = s[2];
-            t[5] = s[3];
             return;
         }
 
@@ -173,10 +172,10 @@ static void triangulate(
         };
 
         //     We may need to be careful about floating point
-        //     comparisons here, but not geometry has caused issues
+        //     comparisons here, but no geometry has caused issues
         //     yet.
 
-        if (uxv[0] * w[0] + uxv[1] * w[1] + uxv[2] * w[2] < 0.0) {
+        if (uxv[0] * w[0] + uxv[1] * w[1] + uxv[2] * w[2] < 0.0f) {
             goto next;
         }
 

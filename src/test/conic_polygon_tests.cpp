@@ -30,7 +30,7 @@
 
 // Document: program
 
-// # Conic Polygon Tests
+// # Conic Polygon Operation Tests
 
 // These are tests for conic polygon operations and related
 // functionality.  Results are tested as for circle polygons with the

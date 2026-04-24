@@ -5,6 +5,7 @@
 \usepackage{fullpage}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{tkz-euclide}
 
 \definecolor{gray1}{gray}{0.98}
 \definecolor{gray2}{gray}{0.75}
@@ -44,6 +45,7 @@
 @include src_misc_polygon_operations_cpp.texi
 @include src_extrusion_operation_cpp.texi
 @include src_mesh_operations_cpp.texi
+@include src_chamfering_operations_cpp.texi
 @include src_sink_operations_cpp.texi
 @include src_selection_cpp.texi
 
@@ -55,6 +57,8 @@
 @part Part III:@* The Tests
 @include src_test_fixtures_h.texi
 @include src_test_rewrites_cpp.texi
+@include src_test_mesh_tests_cpp.texi
+@include src_test_chamfering_tests_cpp.texi
 @include src_test_polygon_tests_cpp.texi
 @include src_test_circle_polygon_tests_cpp.texi
 @include src_test_conic_polygon_tests_cpp.texi

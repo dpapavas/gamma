@@ -349,7 +349,7 @@ void Worker::work()
         // increment the `working` counter to signal that we took on
         // work.  Although it keeps track of exactly how many of our
         // workers are busy, we only need it as a boolean, when
-        // determining whethert to terminate.
+        // determining whether to terminate.
 
         working++;
 

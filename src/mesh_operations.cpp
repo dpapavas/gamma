@@ -26,6 +26,80 @@
 #include "polyhedron_operations.h"
 #include "mesh_operations.h"
 
+// Round number to multiples of epsilon
+inline double round_epsilon(double value, double epsilon)
+{
+  return std::floor(value / epsilon);
+}
+
+/// Utility class for grid_simplify_point_set(): Hash_epsilon_points_3
+/// defines a 3D point hash / 2 points are equal iff they belong to
+/// the same cell of a grid of cell size = epsilon.
+template <class Point_3, class PointMap>
+struct Hash_epsilon_points_3
+{
+private:
+
+    double m_epsilon;
+    PointMap point_map;
+    typedef typename boost::property_traits<PointMap>::value_type Point;
+public:
+
+    Hash_epsilon_points_3 (double epsilon, PointMap p_map)
+        : m_epsilon (epsilon), point_map(p_map)
+    {
+        CGAL_precondition(epsilon > 0);
+    }
+
+  std::size_t operator() (const Point_3& a) const
+  {
+    const Point& pa = get(point_map,a);
+    std::size_t result = boost::hash_value(round_epsilon(pa.x(), m_epsilon));
+    boost::hash_combine(result, boost::hash_value(round_epsilon(pa.y(), m_epsilon)));
+    boost::hash_combine(result, boost::hash_value(round_epsilon(pa.z(), m_epsilon)));
+    return result;
+  }
+
+};
+
+/// Utility class for grid_simplify_point_set(): Hash_epsilon_points_3
+/// defines a 3D point equality / 2 points are equal iff they belong
+/// to the same cell of a grid of cell size = epsilon.
+template <class Point_3, class PointMap>
+struct Equal_epsilon_points_3
+{
+private:
+
+    const double m_epsilon;
+    PointMap point_map;
+    typedef typename boost::property_traits<PointMap>::value_type Point;
+public:
+
+    Equal_epsilon_points_3 (const double& epsilon, PointMap p_map)
+        : m_epsilon (epsilon), point_map(p_map)
+    {
+        CGAL_precondition(epsilon > 0);
+    }
+
+    bool operator() (const Point_3& a, const Point_3& b) const
+    {
+      const Point& pa = get(point_map,a);
+      const Point& pb = get(point_map,b);
+
+      double ra = round_epsilon(pa.x(), m_epsilon);
+      double rb = round_epsilon(pb.x(), m_epsilon);
+      if (ra != rb)
+        return false;
+      ra = round_epsilon(pa.y(), m_epsilon);
+      rb = round_epsilon(pb.y(), m_epsilon);
+      if (ra != rb)
+        return false;
+      ra = round_epsilon(pa.z(), m_epsilon);
+      rb = round_epsilon(pb.z(), m_epsilon);
+      return ra == rb;
+    }
+};
+
 // Document: program
 
 // # Mesh Operations

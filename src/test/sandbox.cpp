@@ -47,12 +47,11 @@ BOOST_AUTO_TEST_CASE(benchmark)
         auto t_0 = std::chrono::high_resolution_clock::now();
 
         auto t_1 = std::chrono::high_resolution_clock::now();
-
         ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
             t_1 - t_0).count();
     }
 
-    std::cout << ns / 1e6 << "ns" << std::endl;
+    std::cout << ns / 1e6 << " ms" << std::endl;
 }
 
 BOOST_AUTO_TEST_SUITE_END()

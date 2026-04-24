@@ -33,7 +33,7 @@
 
 // Document: program
 
-// # Polygon Tests
+// # Polygon Operation Tests
 
 // These are tests for plain polygon operations and related
 // functionality.  We mainly test the results in two ways:

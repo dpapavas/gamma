@@ -1712,6 +1712,9 @@ static SCM deform(SCM s, SCM rest)
         }, a);
 }
 
+// This operation extracts connected components (i.e. "separate
+// parts") from polygon sets and polyhedra.
+
 static SCM components(SCM s, SCM rest)
 {
     std::vector<int> v;
@@ -1734,6 +1737,77 @@ static SCM components(SCM s, SCM rest)
 
     throw wrong_type_exception(1, s, "polygon or polyhedron");
 }
+
+// Chamfer and fillet operations share much of their machinery and are
+// handled uniformly.  They take an optional edge selector and one or
+// more numbers.
+
+// Actually, chamfer operations normally take 2 numbers, but omitting
+// the second implies a symmetric chamfer.
+
+#define DEFINE_CHAMFERING_OPERATION(NAME, OP, MODE)                     \
+static SCM NAME(SCM s, SCM rest)                                        \
+{                                                                       \
+    Boxed_polyhedron a;                                                 \
+    std::shared_ptr<Edge_selector> p;                                   \
+    FT l, m;                                                            \
+                                                                        \
+    pop_argument(1, s, a);                                              \
+    int i = 2;                                                          \
+    i += try_pop_argument(i, rest, p);                                  \
+    pop_argument(i++, rest, l);                                         \
+    m = l;                                                              \
+    try_pop_argument(i, rest, m);                                       \
+                                                                        \
+    return to_scheme<Boxed_polyhedron>(                                 \
+        std::visit(make_polyhedron_chamfer_visitor(OP, p, l, m, MODE), a)); \
+}
+
+DEFINE_CHAMFERING_OPERATION(
+    chamfer_inner, CHAMFER, Chamfering_operation_mode::INNER)
+DEFINE_CHAMFERING_OPERATION(
+    chamfer_outer, CHAMFER, Chamfering_operation_mode::OUTER)
+
+DEFINE_CHAMFERING_OPERATION(
+    make_inner_chamfer, MAKE_CHAMFER, Chamfering_operation_mode::INNER)
+DEFINE_CHAMFERING_OPERATION(
+    make_outer_chamfer, MAKE_CHAMFER, Chamfering_operation_mode::OUTER)
+
+#undef DEFINE_CHAMFERING_OPERATION
+
+// Fillets always take one number, the radius.
+
+#define DEFINE_FILLETING_OPERATION(NAME, OP, MODE)                      \
+static SCM NAME(SCM s, SCM rest)                                        \
+{                                                                       \
+    Boxed_polyhedron a;                                                 \
+    std::shared_ptr<Edge_selector> p;                                   \
+    FT r;                                                               \
+                                                                        \
+    pop_argument(1, s, a);                                              \
+    int i = 2;                                                          \
+    i += try_pop_argument(i, rest, p);                                  \
+    pop_argument(i++, rest, r);                                         \
+                                                                        \
+    return to_scheme<Boxed_polyhedron>(                                 \
+        std::visit(make_polyhedron_chamfer_visitor(OP, p, r, MODE), a)); \
+}
+
+DEFINE_FILLETING_OPERATION(
+    fillet_inner, FILLET, Chamfering_operation_mode::INNER)
+DEFINE_FILLETING_OPERATION(
+    fillet_outer, FILLET, Chamfering_operation_mode::OUTER)
+
+DEFINE_FILLETING_OPERATION(
+    make_inner_fillet, MAKE_FILLET, Chamfering_operation_mode::INNER)
+DEFINE_FILLETING_OPERATION(
+    make_outer_fillet, MAKE_FILLET, Chamfering_operation_mode::OUTER)
+
+#undef DEFINE_FILLETING_OPERATION
+
+// Color operations apply color to specific elements of a mesh
+// (vertices, edges, or faces), either uniformly, or on specific
+// selections.
 
 #define DEFINE_COLOR_OPERATION(FUNC, OP)                                \
 static SCM FUNC(SCM s, SCM rest)                                        \
@@ -2126,6 +2200,18 @@ static void define_operations(void *)
     DEFINE_FOREIGN_PROC("deform", 1, 0, 1, deform);
     DEFINE_FOREIGN_PROC("deflate", 1, 0, 1, deflate);
     DEFINE_FOREIGN_PROC("components", 1, 0, 1, components);
+
+    DEFINE_FOREIGN_PROC("chamfer-inner", 1, 0, 1, chamfer_inner);
+    DEFINE_FOREIGN_PROC("chamfer-outer", 1, 0, 1, chamfer_outer);
+
+    DEFINE_FOREIGN_PROC("make-inner-chamfer", 1, 0, 1, make_inner_chamfer);
+    DEFINE_FOREIGN_PROC("make-outer-chamfer", 1, 0, 1, make_outer_chamfer);
+
+    DEFINE_FOREIGN_PROC("fillet-inner", 1, 0, 1, fillet_inner);
+    DEFINE_FOREIGN_PROC("fillet-outer", 1, 0, 1, fillet_outer);
+
+    DEFINE_FOREIGN_PROC("make-inner-fillet", 1, 0, 1, make_inner_fillet);
+    DEFINE_FOREIGN_PROC("make-outer-fillet", 1, 0, 1, make_outer_fillet);
 
     DEFINE_FOREIGN_PROC("color-selection", 2, 0, 1, color_selection);
     DEFINE_FOREIGN_PROC("color-vertices", 1, 0, 1, color_vertices);

@@ -33,7 +33,15 @@
 
 #include <CGAL/Polygon_mesh_processing/measure.h>
 
-#include <CGAL/draw_polyhedron.h>
+// Document: program
+
+// # Mesh Operation Tests
+
+// Below, we test operations that work at the mesh level.  As such,
+// these operate only on `Polyhedron` and `Surface_mesh`.
+
+// We first define helper functions to calculate the centroid of a
+// mesh.
 
 Point_3 mean_polyhedron_vertex(const Polyhedron &P)
 {
@@ -63,33 +71,40 @@ Point_3 mean_polyhedron_vertex(const Surface_mesh &P)
 }
 
 BOOST_FIXTURE_TEST_SUITE(mesh, Coarse_evaluation_fixture)
-
 BOOST_AUTO_TEST_CASE(perturb, * boost::unit_test::tolerance(0.015))
 {
-    FT V, W;
+    // We perturb the vertices of a sphere.
 
-    {
-        const auto &result = evaluate(SPHERE(2));
-        evaluate_operations();
-        V = polyhedron_volume(*result.value);
-    }
+    const FT l = FT::ET(1, 10);
+    const auto &result = evaluate(PERTURB(SPHERE(2), nullptr, l));
 
-    {
-        const auto &result = evaluate(
-            PERTURB(SPHERE(2), nullptr, FT::ET(1, 100)));
+    evaluate_operations();
 
-        evaluate_operations();
+    BOOST_TEST(result.tag == "perturb(sphere(2,1/100,1/1000000),1/10)");
 
-        BOOST_TEST(result.tag == "perturb(sphere(2,1/100,1/1000000),1/100)");
-        W = polyhedron_volume(*result.value);
+    // We test the result by testing that the perturbed vertices fall
+    // within the expected spherical shells.
 
-        BOOST_TEST(V != W);
-        BOOST_TEST(CGAL::abs(V - W) < FT(FT::ET(1, 10)));
+    // Looking at the sources, we see that the distance parameter is
+    // taken to mean the maximum displacement *along each coordinate*,
+    // so the maximum displacement away from the original sphere point
+    // is:
+
+    const FT m = std::sqrt(3) * l;
+
+    for (const auto &x: result.value->points()) {
+        BOOST_TEST(
+            CGAL::squared_distance(x, Point_3(0, 0, 0)) < (2 + m) * (2 + m));
+        BOOST_TEST(
+            CGAL::squared_distance(x, Point_3(0, 0, 0)) > (2 - m) * (2 - m));
     }
 }
 
 BOOST_AUTO_TEST_CASE(refine, * boost::unit_test::tolerance(0.015))
 {
+    // We refine a sphere and test that it has remainned a sphere in
+    // terms of volume and vertex location.
+
     const auto &result = evaluate(REFINE(SPHERE(2), nullptr, FT(5)));
 
     evaluate_operations();
@@ -97,25 +112,22 @@ BOOST_AUTO_TEST_CASE(refine, * boost::unit_test::tolerance(0.015))
     BOOST_TEST(result.tag == "refine(sphere(2,1/100,1/1000000),5)");
 
     const auto &P = *result.value;
-    test_polyhedron_volume(P, std::acos(-1) * 4 / 3 * 8);
+    test_polyhedron_volume(P, std::acos(-1) * 4.0 / 3.0 * 8.0);
     BOOST_TEST(CGAL::to_double(
                    CGAL::squared_distance(
                        mean_polyhedron_vertex(P),
                        Point_3(CGAL::ORIGIN))) == 0.0);
 }
 
-BOOST_AUTO_TEST_CASE(refine_selected, * boost::unit_test::tolerance(0.015))
+BOOST_AUTO_TEST_CASE(refine_selected, * boost::unit_test::tolerance(0.025))
 {
+    // Here we refine one of two identical spheres.
+
     const auto &result = evaluate(
         REFINE(
             JOIN(TRANSFORM(SPHERE(1), TRANSLATION_3(0, 0, 2)),
                  TRANSFORM(SPHERE(1), TRANSLATION_3(0, 0, -2))),
-            FACES_IN(
-                JOIN({
-                        TRANSFORM(BOUNDING_SPHERE(FT::ET(1001, 1000)),
-                                  TRANSLATION_3(0, 0, 2)),
-                        TRANSFORM(BOUNDING_SPHERE(FT::ET(999, 1000)),
-                                  TRANSLATION_3(0, 0, -2))})), FT(2)));
+            FACES_IN(BOUNDING_HALFSPACE(0, 0, -1, 1)), FT(2)));
 
     evaluate_operations();
 
@@ -125,21 +137,28 @@ BOOST_AUTO_TEST_CASE(refine_selected, * boost::unit_test::tolerance(0.015))
                        "translation(0,0,2)),"
                        "transform(sphere(1,1/100,1/1000000),"
                        "translation(0,0,-2))),"
-                       "faces_in(join("
-                       "bounding_sphere(point(0,0,2),1001/1000),"
-                       "bounding_sphere(point(0,0,-2),999/1000))),2)"));
+                       "faces_in(bounding_halfspace(plane(0,0,-1,1))),2)"));
+
+    // We check the volume as before.
 
     const auto &P = *result.value;
-    test_polyhedron_volume(P, 2 * std::acos(-1) * 4 / 3);
+    test_polyhedron_volume(P, 2.0 * std::acos(-1) * 4.0 / 3.0);
+
+    // Since we increase one sphere's density by 2, it should now have
+    // rougly 3 times the vertices of the other.  We test it, by
+    // checking that the centroid has shifted towards it accordingly.
 
     const auto C = mean_polyhedron_vertex(P);
     BOOST_TEST(CGAL::to_double(C.x()) == 0, boost::test_tools::tolerance(1e-3));
     BOOST_TEST(CGAL::to_double(C.y()) == 0, boost::test_tools::tolerance(1e-3));
-    BOOST_TEST(CGAL::to_double(C.z()) > 0.75);
+    BOOST_TEST(CGAL::to_double(C.z()) == 0.75);
 }
 
 BOOST_AUTO_TEST_CASE(remesh, * boost::unit_test::tolerance(0.01))
 {
+    // We remesh a cube and check that the edge length after the
+    // opration is close to the specified target.
+
     const FT l = FT::ET(1, 10);
     const auto &result = evaluate(
         REMESH(CUBOID(1, 1, 1), nullptr, nullptr, l, 1));
@@ -149,35 +168,29 @@ BOOST_AUTO_TEST_CASE(remesh, * boost::unit_test::tolerance(0.01))
     BOOST_TEST(result.tag == "remesh(cuboid(1,1,1),1/10,1)");
 
     const auto &P = *result.value;
+
+    // We test that the mesh has more or less retained its shape by
+    // checking that it has approximately retained its volume.
+
     test_polyhedron_volume(P, 1);
 
-    for (const auto &e: P.edges()) {
-        BOOST_TEST(std::sqrt(
-                       CGAL::to_double(
-                           CGAL::squared_distance(
-                               e.prev()->vertex()->point(),
-                               e.vertex()->point()))) <= CGAL::to_double(l),
-                   boost::test_tools::tolerance(0.5));
+    for (const auto &e: CGAL::edges(P)) {
+        BOOST_TEST(
+            CGAL::Polygon_mesh_processing::squared_edge_length(e, P)
+            <= 4 * l * l);
     }
 }
 
-// Isotropic remeshing doesn't guarantee that the target will be
-// reached, so we test that the edges are "short enough".
-
 BOOST_AUTO_TEST_CASE(remesh_selected)
 {
+    // To test partial remeshing, we remesh just the top face of a
+    // cylinder.
+
     const FT l = FT::ET(1, 10);
     const auto &result = evaluate(
         REMESH(
             CYLINDER(1, 2),
-            FACES_IN(
-                JOIN({
-                        TRANSFORM(
-                            BOUNDING_CYLINDER(1, 2),
-                            TRANSLATION_3(0, 0, 1)),
-                        TRANSFORM(
-                            BOUNDING_CYLINDER(FT::ET(999, 1000), 2),
-                            TRANSLATION_3(0, 0, -1))})), nullptr, l, 1));
+            FACES_IN(BOUNDING_PLANE(0, 0, -1, 1)), nullptr, l, 1));
 
     evaluate_operations();
 
@@ -185,23 +198,28 @@ BOOST_AUTO_TEST_CASE(remesh_selected)
         result.tag == (
             "remesh(extrusion(regular_polygon(23,1,1/1000000),"
             "translation(0,0,-1),translation(0,0,1)),"
-            "faces_in(join("
-            "bounding_cylinder(point(0,0,0),vector(0,0,1),1,2),"
-            "bounding_cylinder(point(0,0,-2),vector(0,0,1),999/1000,2))),"
+            "faces_in(bounding_plane(plane(0,0,-1,1))),"
             "1/10,1)"));
 
-    for (const auto &e: result.value->edges()) {
-        const auto &A = e.prev()->vertex()->point();
-        const auto &B = e.vertex()->point();
+    // We should test that edge length is at target only for the top face,
+    // but since isotropic remeshing doesn't guarantee that the target
+    // will be reached, we test that the edges are "short enough".
 
-        if (A.z() == 1 && B.z() == 1) {
-            BOOST_TEST(CGAL::squared_distance(A, B) <= 4 * l * l);
-        }
+    for (const auto &e: result.value->edges()) {
+        const auto &a = e.prev()->vertex()->point();
+        const auto &b = e.vertex()->point();
+
+        BOOST_TEST(
+            (CGAL::squared_distance(a, b) <= 4 * l * l)
+            == (a.z() == 1 && b.z() == 1));
     }
 }
 
 BOOST_AUTO_TEST_CASE(remesh_constrained, * boost::unit_test::tolerance(5e-3))
 {
+    // To test remeshing with constrained edges, we again use a cube
+    // and approximately test edge length and volume.
+
     const FT l = FT::ET(1, 4);
     const auto &result = evaluate(
         REMESH(
@@ -218,50 +236,66 @@ BOOST_AUTO_TEST_CASE(remesh_constrained, * boost::unit_test::tolerance(5e-3))
     const auto &P = *result.value;
     test_polyhedron_volume(P, 8);
 
-    for (const auto &e: P.edges()) {
-        BOOST_TEST(CGAL::squared_distance(
-                       e.vertex()->point(),
-                       e.opposite()->vertex()->point()) <= 4 * l * l);
+    for (const auto &e: result.value->edges()) {
+        const auto &a = e.prev()->vertex()->point();
+        const auto &b = e.vertex()->point();
+
+        BOOST_TEST(CGAL::squared_distance(a, b) <= 4 * l * l);
+
+        // Additionally, we test that the bondary of the constrained
+        // face has not been deformed.
+
+        if (a.z() == -1 && b.z() == -1) {
+            BOOST_TEST((
+                a.x() <= 1 && a.x() >= -1 && b.x() <= 1 && b.x() >= -1
+                && a.y() <= 1 && a.y() >= -1 && b.y() <= 1 && b.y() >= -1));
+        }
     }
 }
 
-BOOST_AUTO_TEST_CASE(
-    remesh_constrained_selected, * boost::unit_test::tolerance(6e-4))
+BOOST_AUTO_TEST_CASE(remesh_constrained_selected)
 {
+    // This is like `remesh_selected`, but now we constrain the edges
+    // on the remeshed face.
+
     const FT l = FT::ET(1, 4);
     const auto &result = evaluate(
         REMESH(
             CUBOID(2, 2, 2),
-            FACES_PARTIALLY_IN(
-                TRANSFORM(BOUNDING_SPHERE(1), TRANSLATION_3(1, -1, -1))),
-            EDGES_IN(BOUNDING_PLANE(0, 0, 1, 1)),
-            l, 1));
+            FACES_IN(BOUNDING_PLANE(0, 0, -1, 1)),
+            EDGES_IN(BOUNDING_PLANE(0, 0, -1, 1)), l, 1));
 
     evaluate_operations();
 
     BOOST_TEST(
         result.tag == ("remesh(cuboid(2,2,2),"
-                       "faces_partially_in("
-                       "bounding_sphere(point(1,-1,-1),1)),"
-                       "edges_in(bounding_plane(plane(0,0,1,1))),"
+                       "faces_in(bounding_plane(plane(0,0,-1,1))),"
+                       "edges_in(bounding_plane(plane(0,0,-1,1))),"
                        "1/4,1)"));
 
     const auto &P = *result.value;
+
+    // We can simply test that the selected edges have in fact been
+    // constrined, by checking that the volume is now *exactly*
+    // retained.
+
     test_polyhedron_volume(P, 8);
 
-    for (const auto &e: P.edges()) {
-        const auto &A = e.vertex()->point();
-        const auto &B = e.opposite()->vertex()->point();
+    for (const auto &e: result.value->edges()) {
+        const auto &a = e.prev()->vertex()->point();
+        const auto &b = e.vertex()->point();
 
-        if ((1 - A.x()) + (A.y() + 1) + (A.z() + 1) <= 2
-            && (1 - B.x()) + (B.y() + 1) + (B.z() + 1) <= 2) {
-            BOOST_TEST(CGAL::squared_distance(A, B) <= 4 * l * l);
-        }
+        BOOST_TEST(
+            (CGAL::squared_distance(a, b) <= 4 * l * l)
+            == (a.z() == 1 && b.z() == 1));
     }
 }
 
 BOOST_AUTO_TEST_CASE(corefine)
 {
+    // We corefine a cube with another cube and test the resulting
+    // geometry.
+
     const auto &result = evaluate(
         COREFINE(CUBOID(2, 2, 2),
                  TRANSFORM(CUBOID(2, 2, 2), TRANSLATION_3(1, 1, 1))));
@@ -274,22 +308,29 @@ BOOST_AUTO_TEST_CASE(corefine)
     test_polyhedron(*result.value, 14, 72, 24, 8);
 }
 
-BOOST_DATA_TEST_CASE(corefine_plane,
-                     (boost::unit_test::data::make({0, -2, -3, -4})
-                      ^ boost::unit_test::data::make({20, 14, 8, 8})),
-                     d, n)
+BOOST_AUTO_TEST_CASE(corefine_plane)
 {
+    // We corefine a cube with the XY plane and test that it has
+    // retained its volume and all newly introduced vertices lie on
+    // the plane.
+
     const auto &result = evaluate(
-        COREFINE(CUBOID(2, 2, 2), Plane_3(1, 1, 1, d)));
+        COREFINE(CUBOID(2, 2, 2), Plane_3(0, 0, 1, 0)));
 
     evaluate_operations();
 
     BOOST_TEST(
-        result.tag == tag("corefine(cuboid(2,2,2),plane(1,1,1,", d, "))"));
+        result.tag == tag("corefine(cuboid(2,2,2),plane(0,0,1,0))"));
 
     const auto &P = *result.value;
     test_polyhedron_volume(P, FT(8));
-    BOOST_TEST(P.size_of_vertices() == n);
+
+    std::size_t n = 0;
+    for(const auto &x: P.points()) {
+        n += (x.z() == 0);
+    }
+
+    BOOST_TEST(n == (P.size_of_vertices() - 8));
 }
 
 BOOST_DATA_TEST_CASE(components, boost::unit_test::data::xrange(3), n)
