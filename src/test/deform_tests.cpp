@@ -56,8 +56,6 @@ BOOST_AUTO_TEST_CASE(fair)
 
     const auto &P = *result.value;
 
-    test_polyhedron(P);
-
     for (const auto &v: P.vertex_handles()) {
         const auto &A = v->point();
 
@@ -141,10 +139,6 @@ BOOST_AUTO_TEST_CASE(deform)
             "vertices_in(bounding_halfspace(plane(0,0,1,-3))),"
             "vertices_in(bounding_halfspace(plane(0,0,1,5))),"
             "rotation(0,0,1,0,1,0,-1,0,0),1/100,1000)"));
-
-#if 0
-    CGAL::draw(*result.value);
-#endif
 }
 
 BOOST_AUTO_TEST_CASE(deform_whole)
@@ -173,10 +167,6 @@ BOOST_AUTO_TEST_CASE(deform_whole)
                        "rotation(1,0,0,0,0,-1,0,1,0),"
                        "vertices_in(bounding_halfspace(plane(-1,0,0,2))),"
                        "rotation(1,0,0,0,0,1,0,-1,0),1/100,1000)"));
-
-#if 0
-    CGAL::draw(*result.value);
-#endif
 }
 
 BOOST_AUTO_TEST_SUITE_END()

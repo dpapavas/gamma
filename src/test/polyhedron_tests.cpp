@@ -82,8 +82,6 @@ const Polyhedron &test_polyhedron(
     const Polyhedron &P,
     const int vertices, const int halfedges, const int facets)
 {
-    maybe_output_polyhedron(P);
-
     BOOST_TEST(P.size_of_vertices() == vertices);
     BOOST_TEST(P.size_of_halfedges() == halfedges);
     BOOST_TEST(P.size_of_facets() == facets);
@@ -95,8 +93,6 @@ const Nef_polyhedron &test_polyhedron(
     const Nef_polyhedron &N,
     const int vertices, const int halfedges, const int facets)
 {
-    maybe_output_polyhedron(N);
-
     BOOST_TEST(N.number_of_vertices() == vertices);
     BOOST_TEST(N.number_of_halfedges() == halfedges);
     BOOST_TEST(N.number_of_facets() == facets);
@@ -108,8 +104,6 @@ const Surface_mesh &test_polyhedron(
     const Surface_mesh &M,
     const int vertices, const int halfedges, const int facets)
 {
-    maybe_output_polyhedron(M);
-
     BOOST_TEST(M.number_of_vertices() == vertices);
     BOOST_TEST(M.number_of_halfedges() == halfedges);
     BOOST_TEST(M.number_of_faces() == facets);

@@ -34,6 +34,16 @@
 // information about the operation under test, which we later inspect
 // to determine whether everything went according to plan.
 
+#include <CGAL/draw_polygon_set_2.h>
+#include <CGAL/draw_polyhedron.h>
+#include <CGAL/draw_nef_3.h>
+#include <CGAL/draw_surface_mesh.h>
+
+#include "polygon_types.h"
+#include "circle_polygon_types.h"
+#include "conic_polygon_types.h"
+#include "polyhedron_types.h"
+
 template<template<typename> typename OP, typename T>
 class Test_sink_operation:
     public Unary_operation<OP<T>, Operation> {
@@ -90,6 +100,37 @@ public:
         tag_ref = this->operand->tag;
         annotations_ref = this->operand->annotations;
         result_ref = this->operand->get_value();
+
+        if (std::getenv("DRAW")) {
+            if constexpr (std::is_same_v<T, Conic_polygon_set>) {
+                Polygon_set S;
+                convert_conic_polygon_set(*result_ref, S, 0.001);
+                CGAL::draw(S);
+            } else if constexpr (std::is_same_v<T, Circle_polygon_set>) {
+                Polygon_set S;
+                convert_circle_polygon_set(*result_ref, S, 0.001, FT::ET(1, 1000000));
+                CGAL::draw(S);
+            } else {
+                CGAL::draw(*result_ref);
+            }
+        }
+
+        if (std::getenv("WRITE")) {
+            const std::string s =
+                static_cast<std::string>(
+                    boost::unit_test::framework::current_test_case().p_name)
+                + ".off";
+
+            if constexpr (std::is_same_v<T, Nef_polyhedron>) {
+                Polyhedron P;
+                result_ref->convert_to_polyhedron(P);
+                CGAL::IO::write_OFF(s, P);
+            } else if constexpr (
+                std::is_same_v<T, Polyhedron>
+                || std::is_same_v<T, Surface_mesh>) {
+                CGAL::IO::write_OFF(s, *result_ref);
+            }
+        }
     }
 };
 

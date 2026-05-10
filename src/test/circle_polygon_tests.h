@@ -19,7 +19,6 @@
 #define CIRCLE_POLYGON_TESTS_H
 
 #include <forward_list>
-#include <CGAL/draw_polygon_set_2.h>
 
 #include "polygon_tests.h"
 
@@ -109,18 +108,6 @@ const T &test_polygon_area(const T &S, const U &area)
 template<typename T, typename... Args>
 const T &test_polygon(const T &S, Args &... args)
 {
-    if (std::getenv("DRAW")) {
-        Polygon_set R;
-
-        if constexpr (std::is_same_v<T, Circle_polygon_set>) {
-            convert_circle_polygon_set(S, R, 0.001, FT::ET(1, 1000000));
-        } else {
-            convert_conic_polygon_set(S, R, 0.001);
-        }
-
-        CGAL::draw(R);
-    }
-
     std::forward_list<typename T::Polygon_with_holes_2> p;
     std::list<std::string_view> s({args...});
     S.polygons_with_holes(std::front_inserter(p));
