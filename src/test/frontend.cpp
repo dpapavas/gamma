@@ -1252,14 +1252,14 @@ WITH_SOURCE("scheme",
 EXPECTING("cuboid(2,2,2)",
           "mesh(cuboid(2,2,2))",
 
-          "color_selection(mesh(cuboid(2,2,2)),vertices_in("
-          "edges_through(segment(point(0,0,0),point(2,0,0)))),55,55,55,255)",
-          "color_selection(mesh(cuboid(2,2,2)),vertices_in("
-          "edges_through(ray(point(0,0,0),point(2,0,0)))),55,55,55,255)",
-          "color_selection(mesh(cuboid(2,2,2)),vertices_in("
-          "edges_through(line(2,0,0))),55,55,55,255)",
-          "color_selection(mesh(cuboid(2,2,2)),vertices_in("
-          "edges_through(plane(0,0,1,0))),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "edges_through(segment(point(0,0,0),point(2,0,0))),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "edges_through(ray(point(0,0,0),point(2,0,0))),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "edges_through(line(2,0,0)),55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "edges_through(plane(0,0,1,0)),55,55,55,255)",
 
           "color_selection(mesh(cuboid(2,2,2)),"
           "faces_through(segment(point(0,0,0),point(2,0,0))),55,55,55,255)",

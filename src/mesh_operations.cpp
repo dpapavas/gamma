@@ -143,6 +143,8 @@ static void apply_color(
     const char *s;
     if constexpr (std::is_same_v<U, Surface_mesh::Face_index>) {
         s = "f:color";
+    } else if constexpr (std::is_same_v<U, Surface_mesh::Edge_index>) {
+        s = "e:color";
     } else {
         static_assert(std::is_same_v<U, Surface_mesh::Vertex_index>);
         s = "v:color";
@@ -188,6 +190,7 @@ void Color_selection_operation<T>::evaluate()
 }
 
 template void Color_selection_operation<Face_selector>::evaluate();
+template void Color_selection_operation<Edge_selector>::evaluate();
 template void Color_selection_operation<Vertex_selector>::evaluate();
 
 void Color_vertices_operation::evaluate()

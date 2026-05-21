@@ -880,13 +880,8 @@ inline std::shared_ptr<R> COLOR_SELECTION(
     const std::shared_ptr<U> &q,
     const Args... args)
 {
-    if constexpr (std::is_same_v<U, Edge_selector>) {
-        return make_and_map<Color_selection_operation<Vertex_selector>, R>(
-            CONVERT_TO<Surface_mesh>(p), VERTICES_IN(q), args...);
-    } else {
-        return make_and_map<Color_selection_operation<U>, R>(
-            CONVERT_TO<Surface_mesh>(p), q, args...);
-    }
+    return make_and_map<Color_selection_operation<U>, R>(
+        CONVERT_TO<Surface_mesh>(p), q, args...);
 }
 
 template<typename T, typename U,

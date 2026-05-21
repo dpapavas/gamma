@@ -77,6 +77,10 @@ static void write_off(std::ostream &s, const Surface_mesh &mesh)
         mesh.property_map<Surface_mesh::Vertex_index,
                           std::optional<CGAL::IO::Color>>("v:color");
 
+    const auto edge_colors =
+        mesh.property_map<Surface_mesh::Edge_index,
+                          std::optional<CGAL::IO::Color>>("e:color");
+
     const auto face_colors =
         mesh.property_map<Surface_mesh::Face_index,
                           std::optional<CGAL::IO::Color>>("f:color");
@@ -89,8 +93,21 @@ static void write_off(std::ostream &s, const Surface_mesh &mesh)
         s << "OFF\n";
     }
 
+    // We transfer colored edges to the Debugger as if they were faces
+    // of degree 2.  We therefore need to count the colored edges and
+    // augment the face count accordingly.
+
+    int m = 0;
+    if (edge_colors) {
+        for (auto e: mesh.edges()) {
+            if ((*edge_colors)[e]) {
+                m++;
+            }
+        }
+    }
+
     s << mesh.number_of_vertices() << " "
-      << mesh.number_of_faces() << " "
+      << mesh.number_of_faces() + m << " "
       << mesh.number_of_edges() << "\n"
       << std::setprecision(DBL_DECIMAL_DIG);
 
@@ -102,7 +119,7 @@ static void write_off(std::ostream &s, const Surface_mesh &mesh)
     std::unordered_map<Surface_mesh::Vertex_index, std::size_t> map;
     int n = 0;
 
-    for(Surface_mesh::Vertex_index v: mesh.vertices()) {
+    for(auto v: mesh.vertices()) {
         const Surface_mesh::Point& P = mesh.point(v);
 
         map[v] = n++;
@@ -127,7 +144,7 @@ static void write_off(std::ostream &s, const Surface_mesh &mesh)
     // Now we add the faces as lists of vertex indices, looked up from
     // the map.
 
-    for (Surface_mesh::Face_index f: mesh.faces()) {
+    for (auto f: mesh.faces()) {
         s << mesh.degree(f);
 
         for(Surface_mesh::Vertex_index v:
@@ -143,6 +160,25 @@ static void write_off(std::ostream &s, const Surface_mesh &mesh)
         }
 
         s << "\n";
+    }
+
+    // Finally, we add any colored edges, as faces of degree 2.
+
+    if (edge_colors) {
+        for (auto e: mesh.edges()) {
+            const std::optional<CGAL::IO::Color> x = (*edge_colors)[e];
+
+            if (!x.has_value()) {
+                continue;
+            }
+
+            const auto h = mesh.halfedge(e);
+            s << 2 << " " << map[mesh.source(h)] << " " << map[mesh.target(h)];
+
+            write_off_color(s, x.value());
+
+            s << "\n";
+        }
     }
 }
 
@@ -161,6 +197,16 @@ static void accumulate_operands(
                                              "v:color")) {
             M.add_property_map<Surface_mesh::Vertex_index,
                                std::optional<CGAL::IO::Color>>("v:color");
+            break;
+        }
+    }
+
+    for(auto p: operands) {
+        if (p->get_value()->property_map<Surface_mesh::Edge_index,
+                                         std::optional<CGAL::IO::Color>>(
+                                             "e:color")) {
+            M.add_property_map<Surface_mesh::Edge_index,
+                               std::optional<CGAL::IO::Color>>("e:color");
             break;
         }
     }

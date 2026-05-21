@@ -1261,8 +1261,9 @@ int read_commands(FILE *fp)
                     }
 
                     //   3. write $l$ edges, corresponding to the $l$
-                    //   vertices in our buffer^[We do it at this
-                    //   point when the vertices are still the
+                    //   vertices in our buffer, if this actually is a
+                    //   face and not a "colored edge"^[We do it at
+                    //   this point when the vertices are still the
                     //   original vertices loaded from file, not
                     //   potentially duplicated vertices created when
                     //   reading face colors below.  This allows
@@ -1273,8 +1274,10 @@ int read_commands(FILE *fp)
                     //   position but different colors.], potentially
                     //   growing it to make space if needed,
 
-                    MAYBE_GROW_TO(edges, m += 2 * l);
-                    extract_edges(l, s, &edges.p[m - 2 * l]);
+                    if (l > 2) {
+                        MAYBE_GROW_TO(edges, m += 2 * l);
+                        extract_edges(l, s, &edges.p[m - 2 * l]);
+                    }
 
                     //   4. read the face color if present.  This is a
                     //   bit complicated.
@@ -1322,6 +1325,18 @@ int read_commands(FILE *fp)
                                 v[3] = 1.0f;
                             }
 
+                            //   If this is a "colored edge" we boost
+                            //   the color to offset the dimming we'll
+                            //   apply in the shader, when rending it.
+                            //   This allows colored edges to stand
+                            //   out.
+
+                            if (l == 2) {
+                                for (int i = 0; i < 3; i++) {
+                                    v[i] *= 2.0f;
+                                }
+                            }
+
                             //   The real problem is that the GL
                             //   doesn't know anything about "per-face
                             //   attributes".  All attributes are
@@ -1348,22 +1363,48 @@ int read_commands(FILE *fp)
                         }
                     }
 
-                    //   5. write the $l - 2$ triangles resulting from
-                    //   the triangulation of the face polygon into
-                    //   our buffer and finally
+                    if (l > 2) {
+                        //   5a. write the $l - 2$ triangles resulting from
+                        //   the triangulation of the face polygon into
+                        //   our buffer if this is a face, or
 
-                    MAYBE_GROW_TO(triangles, n += 3 * (l - 2));
-                    triangulate(l, s, vertices.p, &triangles.p[n - 3 * (l - 2)]);
+                        MAYBE_GROW_TO(triangles, n += 3 * (l - 2));
+                        triangulate(
+                            l, s, vertices.p, &triangles.p[n - 3 * (l - 2)]);
+                    } else {
+                        //   5b. output the single edge if this is
+                        //   just a "colored edge", which we support
+                        //   as a face of two vertices, to reuse the
+                        //   color handling machinery.
+
+                        assert(l == 2);
+                        MAYBE_GROW_TO(edges, m += 2);
+
+                        memcpy(&edges.p[m - 2], s, l * sizeof(s[0]));
+                    }
                 }
 
-                //   For closed, manifold meshes, each edge will be
-                //   shared by two faces and hence will show up twice
-                //   in our buffer.  For non-manifold meshes there
-                //   might be even more repetitions of the same edge.
+                // For closed, manifold meshes, each edge will be
+                // shared by two faces and hence will show up twice
+                // in our buffer.  For non-manifold meshes there
+                // might be even more repetitions of the same edge.
 
-                //   We don't want to draw the same edge multiple
-                //   times, so we sort and deduplicate the edges
-                //   before copying them to the GL buffers.
+                // We don't want to draw the same edge multiple
+                // times, so we sort and deduplicate the edges
+                // before copying them to the GL buffers.
+
+                // Sorting by index has an added benefit. "Colored
+                // edges", are duplicated, i.e. the same edge is
+                // output once as part of the face edges using the
+                // original vertex color and once with the coloring
+                // applied on copied vertices as if it were a
+                // face. Since the duplicated vertices are guaranteed
+                // to have larger indicies than the uncolored
+                // vertices, "colored edges" are thereby guaranteed to
+                // be after their uncolored counterpart in the buffer.
+                // They will thus cover them when they are rendered
+                // regardless of the order in which they were
+                // sereialized and read.
 
                 qsort(edges.p, m / 2, 2 * sizeof(edges.p[0]), compare_edges);
 
@@ -1381,10 +1422,10 @@ int read_commands(FILE *fp)
                     }
                 }
 
-                //   6. load the resulting triangles and edges^[Unless
-                //   there are none, which can happen if we try to
-                //   load an OFF file with no polygons] to the
-                //   specified object.
+                // We can now load the resulting triangles and edges
+                // to the specified object, unless there are none,
+                // which can happen if we try to load an OFF file with
+                // no polygons.
 
                 if (n > 0) {
                     assert(a > 0 && m > 0);
