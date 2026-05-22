@@ -157,23 +157,28 @@ inline std::shared_ptr<R> EDGES_PARTIALLY_IN(const std::shared_ptr<T> &p)
 }
 
 template<typename R = Edge_selector>
-inline std::shared_ptr<R> EDGES_BY_SHARPNESS(const FT &theta)
+inline std::shared_ptr<R> EDGES_BY_SHARPNESS_ANGLE(const FT &theta)
 {
-    return std::make_shared<Sharp_edge_selector>(theta);
+    return std::make_shared<Sharp_edge_selector<FT>>(theta);
 }
 
-template<typename R = Face_selector>
-inline std::shared_ptr<R> FACES_BY_SHARPNESS(
-    const FT &theta, const std::vector<int> &is)
+template<typename R = Edge_selector>
+inline std::shared_ptr<R> EDGES_BY_SHARPNESS_MODE(const int n)
 {
-    return std::make_shared<Sharp_patch_face_selector>(theta, is);
+    return std::make_shared<Sharp_edge_selector<int>>(n);
 }
 
-template<typename R = Face_selector>
-inline std::shared_ptr<R> FACES_BY_SHARPNESS(
-    const FT &theta, const std::shared_ptr<Face_selector> &p)
+template<typename R = Face_selector, typename P>
+inline std::shared_ptr<R> FACES_BY_SHARPNESS_ANGLE(
+    const FT &theta, const P &p)
 {
-    return std::make_shared<Sharp_patch_expanding_face_selector>(theta, p);
+    return std::make_shared<Sharp_patch_face_selector<FT>>(theta, p);
+}
+
+template<typename R = Face_selector, typename P>
+inline std::shared_ptr<R> FACES_BY_SHARPNESS_MODE(const int n, const P &p)
+{
+    return std::make_shared<Sharp_patch_face_selector<int>>(n, p);
 }
 
 template<typename R = Edge_selector, typename Q>

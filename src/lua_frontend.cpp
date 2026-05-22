@@ -376,17 +376,41 @@ static int selector_bnot(lua_State *L)
 
 // Feature-based selections
 
+template<typename P>
 static int faces_by_sharpness(lua_State *L)
 {
-    const FT theta = checkrational(L, 1);
+    P p;
+
+    // An `FT` parameter corresponds to an angle, while an integer is
+    // interpreted as mode number.
+
+    if constexpr (std::is_same_v<P, FT>) {
+        p = checkrational(L, 1);
+    } else {
+        p = luaL_checkinteger(L, 1);
+    }
+
+    // To select the patch, we accept either:
+
+    //   1. a seeding face selector, or
+
     const int h = lua_gettop(L);
 
     if (h == 2 && luaL_testudata(L, 2, "face_selector")) {
-        const auto p = fromlua<std::shared_ptr<Face_selector>>(L, 2);
+        const auto q = fromlua<std::shared_ptr<Face_selector>>(L, 2);
 
-        tolua<std::shared_ptr<Face_selector>>(L, FACES_BY_SHARPNESS(theta, p));
+        if constexpr (std::is_same_v<P, FT>) {
+            tolua<std::shared_ptr<Face_selector>>(
+                L, FACES_BY_SHARPNESS_ANGLE(p, q));
+        } else {
+            tolua<std::shared_ptr<Face_selector>>(
+                L, FACES_BY_SHARPNESS_MODE(p, q));
+        }
+
         return 1;
     }
+
+    //   2. a list of patch numbers.
 
     std::vector<int> v;
     v.reserve(h - 1);
@@ -395,7 +419,14 @@ static int faces_by_sharpness(lua_State *L)
         v.push_back(luaL_checkinteger(L, i));
     }
 
-    tolua<std::shared_ptr<Face_selector>>(L, FACES_BY_SHARPNESS(theta, v));
+    if constexpr (std::is_same_v<P, FT>) {
+        tolua<std::shared_ptr<Face_selector>>(
+            L, FACES_BY_SHARPNESS_ANGLE(p, v));
+    } else {
+        tolua<std::shared_ptr<Face_selector>>(
+            L, FACES_BY_SHARPNESS_MODE(p, v));
+    }
+
     return 1;
 }
 
@@ -1656,9 +1687,11 @@ static int open_selection(lua_State *L)
         {"expand_selection", relative_selection<1>},
         {"contract_selection", relative_selection<-1>},
 
-        {"edges_by_sharpness",
-         primitive<EDGES_BY_SHARPNESS<>, std::shared_ptr<Edge_selector>, 1>},
-        {"faces_by_sharpness", faces_by_sharpness},
+        {"edges_by_sharpness_angle",
+         primitive<EDGES_BY_SHARPNESS_ANGLE<>,
+         std::shared_ptr<Edge_selector>, 1>},
+        {"faces_by_sharpness_angle", faces_by_sharpness<FT>},
+        {"faces_by_sharpness_mode", faces_by_sharpness<int>},
 
         {"faces_through_segment", faces_through_segment},
         {"faces_through_ray", faces_through_ray},

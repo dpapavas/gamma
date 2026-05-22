@@ -136,7 +136,7 @@ BOOST_AUTO_TEST_CASE(prism)
     const auto &result = evaluate(
         CHAMFER(
             PRISM(8, 5, 2),
-            EDGES_BY_SHARPNESS(90), FT::ET(1, 2), FT::ET(1, 2),
+            EDGES_BY_SHARPNESS_ANGLE(90), FT::ET(1, 2), FT::ET(1, 2),
             Chamfering_operation_mode::OUTER));
 
     evaluate_operations();
@@ -164,7 +164,7 @@ BOOST_AUTO_TEST_CASE(prism_2)
     const auto &result = evaluate(
         FILLET(
             PRISM(8, 5, 2),
-            EDGES_BY_SHARPNESS(90), FT::ET(1, 2),
+            EDGES_BY_SHARPNESS_ANGLE(90), FT::ET(1, 2),
             Chamfering_operation_mode::OUTER));
 
     evaluate_operations();
@@ -195,7 +195,7 @@ BOOST_AUTO_TEST_CASE(donut)
     const auto &result = evaluate(
         CHAMFER(
             DIFFERENCE(PRISM(8, 4, 2), PRISM(8, 2, 2)),
-            EDGES_BY_SHARPNESS(90), FT::ET(1, 5), FT::ET(1, 5),
+            EDGES_BY_SHARPNESS_ANGLE(90), FT::ET(1, 5), FT::ET(1, 5),
             Chamfering_operation_mode::OUTER));
 
     evaluate_operations();
@@ -283,7 +283,7 @@ BOOST_AUTO_TEST_CASE(inner_cubes_2)
                     B, nullptr, FT::ET(1, 4),
                     Chamfering_operation_mode::OUTER), TRANSLATION_3(6, 0, 0)),
             FILLET(
-                A, EDGES_BY_SHARPNESS(90), FT::ET(1, 4),
+                A, EDGES_BY_SHARPNESS_ANGLE(90), FT::ET(1, 4),
                 Chamfering_operation_mode::INNER)));
 
     A.reset();
@@ -350,10 +350,10 @@ BOOST_DATA_TEST_CASE(geometry,
     const auto &result = evaluate(
         p
         ? MAKE_FILLET(
-            A, EDGES_BY_SHARPNESS(72), FT::ET(1, 5),
+            A, EDGES_BY_SHARPNESS_ANGLE(72), FT::ET(1, 5),
             static_cast<Chamfering_operation_mode>(mode))
         : MAKE_CHAMFER(
-            A, EDGES_BY_SHARPNESS(72), FT::ET(1, 5), FT::ET(1, 5),
+            A, EDGES_BY_SHARPNESS_ANGLE(72), FT::ET(1, 5), FT::ET(1, 5),
             static_cast<Chamfering_operation_mode>(mode)));
 
     A.reset();

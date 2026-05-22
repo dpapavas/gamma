@@ -299,6 +299,9 @@ template void Refine_operation<Surface_mesh>::evaluate();
 
 #define DO_REMESH(FACES)                                                \
 {                                                                       \
+    const auto parameters = CGAL::parameters::number_of_iterations(     \
+        iterations).collapse_constraints(false);                        \
+                                                                        \
     if (edge_selector) {                                                \
         const auto v_ = edge_selector->apply(*this->polyhedron);        \
         std::unordered_set<                                             \
@@ -312,13 +315,12 @@ template void Refine_operation<Surface_mesh>::evaluate();
                                                                         \
         CGAL::Polygon_mesh_processing::isotropic_remeshing(             \
             FACES, CGAL::to_double(target), *this->polyhedron,          \
-            CGAL::parameters::edge_is_constrained_map(                  \
-                CGAL::Boolean_property_map(set)).number_of_iterations(  \
-                    iterations));                                       \
+            parameters.edge_is_constrained_map(                         \
+                CGAL::Boolean_property_map(set)));                      \
     } else {                                                            \
         CGAL::Polygon_mesh_processing::isotropic_remeshing(             \
             FACES, CGAL::to_double(target), *this->polyhedron,          \
-            CGAL::parameters::number_of_iterations(iterations));        \
+            parameters);                                                \
     }                                                                   \
 }
 
@@ -464,7 +466,7 @@ void Polyhedron_components_operation<T>::evaluate()
 
     // First, we identify connected components in the operand.
 
-    std::map<face_descriptor, faces_size_type> map;
+    std::unordered_map<face_descriptor, faces_size_type> map;
     const auto property_map = boost::associative_property_map<decltype(map)>(map);
 
     const std::size_t n =

@@ -658,7 +658,8 @@ void Polyhedron_## OP ##_operation<Nef_polyhedron>::evaluate()          \
             Surface_mesh S;                                             \
                                                                         \
             CGAL::convert_nef_polyhedron_to_polygon_mesh(X, S, true);   \
-            if (CGAL::Polygon_mesh_processing::does_self_intersect(S)   \
+            if (CGAL::Polygon_mesh_processing::                         \
+                   does_self_intersect<CGAL::Parallel_if_available_tag>(S) \
                 || !CGAL::Polygon_mesh_processing::does_bound_a_volume(S)) { \
                 input_corefinable = false;                              \
                 break;                                                  \

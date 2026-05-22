@@ -111,14 +111,20 @@ public:
 
 // Feature-based
 
+template<typename P>
 class Sharp_edge_selector: public Edge_selector {
-    FT angle;
+    P parameter;
 
 public:
-    Sharp_edge_selector(const FT &theta): angle(theta) {}
+    Sharp_edge_selector(const P &p): parameter(p) {}
 
     std::string describe() const {
-        return compose_tag("edges_by_sharpness", angle);
+        const char *s = (
+            std::is_same_v<P, FT>
+            ? "edges_by_sharpness_angle"
+            : "edges_by_sharpness_mode");
+
+        return compose_tag(s, parameter);
     }
 
     std::vector<boost::graph_traits<Polyhedron>::edge_descriptor> apply(
@@ -127,40 +133,35 @@ public:
         Surface_mesh &mesh) const override;
 };
 
+template<typename P>
 class Sharp_patch_face_selector: public Face_selector {
-    FT angle;
+    P parameter;
     std::vector<int> patches;
+    std::shared_ptr<Face_selector> selector;
 
 public:
-    Sharp_patch_face_selector(const FT &theta, const std::vector<int> &is):
-        angle(theta), patches(is) {
+    Sharp_patch_face_selector(const P &p, const std::vector<int> &is):
+        parameter(p), patches(is) {
         std::sort(patches.begin(), patches.end());
         for (auto it = patches.begin();
              it != patches.end() && *it < 1;
              it = patches.erase(it));
     }
 
-    std::string describe() const {
-        return compose_tag("faces_by_sharpness", angle, patches);
-    }
-
-    std::vector<Polyhedron::Facet_handle> apply(
-        Polyhedron &mesh) const override;
-    std::vector<Surface_mesh::Face_index> apply(
-        Surface_mesh &mesh) const override;
-};
-
-class Sharp_patch_expanding_face_selector: public Face_selector {
-    FT angle;
-    std::shared_ptr<Face_selector> selector;
-
-public:
-    Sharp_patch_expanding_face_selector(
-        const FT &theta, const std::shared_ptr<Face_selector> &p):
-        angle(theta), selector(p) {}
+    Sharp_patch_face_selector(
+        const P &p, const std::shared_ptr<Face_selector> &q):
+        parameter(p), selector(q) {}
 
     std::string describe() const {
-        return compose_tag("faces_by_sharpness", angle, selector);
+        const char *s = (
+            std::is_same_v<P, FT>
+            ? "faces_by_sharpness_angle"
+            : "faces_by_sharpness_mode");
+
+        return (
+            selector
+            ? compose_tag(s, parameter, selector)
+            : compose_tag(s, parameter, patches));
     }
 
     std::vector<Polyhedron::Facet_handle> apply(
@@ -440,6 +441,6 @@ struct compose_tag_helper<std::shared_ptr<T>,
 
 template<typename T, typename F, typename S>
 std::vector<S> sort_face_patches(
-    const T &mesh, std::map<F, S> &map, std::size_t i_0, std::size_t n);
+    const T &mesh, std::unordered_map<F, S> &map, std::size_t i_0, std::size_t n);
 
 #endif

@@ -730,7 +730,7 @@ DEFINE_FLUSH_TEST_CASE(intersection,
 
 // We therefore test that:
 
-BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_edges, T, types)
+BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_angle_edges, T, types)
 {
     const auto &result = evaluate(
         [] {
@@ -748,7 +748,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_edges, T, types)
     //   1. There are no edges sharper than 90 degrees.
 
     {
-        auto v = EDGES_BY_SHARPNESS(91)->apply(P);
+        auto v = EDGES_BY_SHARPNESS_ANGLE(91)->apply(P);
 
         BOOST_TEST(v.size() == 0);
     }
@@ -757,7 +757,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_edges, T, types)
     //   are selected.
 
     for (int theta: {90, 61}) {
-        auto v = EDGES_BY_SHARPNESS(theta)->apply(P);
+        auto v = EDGES_BY_SHARPNESS_ANGLE(theta)->apply(P);
 
         BOOST_TEST(v.size() == 4);
         for (auto &x: v) {
@@ -768,9 +768,48 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_edges, T, types)
     //   3. All edges are sharper than 60 degrees.
 
     {
-        auto v = EDGES_BY_SHARPNESS(60)->apply(P);
+        auto v = EDGES_BY_SHARPNESS_ANGLE(60)->apply(P);
 
         BOOST_TEST(v.size() == 12);
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_mode_edges, T, types)
+{
+    // An untriangulated octagonal prism will have two modes:
+
+    const auto &result = evaluate(PRISM(8, 1, 1));
+
+    evaluate_operations();
+    auto &P = *result.value;
+    const auto map = CGAL::get(CGAL::vertex_point, P);
+
+    //   1. one at 90 degrees for its horizontal edges and
+
+    {
+        auto v = EDGES_BY_SHARPNESS_MODE(1)->apply(P);
+
+        BOOST_TEST(v.size() == 16);
+        for (auto &x: v) {
+            BOOST_TEST(
+                boost::get(map, CGAL::source(x, P)).z()
+                == boost::get(map, CGAL::target(x, P)).z());
+        }
+    }
+
+    //   2. the other at 45 degrees for the vertical edges:
+
+    {
+        auto v = DIFFERENCE({
+                EDGES_BY_SHARPNESS_MODE(2),
+                EDGES_BY_SHARPNESS_MODE(1)})->apply(P);
+
+        BOOST_TEST(v.size() == 8);
+        for (auto &x: v) {
+            BOOST_TEST(
+                boost::get(map, CGAL::source(x, P)).z()
+                != boost::get(map, CGAL::target(x, P)).z());
+        }
     }
 }
 
@@ -778,7 +817,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_edges, T, types)
 // only now the central section of the bipyramid has some width.  Its
 // edges therefore now have an angle of 45 degrees.
 
-BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_faces, T, types)
+BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_angle_faces, T, types)
 {
     const auto &result = evaluate(
         [] {
@@ -799,7 +838,8 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_faces, T, types)
         // containing four faces (one on each tip plus two triangular
         // faces making up the square side).
 
-        auto v = FACES_BY_SHARPNESS(60, {i + 1})->apply(P);
+        auto v = FACES_BY_SHARPNESS_ANGLE(
+            60, std::vector<int> {i + 1})->apply(P);
 
         BOOST_TEST(v.size() == 4);
 
@@ -827,7 +867,8 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_faces, T, types)
     // We also test selection of more than one patches.  Patches 1 and
     // 4 should be opposed and hence have complementary normals.
 
-    for (auto &x: FACES_BY_SHARPNESS(60, {1, 4})->apply(P)) {
+    for (auto &x: FACES_BY_SHARPNESS_ANGLE(
+             60, std::vector<int> {1, 4})->apply(P)) {
         n += CGAL::Polygon_mesh_processing::compute_face_normal(x, P);
     }
 
@@ -855,7 +896,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_expanding_faces, T, types)
     evaluate_operations();
     auto &P = *result.value;
 
-    auto v = FACES_BY_SHARPNESS(
+    auto v = FACES_BY_SHARPNESS_ANGLE(
         90, FACES_THROUGH(
             Line_3(Point_3(0, 0, 0), Point_3(1, 0, 0))))->apply(P);
 
@@ -881,6 +922,52 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_expanding_faces, T, types)
 
     for (int i = 0; i < 3; i++) {
         BOOST_TEST(CGAL::to_double(n[i]) == 0.0);
+    }
+}
+
+// For sharp mode face selection, we use an octagonal prism with a
+// pyramidal bottom.
+
+BOOST_TEST_DECORATOR(* boost::unit_test::tolerance(1e-17))
+BOOST_AUTO_TEST_CASE_TEMPLATE(sharp_mode_faces, T, types)
+{
+    const auto &result = evaluate(
+        [] {
+            auto h = POLYHEDRON_HULL_OPEN();
+            h->push_back(PRISM(8, 1, 1));
+            h->push_back(Point_3(0, 0, -1));
+            return CONVERT_TO<T>(POLYHEDRON_HULL_CLOSE(h));
+        });
+
+    evaluate_operations();
+    auto &P = *result.value;
+
+    // The geometry has 4 modes at:
+
+    //   1. 90 degrees for the top,
+    //   2. about 60 degrees for the horizontal edges at the pointy
+    //   bottom end,
+    //   3. 45 degrees for the vertical edges of the octagon,
+    //   4. about 20 degrees for the vertical edges of the bottom cap.
+
+    // We select the second mode, which should give 3 components:
+
+    for (int i = 1; i <= 3; i++) {
+        for (const auto &x: FACES_BY_SHARPNESS_MODE(
+                 2, std::vector<int> {i})->apply(P)) {
+            const auto n_i = CGAL::Polygon_mesh_processing::compute_face_normal(x, P);
+
+            //   1. a flat top with horizontal faces,
+
+            BOOST_TEST((i == 3) == (CGAL::to_double(n_i.z()) == 1.0));
+
+            //   2. an octagonal middle with vertical faces and
+
+            BOOST_TEST((i == 2) == (CGAL::to_double(n_i.z()) == 0.0));
+
+            //   3. an octagonal pyramid at the bottom with oblique
+            //   faces, tested implicitly by the above.
+        }
     }
 }
 

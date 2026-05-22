@@ -994,22 +994,40 @@ DEFINE_SELECTOR(
 
 // Another useful category is feature-based selections.
 
-static SCM faces_by_sharpness(SCM s, SCM t)
+static SCM faces_by_sharpness_angle(SCM s, SCM rest)
 {
     FT theta;
     pop_argument(1, s, theta);
 
     if (std::shared_ptr<Face_selector> x;
-        scm_is_null(scm_cdr(t)) && try_pop_argument(2, t, x)) {
+        scm_is_null(scm_cdr(rest)) && try_pop_argument(2, rest, x)) {
         return to_scheme<std::shared_ptr<Face_selector>>(
-            FACES_BY_SHARPNESS(theta, x));
+            FACES_BY_SHARPNESS_ANGLE(theta, x));
     }
 
     std::vector<int> v;
-    pop_arguments(2, t, v);
+    pop_arguments(2, rest, v);
 
     return to_scheme<std::shared_ptr<Face_selector>>(
-        FACES_BY_SHARPNESS(theta, v));
+        FACES_BY_SHARPNESS_ANGLE(theta, v));
+}
+
+static SCM faces_by_sharpness_mode(SCM s, SCM rest)
+{
+    int n;
+    pop_argument(1, s, n);
+
+    if (std::shared_ptr<Face_selector> x;
+        scm_is_null(scm_cdr(rest)) && try_pop_argument(2, rest, x)) {
+        return to_scheme<std::shared_ptr<Face_selector>>(
+            FACES_BY_SHARPNESS_MODE(n, x));
+    }
+
+    std::vector<int> v;
+    pop_arguments(2, rest, v);
+
+    return to_scheme<std::shared_ptr<Face_selector>>(
+        FACES_BY_SHARPNESS_MODE(n, v));
 }
 
 // As are selections based on intersection with primitives such as
@@ -2113,9 +2131,17 @@ static void define_selection(void *)
     DEFINE_FOREIGN_PROC("contract-selection", 2, 0, 0, relative_selection<-1>);
 
     DEFINE_FOREIGN_PRIMITIVE(
-        "edges-by-sharpness", EDGES_BY_SHARPNESS<>, std::shared_ptr<Edge_selector>, 1);
+        "edges-by-sharpness-angle", EDGES_BY_SHARPNESS_ANGLE<>,
+        std::shared_ptr<Edge_selector>, FT);
 
-    DEFINE_FOREIGN_PROC("faces-by-sharpness", 1, 0, 1, faces_by_sharpness);
+    DEFINE_FOREIGN_PRIMITIVE(
+        "edges-by-sharpness-mode", EDGES_BY_SHARPNESS_MODE<>,
+        std::shared_ptr<Edge_selector>, int);
+
+    DEFINE_FOREIGN_PROC(
+        "faces-by-sharpness-angle", 1, 0, 1, faces_by_sharpness_angle);
+    DEFINE_FOREIGN_PROC(
+        "faces-by-sharpness-mode", 1, 0, 1, faces_by_sharpness_mode);
 
     DEFINE_FOREIGN_PROC("faces-through-segment", 1, 1, 0, faces_through_segment);
     DEFINE_FOREIGN_PROC("faces-through-ray", 1, 1, 0, faces_through_ray);

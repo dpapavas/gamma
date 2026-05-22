@@ -1127,13 +1127,16 @@ WITH_SOURCE("lua",
             "    h.cuboid(2, 2, 2),"
             "    s.contract_selection("
             "        s.faces_in(v.bounding_halfspace(0, 0, 1, -1)), 1))"
-            "op.remesh(h.cuboid(2, 2, 2), s.edges_by_sharpness(90), 1)"
+            "op.remesh(h.cuboid(2, 2, 2), s.edges_by_sharpness_angle(90), 1)"
             "op.color_selection("
-            "    h.cuboid(2, 2, 2), s.faces_by_sharpness(45, 1, 2, 3))"
+            "    h.cuboid(2, 2, 2), s.faces_by_sharpness_angle(45, 1, 2, 3))"
             "op.color_selection("
             "    h.cuboid(2, 2, 2),"
-            "    s.faces_by_sharpness("
-            "        90, s.faces_through_plane(plane(0, 0, 1, 0))))")
+            "    s.faces_by_sharpness_angle("
+            "        90, s.faces_through_plane(plane(0, 0, 1, 0))))"
+            "op.color_selection("
+            "    h.cuboid(2, 2, 2),"
+            "    s.faces_by_sharpness_mode(2, 1))")
 WITH_SOURCE("scheme",
             "(import (gamma volumes) (gamma selection)"
             "        (gamma polyhedra) (gamma operations))"
@@ -1163,19 +1166,26 @@ WITH_SOURCE("scheme",
             " (cuboid 2 2 2)"
             " (contract-selection"
             "  (faces-in (bounding-halfspace 0 0 1 -1)) 1))"
-            "(remesh (cuboid 2 2 2) (edges-by-sharpness 90) 1)"
-            "(color-selection (cuboid 2 2 2) (faces-by-sharpness 45 1 2 3))"
+            "(remesh (cuboid 2 2 2) (edges-by-sharpness-angle 90) 1)"
+            "(color-selection"
+            " (cuboid 2 2 2) (faces-by-sharpness-angle 45 1 2 3))"
             "(color-selection"
             " (cuboid 2 2 2)"
-            " (faces-by-sharpness 90 (faces-through-plane (plane 0 0 1 0))))")
+            " (faces-by-sharpness-angle"
+            "  90 (faces-through-plane (plane 0 0 1 0))))"
+            "(color-selection"
+            " (cuboid 2 2 2)"
+            " (faces-by-sharpness-mode 2 1))")
 EXPECTING("cuboid(2,2,2)",
           "mesh(cuboid(2,2,2))",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "contract(faces_in(bounding_halfspace(plane(0,0,1,-1))),1),55,55,55,255)",
+          "contract(faces_in(bounding_halfspace(plane(0,0,1,-1))),1),"
+          "55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
           "expand(faces_in(bounding_plane(plane(0,0,1,-1))),1),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "contract(vertices_in(bounding_halfspace(plane(0,0,1,-1))),1),55,55,55,255)",
+          "contract(vertices_in(bounding_halfspace(plane(0,0,1,-1))),1),"
+          "55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
           "expand(vertices_in(bounding_plane(plane(0,0,1,-1))),1),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
@@ -1184,11 +1194,14 @@ EXPECTING("cuboid(2,2,2)",
           "faces_in(bounding_plane(plane(0,0,1,-1))),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
           "vertices_in(bounding_plane(plane(0,0,1,-1))),55,55,55,255)",
-          "remesh(cuboid(2,2,2),edges_by_sharpness(90),1,1)",
+          "remesh(cuboid(2,2,2),edges_by_sharpness_angle(90),1,1)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "faces_by_sharpness(45,1,2,3),55,55,55,255)",
+          "faces_by_sharpness_angle(45,1,2,3),55,55,55,255)",
           "color_selection(mesh(cuboid(2,2,2)),"
-          "faces_by_sharpness(90,faces_through(plane(0,0,1,0))),55,55,55,255)")
+          "faces_by_sharpness_angle(90,faces_through(plane(0,0,1,0))),"
+          "55,55,55,255)",
+          "color_selection(mesh(cuboid(2,2,2)),"
+          "faces_by_sharpness_mode(2,1),55,55,55,255)")
 
 DEFINE_TEST_CASE(selection_through)
 WITH_SOURCE("lua",

@@ -510,16 +510,271 @@ select_sharp_edges(T &mesh, const FT &angle)
     return std::vector(set.cbegin(), set.cend());
 }
 
+template<>
 std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
-Sharp_edge_selector::apply(Polyhedron &mesh) const
+Sharp_edge_selector<FT>::apply(Polyhedron &mesh) const
 {
-    return select_sharp_edges(mesh, angle);
+    return select_sharp_edges(mesh, parameter);
 }
 
+template<>
 std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
-Sharp_edge_selector::apply(Surface_mesh &mesh) const
+Sharp_edge_selector<FT>::apply(Surface_mesh &mesh) const
 {
-    return select_sharp_edges(mesh, angle);
+    return select_sharp_edges(mesh, parameter);
+}
+
+// Selecting sharp edges by angle can be cumbersome, as it requires
+// calculation or trial and error to find the angle.  It would be more
+// convenient to be able to select the angle based on prominent
+// creases in the mesh geometry.  These translate to peaks in the
+// histogram of dihedral angles in the mesh.
+
+// The function below finds the nth largest such mode.
+
+template<typename T>
+static FT find_mode(T &mesh, int mode)
+{
+    const auto map = CGAL::get(CGAL::vertex_point, mesh);
+
+    // We start by calculating the dihedral angles of all edges,
+    // storing them in `v`.
+
+    const std::size_t n = CGAL::num_edges(mesh);
+    std::vector<double> v;
+    v.reserve(n);
+
+    for (const auto &e: CGAL::edges(mesh)) {
+        const auto h = CGAL::halfedge(e, mesh);
+
+        v.push_back(
+            180.0 - std::abs(
+                CGAL::to_double(
+                    CGAL::approximate_dihedral_angle(
+                        boost::get(map, CGAL::source(h, mesh)),
+                        boost::get(map, CGAL::target(h, mesh)),
+                        boost::get(map, CGAL::target(CGAL::next(h, mesh), mesh)),
+                        boost::get(map, CGAL::target(CGAL::next(CGAL::opposite(h, mesh), mesh), mesh))))));
+    }
+
+#if 0
+    {
+        std::ofstream f("angles");
+        for (const auto &x: v) {
+            f << x << std::endl;
+        }
+    }
+#endif
+
+    // Next we calculate a smoothed histogram of those angles, in `w`,
+    // using Kernel Density Estimation with a Gaussian kernel.
+
+    // Ideally, modes would be prominent and we wouldn't need much
+    // resolution, but procedures such as isotropic remeshing for
+    // instance, can introduce edges with relatively wide
+    // distributions, which, for our current purposes, constitute
+    // noise.
+
+    // We therefore sample the histogram 16 times per degree, and set
+    // the kernel's bandwidth accordingly^[Setting it equal to the
+    // sampling interval should avoid aliasing.  Higher bandwidths may
+    // be required for a smoother histogram.].
+
+    const double h = 4.0 / 16.0;
+
+    const int m = 180 * 16;
+    std::vector<double> w;
+    w.reserve(m);
+
+    for (double x = 0.0; x < 180.0 ; x += 0.0625) {
+        double f_x = 0.0;
+
+        for (const auto x_i: v) {
+            const double delta = x - x_i;
+
+            // We truncate the Gaussian window a $5 \sigma$.
+
+            if (std::fabs(delta) < 5.0 * h) {
+                f_x += std::exp(-0.5 * delta * delta / h);
+            }
+        }
+
+        w.push_back(f_x);
+    }
+
+#if 0
+    {
+        std::ofstream f("density");
+        for (const auto &x: w) {
+            f << x << std::endl;
+        }
+    }
+#endif
+
+    // The histogram will contain many local maxima, but we're only
+    // interested in the most prominent ones.  We apply a technique
+    // based on persistent homology.
+
+    std::vector<std::ptrdiff_t> sorted(m);
+    std::iota(sorted.begin(), sorted.end(), 0);
+
+    std::sort(
+        sorted.begin(), sorted.end(),
+        [&](std::ptrdiff_t a, std::ptrdiff_t b) {
+            return w[a] > w[b];
+        });
+
+    // We keep a list of peaks, recording for each the sample index
+    // that corresponds to it `born`, it the furtherst peaks to the
+    // left and right that have been merged into it so far, or the
+    // sample of the saddle point at which it was merged to a taller
+    // peak, `died`.
+
+    struct peak {
+        std::ptrdiff_t born, left, right, died;
+    };
+
+    std::vector<struct peak> peaks;
+    std::vector<std::ptrdiff_t> peaks_map(m, -1);
+
+    // We go through the samples in sorted order assigning each to a
+    // peak.
+
+    for (std::ptrdiff_t i: sorted) {
+        // For each sample it may be the case that:
+
+        std::ptrdiff_t l = i > 0 ? peaks_map[i - 1] : -1,
+            r = i < m - 1 ? peaks_map[i + 1] : -1;
+
+        //   1. no peak has been assigned either to its left, or
+        //   right, in which case a new peak is born, or
+
+        if (l == -1 && r == -1) {
+            peaks.push_back({i, i, i, -1});
+            peaks_map[i] = peaks.size() - 1;
+
+            continue;
+        }
+
+        //   2. there's a taller peak on the left, to which this
+        //   sample is merged, or
+
+        if (l != -1 && r == -1) {
+            peaks[l].right++;
+            peaks_map[i] = l;
+
+            continue;
+        }
+
+        //   3. the same, but on the right, or
+
+        if (l == -1 && r != -1) {
+            peaks[r].left--;
+            peaks_map[i] = r;
+
+            continue;
+        }
+
+        //   4. there are peaks on both ends.  In this case the higher
+        // peak absorbs the lower one, which "dies".  The surviving
+        // peak is updated accordingly.
+
+        if (w[peaks[l].born] > w[peaks[r].born]) {
+            peaks[r].died = i;
+            peaks[l].right = peaks[r].right;
+            peaks_map[peaks[l].right] = l;
+            peaks_map[i] = l;
+        } else {
+            peaks[l].died = i;
+            peaks[r].left = peaks[l].left;
+            peaks_map[peaks[r].left] = r;
+            peaks_map[i] = r;
+        }
+    }
+
+    // The persistence of a peak is then the difference in height of
+    // the peak and the saddle point where it "died".
+
+    auto score = [&w](const struct peak &a) {
+        return w[a.born] - (a.died == -1 ? 0 : w[a.died]);
+    };
+
+    // We now sort the peaks by descending persistence and keep only
+    // those with a score above a given threshold.  This may require
+    // some tweaking.
+
+    std::sort(
+        peaks.begin(), peaks.end(),
+          [&](const struct peak &a, const struct peak &b) {
+              return score(a) > score(b);
+          });
+
+    {
+        auto it = peaks.begin();
+        for (double s = score(*it++) / 100.0;
+             it != peaks.end() && score(*it) > s;
+             ++it);
+
+        peaks.erase(it, peaks.end());
+    }
+
+    assert(!peaks.empty());
+
+    // We want to select modes by descending angle, so we sort again
+    // before we select the specified mode.
+
+    std::sort(
+        peaks.begin(), peaks.end(),
+          [&](const struct peak &a, const struct peak &b) {
+              return a.born > b.born;
+          });
+
+    const auto &p = peaks[
+        std::clamp(
+            mode - 1,
+            0, static_cast<int>(peaks.size()) - 1)];
+
+    // We can return the angle corresponding to the peak itself; we
+    // would select half its edges if the peak has some width.
+
+    std::ptrdiff_t i = 0;
+
+    if (p.died != -1 && p.died < p.born) {
+        // In most cases, we would expect the peaks to descend in
+        // height as the angles grow larger^[A given mesh is likely to
+        // have more edges in flatter regions than sharp creases.], so
+        // that each peak "dies" to a taller peak at a lower angle.
+        // We use the saddle point of its death in this case.  This
+        // should result in selecting the edges of this peak and any
+        // lower nearby peaks that were absorbed into it.
+
+        i = p.died;
+    } else {
+        // If the peak was merged on its right, we find the closest
+        // saddle point and use that.
+
+        for (const auto &q: peaks) {
+            if (q.died > i && q.died < p.born) {
+                i = q.died;
+            }
+        }
+    }
+
+    return FT::ET(i, 16);
+}
+
+template<>
+std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
+Sharp_edge_selector<int>::apply(Polyhedron &mesh) const
+{
+    return select_sharp_edges(mesh, find_mode(mesh, parameter));
+}
+
+template<>
+std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
+Sharp_edge_selector<int>::apply(Surface_mesh &mesh) const
+{
+    return select_sharp_edges(mesh, find_mode(mesh, parameter));
 }
 
 // Face patch indexes assigned by operations like
@@ -537,7 +792,7 @@ Sharp_edge_selector::apply(Surface_mesh &mesh) const
 
 template<typename T, typename F, typename S>
 std::vector<S> sort_face_patches(
-    const T &mesh, std::map<F, S> &map, std::size_t i_0, std::size_t n)
+    const T &mesh, std::unordered_map<F, S> &map, std::size_t i_0, std::size_t n)
 {
     std::vector<std::pair<std::array<FT, 6>, std::size_t>> u(n, {{}, i_0 + n});
 
@@ -549,8 +804,8 @@ std::vector<S> sort_face_patches(
         auto &t = u[i - i_0];
         auto &b = t.first;
 
-        for (auto x: CGAL::vertices_around_face(halfedge(f, mesh), mesh)) {
-            const Point_3 p = boost::get(point_map, x);
+        for (auto x: CGAL::vertices_around_face(CGAL::halfedge(f, mesh), mesh)) {
+            const auto p = boost::get(point_map, x);
 
             if (t.second == i_0 + n) {
                 t.second = i;
@@ -590,15 +845,15 @@ std::vector<S> sort_face_patches(
 template std::vector<boost::graph_traits<Polyhedron>::faces_size_type>
 sort_face_patches(
     const Polyhedron &mesh,
-    std::map<boost::graph_traits<Polyhedron>::face_descriptor,
-             boost::graph_traits<Polyhedron>::faces_size_type> &map,
+    std::unordered_map<boost::graph_traits<Polyhedron>::face_descriptor,
+                       boost::graph_traits<Polyhedron>::faces_size_type> &map,
     std::size_t i_0, std::size_t n);
 
 template std::vector<boost::graph_traits<Surface_mesh>::faces_size_type>
 sort_face_patches(
     const Surface_mesh &mesh,
-    std::map<boost::graph_traits<Surface_mesh>::face_descriptor,
-             boost::graph_traits<Surface_mesh>::faces_size_type> &map,
+    std::unordered_map<boost::graph_traits<Surface_mesh>::face_descriptor,
+                       boost::graph_traits<Surface_mesh>::faces_size_type> &map,
     std::size_t i_0, std::size_t n);
 
 // The set of "sharp" edges described above defines a segmentation of
@@ -619,7 +874,7 @@ select_sharp_patch_faces(
 
     std::vector<face_descriptor> v;
     std::unordered_set<edge_descriptor> set;
-    std::map<face_descriptor, std::size_t> map;
+    std::unordered_map<face_descriptor, std::size_t> map;
 
     std::size_t n =
         CGAL::Polygon_mesh_processing::sharp_edges_segmentation(
@@ -644,18 +899,6 @@ select_sharp_patch_faces(
     return v;
 }
 
-std::vector<Polyhedron::Facet_handle>
-Sharp_patch_face_selector::apply(Polyhedron &mesh) const
-{
-    return select_sharp_patch_faces(mesh, angle, patches);
-}
-
-std::vector<Surface_mesh::Face_index>
-Sharp_patch_face_selector::apply(Surface_mesh &mesh) const
-{
-    return select_sharp_patch_faces(mesh, angle, patches);
-}
-
 // This form of the sharp patch face selector determines the patches
 // to be returned from the faces returned by a given selector.
 
@@ -671,14 +914,14 @@ select_sharp_patch_faces(
 
     std::vector<face_descriptor> v;
     std::unordered_set<edge_descriptor> set;
-    std::map<face_descriptor, std::size_t> map;
+    std::unordered_map<face_descriptor, std::size_t> map;
 
     CGAL::Polygon_mesh_processing::sharp_edges_segmentation(
         mesh, angle,
         CGAL::Boolean_property_map(set),
         boost::associative_property_map<decltype(map)>(map));
 
-    std::unordered_set<std::size_t> patches;
+    std::unordered_set<int> patches;
 
     // We then run the seeding selector and collect the set of all
     // patches its faces belong to.
@@ -700,16 +943,48 @@ select_sharp_patch_faces(
     return v;
 }
 
+template<>
 std::vector<Polyhedron::Facet_handle>
-Sharp_patch_expanding_face_selector::apply(Polyhedron &mesh) const
+Sharp_patch_face_selector<FT>::apply(Polyhedron &mesh) const
 {
-    return select_sharp_patch_faces(mesh, angle, *selector);
+    return (
+        selector
+        ? select_sharp_patch_faces(mesh, parameter, *selector)
+        : select_sharp_patch_faces(mesh, parameter, patches));
 }
 
+template<>
 std::vector<Surface_mesh::Face_index>
-Sharp_patch_expanding_face_selector::apply(Surface_mesh &mesh) const
+Sharp_patch_face_selector<FT>::apply(Surface_mesh &mesh) const
 {
-    return select_sharp_patch_faces(mesh, angle, *selector);
+    return (
+        selector
+        ? select_sharp_patch_faces(mesh, parameter, *selector)
+        : select_sharp_patch_faces(mesh, parameter, patches));
+}
+
+template<>
+std::vector<Polyhedron::Facet_handle>
+Sharp_patch_face_selector<int>::apply(Polyhedron &mesh) const
+{
+    const auto theta = find_mode(mesh, parameter);
+
+    return (
+        selector
+        ? select_sharp_patch_faces(mesh, theta, *selector)
+        : select_sharp_patch_faces(mesh, theta, patches));
+}
+
+template<>
+std::vector<Surface_mesh::Face_index>
+Sharp_patch_face_selector<int>::apply(Surface_mesh &mesh) const
+{
+    const auto theta = find_mode(mesh, parameter);
+
+    return (
+        selector
+        ? select_sharp_patch_faces(mesh, theta, *selector)
+        : select_sharp_patch_faces(mesh, theta, patches));
 }
 
 // ## Selections by Intersection
@@ -748,7 +1023,7 @@ select_intersecting_faces(const T &mesh, const Q &query)
 
     const auto map = CGAL::get(CGAL::vertex_point, mesh);
 
-    // We therefore manually triangulate each mesh face, createing a
+    // We therefore manually triangulate each mesh face, creating a
     // mapping from the (one or more) `Triangle_3` extracted from a
     // given face to its descriptor.
 
@@ -823,8 +1098,8 @@ select_intersecting_faces(const T &mesh, const Q &query)
 
     std::sort(v.begin(), v.end());
     v.erase(std::unique(v.begin(), v.end()), v.end());
-
     v.shrink_to_fit();
+
     return v;
 }
 
