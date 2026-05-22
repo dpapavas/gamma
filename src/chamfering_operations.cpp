@@ -754,7 +754,8 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
 
         if (edge_selector) {
             edges = partition_edges(
-                mesh, edge_selector->apply(const_cast<T&>(mesh)), n);
+                mesh, edge_selector->apply(
+                    const_cast<T&>(mesh), this->annotations), n);
         } else {
             edges = partition_edges(mesh, CGAL::edges(const_cast<T&>(mesh)), n);
         }

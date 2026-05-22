@@ -462,16 +462,20 @@ void Worker::work()
 
                 if (Flags::dump_annotations
                     && op->annotations.size() > 0) {
+                    std::vector<std::pair<std::string, std::string>> v(
+                        op->annotations.cbegin(), op->annotations.cend());
+                    std::sort(v.begin(), v.end());
+
                     list_dump << " (";
 
-                    for (auto it = op->annotations.cbegin(); ;) {
+                    for (auto it = v.cbegin(); ;) {
                         list_dump << it->first;
 
                         if (!it->second.empty()) {
                             list_dump << ": " << it->second;
                         }
 
-                        if (++it == op->annotations.cend()) {
+                        if (++it == v.cend()) {
                             break;
                         }
 

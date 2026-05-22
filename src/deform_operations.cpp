@@ -40,7 +40,7 @@ void Fair_operation<T>::evaluate()
 
     // Attempt to fair selected portion.
 
-    const auto &v = selector->apply(*this->polyhedron);
+    const auto &v = selector->apply(*this->polyhedron, this->annotations);
 
     if(CGAL::Polygon_mesh_processing::fair(
            *this->polyhedron, v,
@@ -119,7 +119,9 @@ void Deform_operation<T>::evaluate()
     if (selector) {
         std::vector<Double_polyhedron::Vertex_handle> v;
 
-        match_selection(pairs, selector->apply(O), std::back_inserter(v));
+        match_selection(
+            pairs, selector->apply(O, this->annotations),
+            std::back_inserter(v));
 
         deform.insert_roi_vertices(v.begin(), v.end());
         this->annotations.insert({"selected", std::to_string(v.size())});
@@ -132,7 +134,8 @@ void Deform_operation<T>::evaluate()
         std::vector<Double_polyhedron::Vertex_handle> v;
 
         match_selection(
-            pairs, controls[i].first->apply(O), std::back_inserter(v));
+            pairs, controls[i].first->apply(O, this->annotations),
+            std::back_inserter(v));
 
         const Aff_transformation_3 &X = controls[i].second;
         const Double_kernel::Aff_transformation_3 X_prime(
@@ -192,7 +195,7 @@ void Deflate_operation<T>::evaluate()
                 std::back_inserter(pairs)));
 
         match_selection(
-            pairs, selector->apply(P),
+            pairs, selector->apply(P, this->annotations),
             std::inserter(constrained, constrained.end()));
     } else {
         CGAL::copy_face_graph(P, M);
@@ -265,11 +268,12 @@ void Smooth_shape_operation<T>::evaluate()
                 std::back_inserter(face_pairs)));
 
         match_selection(
-            vertex_pairs, vertex_selector->apply(P),
+            vertex_pairs, vertex_selector->apply(P, this->annotations),
             std::inserter(constrained, constrained.end()));
 
         match_selection(
-            face_pairs, face_selector->apply(P), std::back_inserter(faces));
+            face_pairs, face_selector->apply(P, this->annotations),
+            std::back_inserter(faces));
     } else if (face_selector) {
         CGAL::Polygon_mesh_processing::triangulate_faces(CGAL::faces(P), P);
 
@@ -283,7 +287,8 @@ void Smooth_shape_operation<T>::evaluate()
                 std::back_inserter(face_pairs)));
 
         match_selection(
-            face_pairs, face_selector->apply(P), std::back_inserter(faces));
+            face_pairs, face_selector->apply(P, this->annotations),
+            std::back_inserter(faces));
     } else if (vertex_selector) {
         std::vector<
             std::pair<typename boost::graph_traits<T>::vertex_descriptor,
@@ -295,7 +300,7 @@ void Smooth_shape_operation<T>::evaluate()
                 std::back_inserter(vertex_pairs)));
 
         match_selection(
-            vertex_pairs, vertex_selector->apply(P),
+            vertex_pairs, vertex_selector->apply(P, this->annotations),
             std::inserter(constrained, constrained.end()));
 
         CGAL::Polygon_mesh_processing::triangulate_faces(M.faces(), M);

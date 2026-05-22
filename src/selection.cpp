@@ -175,9 +175,11 @@ Bounded_face_selector::apply(Surface_mesh &mesh) const
 // input selection.  Contraction performs the opposite operation.
 
 template<typename T, typename U>
-inline auto expand_or_contract_selection(T &mesh, const U &selector, int steps)
+inline auto expand_or_contract_selection(
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const U &selector, int steps)
 {
-    auto v = selector.apply(mesh);
+    auto v = selector.apply(mesh, annotations);
     std::unordered_set set(v.cbegin(), v.cend());
     auto map = CGAL::make_boolean_property_map(set);
 
@@ -222,39 +224,51 @@ inline auto expand_or_contract_selection(T &mesh, const U &selector, int steps)
 }
 
 std::vector<Polyhedron::Vertex_handle>
-Relative_vertex_selector::apply(Polyhedron &mesh) const
+Relative_vertex_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return expand_or_contract_selection(mesh, *selector, steps);
+    return expand_or_contract_selection(mesh, annotations, *selector, steps);
 }
 
 std::vector<Surface_mesh::Vertex_index>
-Relative_vertex_selector::apply(Surface_mesh &mesh) const
+Relative_vertex_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return expand_or_contract_selection(mesh, *selector, steps);
+    return expand_or_contract_selection(mesh, annotations, *selector, steps);
 }
 
 std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
-Relative_edge_selector::apply(Polyhedron &mesh) const
+Relative_edge_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return expand_or_contract_selection(mesh, *selector, steps);
+    return expand_or_contract_selection(mesh, annotations, *selector, steps);
 }
 
 std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
-Relative_edge_selector::apply(Surface_mesh &mesh) const
+Relative_edge_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return expand_or_contract_selection(mesh, *selector, steps);
+    return expand_or_contract_selection(mesh, annotations, *selector, steps);
 }
 
 std::vector<Polyhedron::Facet_handle>
-Relative_face_selector::apply(Polyhedron &mesh) const
+Relative_face_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return expand_or_contract_selection(mesh, *selector, steps);
+    return expand_or_contract_selection(mesh, annotations, *selector, steps);
 }
 
 std::vector<Surface_mesh::Face_index>
-Relative_face_selector::apply(Surface_mesh &mesh) const
+Relative_face_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return expand_or_contract_selection(mesh, *selector, steps);
+    return expand_or_contract_selection(mesh, annotations, *selector, steps);
 }
 
 // ## Converting Selections
@@ -270,13 +284,15 @@ Relative_face_selector::apply(Surface_mesh &mesh) const
 //   1. Vertices from edges
 
 template<typename T>
-auto vertices_from_edges(T &mesh, const Edge_selector &selector)
+auto vertices_from_edges(
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const Edge_selector &selector)
 {
     using V = typename boost::graph_traits<T>::vertex_descriptor;
 
     std::unordered_set<V> vertices;
 
-    for (const auto &e: selector.apply(mesh)) {
+    for (const auto &e: selector.apply(mesh, annotations)) {
         vertices.insert(CGAL::source(e, mesh));
         vertices.insert(CGAL::target(e, mesh));
     }
@@ -285,27 +301,33 @@ auto vertices_from_edges(T &mesh, const Edge_selector &selector)
 }
 
 std::vector<Polyhedron::Vertex_handle>
-Edge_to_vertex_selector::apply(Polyhedron &mesh) const
+Edge_to_vertex_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return vertices_from_edges(mesh, *selector);
+    return vertices_from_edges(mesh, annotations, *selector);
 }
 
 std::vector<Surface_mesh::Vertex_index>
-Edge_to_vertex_selector::apply(Surface_mesh &mesh) const
+Edge_to_vertex_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return vertices_from_edges(mesh, *selector);
+    return vertices_from_edges(mesh, annotations, *selector);
 }
 
 //   2. Vertices from faces
 
 template<typename T>
-auto vertices_from_faces(T &mesh, const Face_selector &selector)
+auto vertices_from_faces(
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const Face_selector &selector)
 {
     using V = typename boost::graph_traits<T>::vertex_descriptor;
 
     std::unordered_set<V> vertices;
 
-    for (const auto &f: selector.apply(mesh)) {
+    for (const auto &f: selector.apply(mesh, annotations)) {
         for (const auto &v: CGAL::vertices_around_face(
                  CGAL::halfedge(f, mesh), mesh)) {
             vertices.insert(v);
@@ -316,22 +338,27 @@ auto vertices_from_faces(T &mesh, const Face_selector &selector)
 }
 
 std::vector<Polyhedron::Vertex_handle>
-Face_to_vertex_selector::apply(Polyhedron &mesh) const
+Face_to_vertex_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return vertices_from_faces(mesh, *selector);
+    return vertices_from_faces(mesh, annotations, *selector);
 }
 
 std::vector<Surface_mesh::Vertex_index>
-Face_to_vertex_selector::apply(Surface_mesh &mesh) const
+Face_to_vertex_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return vertices_from_faces(mesh, *selector);
+    return vertices_from_faces(mesh, annotations, *selector);
 }
 
 //   3. Edges from vertices
 
 template<typename T, typename V>
 auto edges_from_vertices(
-    T &mesh, const std::unordered_set<V> &vertices, const bool partial)
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const std::unordered_set<V> &vertices, const bool partial)
 {
     PARTIAL_MEMBERSHIP_TEST(
         typename boost::graph_traits<T>::edge_descriptor,
@@ -342,38 +369,44 @@ auto edges_from_vertices(
 
 template<typename T>
 auto edges_from_vertices(
-    T &mesh, const Vertex_selector &selector, const bool partial)
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const Vertex_selector &selector, const bool partial)
 {
     using V = typename boost::graph_traits<T>::vertex_descriptor;
     std::unordered_set<V> vertices;
 
     {
-        const auto &w = selector.apply(mesh);
+        const auto &w = selector.apply(mesh, annotations);
 
         vertices.reserve(w.size());
         vertices.insert(w.cbegin(), w.cend());
     }
 
-    return edges_from_vertices(mesh, vertices, partial);
+    return edges_from_vertices(mesh, annotations, vertices, partial);
 }
 
 std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
-Vertex_to_edge_selector::apply(Polyhedron &mesh) const
+Vertex_to_edge_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return edges_from_vertices(mesh, *selector, partial);
+    return edges_from_vertices(mesh, annotations, *selector, partial);
 }
 
 std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
-Vertex_to_edge_selector::apply(Surface_mesh &mesh) const
+Vertex_to_edge_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return edges_from_vertices(mesh, *selector, partial);
+    return edges_from_vertices(mesh, annotations, *selector, partial);
 }
 
 //   4. Edges from faces
 
 template<typename T>
 auto edges_from_faces(
-    T &mesh, const Face_selector &selector, const bool partial)
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const Face_selector &selector, const bool partial)
 {
     // Edges "partially in" a face, are those for which one of their
     // targets belongs to the face.
@@ -383,19 +416,19 @@ auto edges_from_faces(
 
         std::unordered_set<V> vertices;
 
-        for (const auto &f: selector.apply(mesh)) {
+        for (const auto &f: selector.apply(mesh, annotations)) {
             for (const auto &v: CGAL::vertices_around_face(
                      CGAL::halfedge(f, mesh), mesh)) {
                 vertices.insert(v);
             }
         }
 
-        return edges_from_vertices(mesh, vertices, partial);
+        return edges_from_vertices(mesh, annotations, vertices, partial);
     } else {
         using E = typename boost::graph_traits<T>::edge_descriptor;
         std::unordered_set<E> edges;
 
-        for (const auto &f: selector.apply(mesh)) {
+        for (const auto &f: selector.apply(mesh, annotations)) {
             for (const auto &h: CGAL::halfedges_around_face(
                      CGAL::halfedge(f, mesh), mesh)) {
                 edges.insert(E(h));
@@ -407,28 +440,33 @@ auto edges_from_faces(
 }
 
 std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
-Face_to_edge_selector::apply(Polyhedron &mesh) const
+Face_to_edge_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return edges_from_faces(mesh, *selector, partial);
+    return edges_from_faces(mesh, annotations, *selector, partial);
 }
 
 std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
-Face_to_edge_selector::apply(Surface_mesh &mesh) const
+Face_to_edge_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return edges_from_faces(mesh, *selector, partial);
+    return edges_from_faces(mesh, annotations, *selector, partial);
 }
 
 //   5. Faces from vertices
 
 template<typename T>
 auto faces_from_vertices(
-    T &mesh, const Vertex_selector &selector, const bool partial)
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const Vertex_selector &selector, const bool partial)
 {
     using V = typename boost::graph_traits<T>::vertex_descriptor;
     std::unordered_set<V> vertices;
 
     {
-        const auto &w = selector.apply(mesh);
+        const auto &w = selector.apply(mesh, annotations);
 
         vertices.reserve(w.size());
         vertices.insert(w.cbegin(), w.cend());
@@ -442,28 +480,33 @@ auto faces_from_vertices(
 }
 
 std::vector<Polyhedron::Facet_handle>
-Vertex_to_face_selector::apply(Polyhedron &mesh) const
+Vertex_to_face_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return faces_from_vertices(mesh, *selector, partial);
+    return faces_from_vertices(mesh, annotations, *selector, partial);
 }
 
 std::vector<Surface_mesh::Face_index>
-Vertex_to_face_selector::apply(Surface_mesh &mesh) const
+Vertex_to_face_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return faces_from_vertices(mesh, *selector, partial);
+    return faces_from_vertices(mesh, annotations, *selector, partial);
 }
 
 //   6. Faces from edges
 
 template<typename T>
 auto faces_from_edges(
-    T &mesh, const Edge_selector &selector, const bool partial)
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const Edge_selector &selector, const bool partial)
 {
     using E = typename boost::graph_traits<T>::edge_descriptor;
     std::unordered_set<E> edges;
 
     {
-        const auto &w = selector.apply(mesh);
+        const auto &w = selector.apply(mesh, annotations);
 
         edges.reserve(w.size());
         edges.insert(w.cbegin(), w.cend());
@@ -477,15 +520,19 @@ auto faces_from_edges(
 }
 
 std::vector<Polyhedron::Facet_handle>
-Edge_to_face_selector::apply(Polyhedron &mesh) const
+Edge_to_face_selector::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return faces_from_edges(mesh, *selector, partial);
+    return faces_from_edges(mesh, annotations, *selector, partial);
 }
 
 std::vector<Surface_mesh::Face_index>
-Edge_to_face_selector::apply(Surface_mesh &mesh) const
+Edge_to_face_selector::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return faces_from_edges(mesh, *selector, partial);
+    return faces_from_edges(mesh, annotations, *selector, partial);
 }
 
 // ## Feature-Based Selections
@@ -498,7 +545,9 @@ Edge_to_face_selector::apply(Surface_mesh &mesh) const
 
 template<typename T>
 static std::vector<typename boost::graph_traits<T>::edge_descriptor>
-select_sharp_edges(T &mesh, const FT &angle)
+select_sharp_edges(
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const FT &angle)
 {
     using E = typename boost::graph_traits<T>::edge_descriptor;
 
@@ -512,16 +561,20 @@ select_sharp_edges(T &mesh, const FT &angle)
 
 template<>
 std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
-Sharp_edge_selector<FT>::apply(Polyhedron &mesh) const
+Sharp_edge_selector<FT>::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return select_sharp_edges(mesh, parameter);
+    return select_sharp_edges(mesh, annotations, parameter);
 }
 
 template<>
 std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
-Sharp_edge_selector<FT>::apply(Surface_mesh &mesh) const
+Sharp_edge_selector<FT>::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return select_sharp_edges(mesh, parameter);
+    return select_sharp_edges(mesh, annotations, parameter);
 }
 
 // Selecting sharp edges by angle can be cumbersome, as it requires
@@ -533,7 +586,9 @@ Sharp_edge_selector<FT>::apply(Surface_mesh &mesh) const
 // The function below finds the nth largest such mode.
 
 template<typename T>
-static FT find_mode(T &mesh, int mode)
+static FT find_mode(
+    T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    int mode)
 {
     const auto map = CGAL::get(CGAL::vertex_point, mesh);
 
@@ -729,6 +784,12 @@ static FT find_mode(T &mesh, int mode)
               return a.born > b.born;
           });
 
+    for (std::size_t i = 0; i < peaks.size() ; i++) {
+        std::ostringstream s;
+        s << peaks[i].born / 16.0;
+        annotations.insert({"mode-" + std::to_string(i + 1), s.str()});
+    }
+
     const auto &p = peaks[
         std::clamp(
             mode - 1,
@@ -760,21 +821,33 @@ static FT find_mode(T &mesh, int mode)
         }
     }
 
+    {
+        std::ostringstream s;
+        s << i / 16.0;
+        annotations.insert({"angle", s.str()});
+    }
+
     return FT::ET(i, 16);
 }
 
 template<>
 std::vector<boost::graph_traits<Polyhedron>::edge_descriptor>
-Sharp_edge_selector<int>::apply(Polyhedron &mesh) const
+Sharp_edge_selector<int>::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return select_sharp_edges(mesh, find_mode(mesh, parameter));
+    return select_sharp_edges(
+        mesh, annotations, find_mode(mesh, annotations, parameter));
 }
 
 template<>
 std::vector<boost::graph_traits<Surface_mesh>::edge_descriptor>
-Sharp_edge_selector<int>::apply(Surface_mesh &mesh) const
+Sharp_edge_selector<int>::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    return select_sharp_edges(mesh, find_mode(mesh, parameter));
+    return select_sharp_edges(
+        mesh, annotations, find_mode(mesh, annotations, parameter));
 }
 
 // Face patch indexes assigned by operations like
@@ -864,7 +937,8 @@ sort_face_patches(
 template<typename T>
 static std::vector<typename boost::graph_traits<T>::face_descriptor>
 select_sharp_patch_faces(
-    const T &mesh, const FT &angle, const std::vector<int> &patches)
+    const T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const FT &angle, const std::vector<int> &patches)
 {
     typedef typename boost::graph_traits<T>::edge_descriptor edge_descriptor;
     typedef typename boost::graph_traits<T>::face_descriptor face_descriptor;
@@ -881,6 +955,8 @@ select_sharp_patch_faces(
             mesh, angle,
             CGAL::Boolean_property_map(set),
             boost::associative_property_map<decltype(map)>(map));
+
+    annotations.insert({"patches", std::to_string(n)});
 
     // We can now extract and return the faces of the selected
     // patches.
@@ -905,7 +981,8 @@ select_sharp_patch_faces(
 template<typename T>
 static std::vector<typename boost::graph_traits<T>::face_descriptor>
 select_sharp_patch_faces(
-    const T &mesh, const FT &angle, const Face_selector &selector)
+    const T &mesh, std::unordered_map<std::string, std::string> &annotations,
+    const FT &angle, const Face_selector &selector)
 {
     typedef typename boost::graph_traits<T>::edge_descriptor edge_descriptor;
     typedef typename boost::graph_traits<T>::face_descriptor face_descriptor;
@@ -926,7 +1003,7 @@ select_sharp_patch_faces(
     // We then run the seeding selector and collect the set of all
     // patches its faces belong to.
 
-    for (const auto &x: selector.apply(const_cast<T &>(mesh))) {
+    for (const auto &x: selector.apply(const_cast<T &>(mesh), annotations)) {
         patches.insert(map[x]);
     }
 
@@ -945,46 +1022,54 @@ select_sharp_patch_faces(
 
 template<>
 std::vector<Polyhedron::Facet_handle>
-Sharp_patch_face_selector<FT>::apply(Polyhedron &mesh) const
+Sharp_patch_face_selector<FT>::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
     return (
         selector
-        ? select_sharp_patch_faces(mesh, parameter, *selector)
-        : select_sharp_patch_faces(mesh, parameter, patches));
+        ? select_sharp_patch_faces(mesh, annotations, parameter, *selector)
+        : select_sharp_patch_faces(mesh, annotations, parameter, patches));
 }
 
 template<>
 std::vector<Surface_mesh::Face_index>
-Sharp_patch_face_selector<FT>::apply(Surface_mesh &mesh) const
+Sharp_patch_face_selector<FT>::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
     return (
         selector
-        ? select_sharp_patch_faces(mesh, parameter, *selector)
-        : select_sharp_patch_faces(mesh, parameter, patches));
+        ? select_sharp_patch_faces(mesh, annotations, parameter, *selector)
+        : select_sharp_patch_faces(mesh, annotations, parameter, patches));
 }
 
 template<>
 std::vector<Polyhedron::Facet_handle>
-Sharp_patch_face_selector<int>::apply(Polyhedron &mesh) const
+Sharp_patch_face_selector<int>::apply(
+    Polyhedron &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    const auto theta = find_mode(mesh, parameter);
+    const auto theta = find_mode(mesh, annotations, parameter);
 
     return (
         selector
-        ? select_sharp_patch_faces(mesh, theta, *selector)
-        : select_sharp_patch_faces(mesh, theta, patches));
+        ? select_sharp_patch_faces(mesh, annotations, theta, *selector)
+        : select_sharp_patch_faces(mesh, annotations, theta, patches));
 }
 
 template<>
 std::vector<Surface_mesh::Face_index>
-Sharp_patch_face_selector<int>::apply(Surface_mesh &mesh) const
+Sharp_patch_face_selector<int>::apply(
+    Surface_mesh &mesh,
+    std::unordered_map<std::string, std::string> &annotations) const
 {
-    const auto theta = find_mode(mesh, parameter);
+    const auto theta = find_mode(mesh, annotations, parameter);
 
     return (
         selector
-        ? select_sharp_patch_faces(mesh, theta, *selector)
-        : select_sharp_patch_faces(mesh, theta, patches));
+        ? select_sharp_patch_faces(mesh, annotations, theta, *selector)
+        : select_sharp_patch_faces(mesh, annotations, theta, patches));
 }
 
 // ## Selections by Intersection
@@ -1161,7 +1246,9 @@ Intersecting_edge_selector::apply(Surface_mesh &mesh) const
 
 #define DEFINE_SET_OPERATION(OP, WHAT, HANDLE, INDEX)                   \
 template<typename T, typename U>                                        \
-inline auto WHAT ##_selection_## OP(T &mesh, const std::vector<U> &selectors) \
+inline auto WHAT ##_selection_## OP(                                    \
+    T &mesh, std::unordered_map<std::string, std::string> &annotations, \
+    const std::vector<U> &selectors)                                    \
 {                                                                       \
     using V = typename boost::graph_traits<T>::WHAT ##_descriptor;      \
                                                                         \
@@ -1169,7 +1256,7 @@ inline auto WHAT ##_selection_## OP(T &mesh, const std::vector<U> &selectors) \
     std::vector<V> a, b, *q = &a, *r = &b;                              \
                                                                         \
     for (const U &x: selectors) {                                       \
-        std::vector<V> v = x->apply(mesh);                              \
+        std::vector<V> v = x->apply(mesh, annotations);                 \
         std::sort(v.begin(), v.end());                                  \
                                                                         \
         if (p) {                                                        \
@@ -1191,15 +1278,19 @@ inline auto WHAT ##_selection_## OP(T &mesh, const std::vector<U> &selectors) \
 }                                                                       \
                                                                         \
 std::vector<HANDLE>                                                     \
-Set_## OP ##_## WHAT ##_selector::apply(Polyhedron &mesh) const         \
+Set_## OP ##_## WHAT ##_selector::apply(                                \
+    Polyhedron &mesh,                                                   \
+    std::unordered_map<std::string, std::string> &annotations) const    \
 {                                                                       \
-    return WHAT ##_selection_## OP(mesh, selectors);                    \
+    return WHAT ##_selection_## OP(mesh, annotations, selectors);       \
 }                                                                       \
                                                                         \
 std::vector<INDEX>                                                      \
-Set_## OP ##_## WHAT ##_selector::apply(Surface_mesh &mesh) const       \
+Set_## OP ##_## WHAT ##_selector::apply(                                \
+    Surface_mesh &mesh,                                                 \
+    std::unordered_map<std::string, std::string> &annotations) const    \
 {                                                                       \
-    return WHAT ##_selection_## OP(mesh, selectors);                    \
+    return WHAT ##_selection_## OP(mesh, annotations, selectors);       \
 }
 
 DEFINE_SET_OPERATION(union, face,
@@ -1233,7 +1324,9 @@ DEFINE_SET_OPERATION(intersection, edge,
 
 #define DEFINE_COMPLEMENT_OPERATION(WHAT, HANDLE, INDEX, RANGE)         \
 template<typename T, typename U>                                        \
-inline auto WHAT ##_selection_complement(T &mesh, const U &selector)    \
+inline auto WHAT ##_selection_complement(                               \
+    T &mesh, std::unordered_map<std::string, std::string> &annotations, \
+    const U &selector)                                                  \
 {                                                                       \
     using V = typename boost::graph_traits<T>::WHAT ##_descriptor;      \
                                                                         \
@@ -1242,7 +1335,7 @@ inline auto WHAT ##_selection_complement(T &mesh, const U &selector)    \
     const auto &x = CGAL::RANGE(mesh);                                  \
     u.insert(u.begin(), x.begin(), x.end());                            \
                                                                         \
-    std::vector<V> v = selector->apply(mesh);                           \
+    std::vector<V> v = selector->apply(mesh, annotations);              \
                                                                         \
     std::sort(u.begin(), u.end());                                      \
     std::sort(v.begin(), v.end());                                      \
@@ -1257,15 +1350,19 @@ inline auto WHAT ##_selection_complement(T &mesh, const U &selector)    \
 }                                                                       \
                                                                         \
 std::vector<HANDLE>                                                     \
-Set_complement_## WHAT ##_selector::apply(Polyhedron &mesh) const       \
+Set_complement_## WHAT ##_selector::apply(                              \
+    Polyhedron &mesh,                                                   \
+    std::unordered_map<std::string, std::string> &annotations) const    \
 {                                                                       \
-    return WHAT ##_selection_complement(mesh, selector);                \
+    return WHAT ##_selection_complement(mesh, annotations, selector);   \
 }                                                                       \
                                                                         \
 std::vector<INDEX>                                                      \
-Set_complement_## WHAT ##_selector::apply(Surface_mesh &mesh) const     \
+Set_complement_## WHAT ##_selector::apply(                              \
+    Surface_mesh &mesh,                                                 \
+    std::unordered_map<std::string, std::string> &annotations) const    \
 {                                                                       \
-    return WHAT ##_selection_complement(mesh, selector);                \
+    return WHAT ##_selection_complement(mesh, annotations, selector);   \
 }
 
 DEFINE_COMPLEMENT_OPERATION(face,

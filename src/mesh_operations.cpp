@@ -182,7 +182,7 @@ void Color_selection_operation<T>::evaluate()
     assert(!polyhedron);
     polyhedron = std::make_shared<Surface_mesh>(*operand->get_value());
 
-    const auto v = selector->apply(*polyhedron);
+    const auto v = selector->apply(*polyhedron, annotations);
 
     apply_color(*polyhedron, v, color);
 
@@ -229,7 +229,7 @@ void Perturb_operation<T>::evaluate()
         CGAL::faces(*this->polyhedron), *this->polyhedron);
 
     if (selector) {
-        const auto &v = selector->apply(*this->polyhedron);
+        const auto &v = selector->apply(*this->polyhedron, this->annotations);
 
         CGAL::Polygon_mesh_processing::random_perturbation(
             v, *this->polyhedron, CGAL::to_double(magnitude),
@@ -270,7 +270,7 @@ void Refine_operation<T>::evaluate()
         typename boost::graph_traits<T>::face_descriptor>;
 
     if (selector) {
-        const auto &v = selector->apply(*this->polyhedron);
+        const auto &v = selector->apply(*this->polyhedron, this->annotations);
 
         CGAL::Polygon_mesh_processing::refine(
             *this->polyhedron, v,
@@ -303,7 +303,9 @@ template void Refine_operation<Surface_mesh>::evaluate();
         iterations).collapse_constraints(false);                        \
                                                                         \
     if (edge_selector) {                                                \
-        const auto v_ = edge_selector->apply(*this->polyhedron);        \
+        const auto v_ = edge_selector->apply(                           \
+            *this->polyhedron, this->annotations);                      \
+                                                                        \
         std::unordered_set<                                             \
             typename boost::graph_traits<T>::edge_descriptor> set(      \
                 v_.begin(), v_.end());                                  \
@@ -336,7 +338,8 @@ void Remesh_operation<T>::evaluate()
 
     if (face_selector) {
         CGAL::Polygon_mesh_processing::triangulate_faces(
-            face_selector->apply(*this->polyhedron), *this->polyhedron);
+            face_selector->apply(
+                *this->polyhedron, this->annotations), *this->polyhedron);
     } else {
         CGAL::Polygon_mesh_processing::triangulate_faces(
             CGAL::faces(*this->polyhedron), *this->polyhedron);
@@ -348,7 +351,8 @@ void Remesh_operation<T>::evaluate()
     // place.
 
     if (face_selector) {
-        const auto v = face_selector->apply(*this->polyhedron);
+        const auto v = face_selector->apply(
+            *this->polyhedron, this->annotations);
         this->annotations.insert({"selected", std::to_string(v.size())});
 
         DO_REMESH(v);
