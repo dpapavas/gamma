@@ -314,7 +314,7 @@ BOOST_AUTO_TEST_CASE(icosahedron)
     test_face_area(P, FT(FT::ET(1, 200)));
 }
 
-BOOST_AUTO_TEST_CASE_EXPECTED_FAILURES(filleted_icosahedron, 50)
+BOOST_AUTO_TEST_CASE_EXPECTED_FAILURES(icosahedron_2, 50)
 BOOST_AUTO_TEST_CASE(icosahedron_2, * boost::unit_test::disabled())
 {
     // Like above, but meant more as a stress test on result quality
@@ -361,6 +361,53 @@ BOOST_DATA_TEST_CASE(geometry,
 
     const auto &P = *result.value;
     test_face_area(P, FT(FT::ET(1, p ? 100000 : 100)));
+}
+
+// We test cases where the chamfering geometry would self-intersect if
+// all segments were joined by mitering.  To do so we chamfer the top
+// and bottom faces of an extruded chamfered rectangle.  The short
+// oblique faces at the corners makes non-adjacent chamfer segments
+// intersect past some chamfer length.
+
+BOOST_AUTO_TEST_CASE(large)
+{
+    const auto &result = evaluate(
+        CHAMFER(
+            EXTRUSION(
+                MINKOWSKI_SUM(REGULAR_POLYGON(4, 1), RECTANGLE(5, 5)),
+                {TRANSLATION_3(0, 0, -3), TRANSLATION_3(0, 0, 3)}),
+            EDGES_BY_SHARPNESS_ANGLE(90), 2, 2,
+            Chamfering_operation_mode::OUTER));
+
+    evaluate_operations();
+
+    const auto &P = *result.value;
+    test_face_area(P, FT(FT::ET(1, 200)));
+}
+
+// This is the same as above, only for filleting inner edges.
+
+BOOST_AUTO_TEST_CASE(large_2)
+{
+    const auto &result = evaluate(
+        FILLET(
+            DIFFERENCE(
+                EXTRUSION(
+                    RECTANGLE(2, 2),
+                    {TRANSLATION_3(0, 0, 0), TRANSLATION_3(0, 0, 2)}),
+                EXTRUSION(
+                    MINKOWSKI_SUM(
+                        REGULAR_POLYGON(4, FT::ET(1, 8)), RECTANGLE(1, 1)),
+                    {TRANSLATION_3(0, 0, 1), TRANSLATION_3(0, 0, 2)})),
+            INTERSECTION({
+                EDGES_BY_SHARPNESS_ANGLE(90),
+                EDGES_IN(BOUNDING_PLANE(0, 0, 1, -1))}), FT::ET(3, 8),
+            Chamfering_operation_mode::INNER));
+
+    evaluate_operations();
+
+    const auto &P = *result.value;
+    test_face_area(P, FT(FT::ET(1, 200)));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

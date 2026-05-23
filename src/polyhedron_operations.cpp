@@ -110,7 +110,8 @@ static inline void test_result(const U &op, const T &P)
 
     bool does_self_intersect = false;
     if (Flags::warn_mesh_intersects
-        && CGAL::Polygon_mesh_processing::does_self_intersect<CGAL::Parallel_if_available_tag>(Q)) {
+        && CGAL::Polygon_mesh_processing::
+        does_self_intersect<CGAL::Parallel_if_available_tag>(Q)) {
         does_self_intersect = true;
         op->message(
             Operation::WARNING, "result of operation % self-intersects");

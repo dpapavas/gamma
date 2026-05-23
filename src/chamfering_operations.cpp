@@ -424,36 +424,51 @@ make_fillet_segment(
 
 // In order to join the segments, we need to shift the targets of
 // edges in the first segment and the source of edges in the second,
-// to the intersection points of those edges.  As we can see in the
-// graph, we can skip the firs set of edges, `h` and `g`; they're
-// already lined up by definition, as they correspond to the
-// consecutive edges of the polyhedron that are to be chamfered.
+// to the intersection points of those edges.  In other words, we need
+// to miter the segments.
+
+// As we can see in the graph, we can skip the firs set of edges, `h`
+// and `g`.  They're already lined up by definition, as they
+// correspond to the consecutive edges of the polyhedron that are to
+// be chamfered.
 
 template<typename T>
-static void join_segments(
-    T &chamfer,
+static bool miter_segments(
+    T &source, T &target,
     const typename boost::graph_traits<T>::halfedge_descriptor &h,
     const typename boost::graph_traits<T>::halfedge_descriptor &g)
 {
-    const auto map = CGAL::get(CGAL::vertex_point, chamfer);
+    const auto map_s = CGAL::get(CGAL::vertex_point, source);
+    const auto map_t = CGAL::get(CGAL::vertex_point, target);
 
     // We iterate, through all other pairs^[There are only two in a
     // chamfer segment, but there can be any number of them in a
     // fillet segment.] $(s,t)$ of matching edges from each segment
     // and for each pair, we shift the target of the first edge to the
-    // point of intersection. We only need to shift the points of the
-    // preceding segment, as that is what will be used by `join_loop`
-    // below.
+    // point of intersection.
+
+    // If we could be certain that we'd always be able to miter the
+    // segments succesfully, we could apply the shifts immediately.
+    // Regrettably though, depending on the geometry of the chamfererd
+    // edges and the depth of the chamfer, we might not be able to
+    // succesfully apply the simple process below and resort to
+    // joining via corefinement.
+
+    // We therefore defer application of the shifts, until we've
+    // determined that all can be applied.
+
+    std::vector<std::pair<Point_3 *, Point_3>> shifts;
+    shifts.reserve(2);
 
     for (auto s = h, t = g;
          (s = CGAL::opposite(
-             CGAL::next(CGAL::next(s, chamfer), chamfer), chamfer)) != h &&
+             CGAL::next(CGAL::next(s, source), source), source)) != h &&
              (t = CGAL::opposite(
-                 CGAL::next(CGAL::next(t, chamfer), chamfer), chamfer)) != g; ) {
-        const auto a = boost::get(map, CGAL::source(s, chamfer));
-        const auto b = boost::get(map, CGAL::target(s, chamfer));
-        const auto c = boost::get(map, CGAL::source(t, chamfer));
-        const auto d = boost::get(map, CGAL::target(t, chamfer));
+                 CGAL::next(CGAL::next(t, target), target), target)) != g; ) {
+        const auto a = boost::get(map_s, CGAL::source(s, source));
+        const auto b = boost::get(map_s, CGAL::target(s, source));
+        const auto c = boost::get(map_t, CGAL::source(t, target));
+        const auto d = boost::get(map_t, CGAL::target(t, target));
 
         // The endpoints may already be coincident, although this is
         // not very likely, even though in many cases we would expect
@@ -474,7 +489,7 @@ static void join_segments(
         const Line_3 l(a, b);
         const Line_3 m(c, d);
 
-        // If the segements we're joining are collinear, so will be
+        // If the segements we're mitering are collinear, so will be
         // $l$ and $m$.  All edges should be lined up in such cases,
         // though, so we can leave point `b` as is.  We still need to
         // update `d` below as `b` will be snapped to the
@@ -497,12 +512,13 @@ static void join_segments(
         if (!x.has_value()) {
             // If they don't we:
 
-            const auto p = boost::get(map, CGAL::source(h, chamfer));
-            const auto q = boost::get(map, CGAL::source(g, chamfer));
+            const auto p = boost::get(map_s, CGAL::source(h, source));
+            const auto q = boost::get(map_t, CGAL::source(g, target));
 
             //   1. calculate the two planes of the oblique segment
-            //   faces and take their intersection yielding a line, `n`, on which
-            //   the intersection of `l` and `m` lies, then
+            //   faces and take their intersection yielding a line,
+            //   `n`, on which the intersection of `l` and `m` lies,
+            //   then
 
             const auto y = CGAL::intersection(Plane_3(a, b, p), Plane_3(c, d, q));
             assert(y.has_value() && std::holds_alternative<Line_3>(y.value()));
@@ -521,37 +537,101 @@ static void join_segments(
         }
 
         // However we might have calculated the new point in `x`, we
-        // can use it to update `b` wihtout issue.
+        // can use it to update `b` provided it won't introduce
+        // self-intersections in the resulting mesh.  This can happen
+        // if the new point is to the left of $a$, or to the right of
+        // $d$ in the diagram.
 
-        const auto b_prime = std::get<Point_3>(x.value());
-        boost::put(
-            map, CGAL::target(s, chamfer), b_prime);
+        const auto &b_prime = std::get<Point_3>(x.value());
 
-        // When `join_loop` is called below, `c` we alse be shifted to
-        // `b_prime`.  As a consequence, if we leave `d` as is, we
-        // will lose planarity in the faces of segment `t`.  Even
-        // worse, its edges won't be parallel any more, which will
-        // lead to problems when joining subsequent segments.
+        if ((b_prime - a) * (b - a) <= FT(0)
+            || (b_prime - d) * (c - d) <= FT(0)) {
+                return false;
+        }
 
-        boost::put(
-            map, CGAL::target(t, chamfer), d + (b_prime - m.projection(b_prime)));
+        shifts.push_back({&boost::get(map_s, CGAL::target(s, source)), b_prime});
+
+        // When `join_loop` is called during joining, `c` will also be
+        // shifted to `b_prime`.  As a consequence, if we leave `d` as
+        // is, we will lose planarity in the faces of segment `t`.
+        // Even worse, its edges won't be parallel any more, which
+        // will lead to problems when joining subsequent segments.
+
+        shifts.push_back({
+                &boost::get(map_t, CGAL::target(t, target)),
+                d + (b_prime - m.projection(b_prime))});
     }
 
-    //  We can now join the two segments.
+    // If we've come this far, we can proceed to apply all shifts.
 
+    for (const auto &x: shifts) {
+        *x.first = x.second;
+    }
+
+    return true;
+}
+
+// Successfully mitered segments can be joined and merged into a
+// single mesh.
+
+template<typename T>
+static void join_segments(
+    T &chamfer, const T &segment,
+    const typename boost::graph_traits<T>::halfedge_descriptor &h,
+    const typename boost::graph_traits<T>::halfedge_descriptor &g)
+{
     CGAL::Euler::join_loop(
         CGAL::opposite(CGAL::next(h, chamfer), chamfer),
         CGAL::opposite(CGAL::prev(g, chamfer), chamfer), chamfer);
+}
+
+template<typename T>
+static typename boost::graph_traits<T>::halfedge_descriptor merge_segments(
+    T &chamfer, const T &segment,
+    const typename boost::graph_traits<T>::halfedge_descriptor &h,
+    const typename boost::graph_traits<T>::halfedge_descriptor &g)
+{
+    typename boost::graph_traits<T>::halfedge_descriptor g_prime;
+
+    // We copy the faces of the segment into our chamfer mesh, noting
+    // the new central halfedge corresponding to it.
+
+    CGAL::copy_face_graph(
+        segment, chamfer,
+        CGAL::parameters::halfedge_to_halfedge_output_iterator(
+            boost::make_function_output_iterator(
+                [&g, &g_prime](const auto &p) {
+                    if (g == p.first) {
+                        g_prime = p.second;
+                    }
+                })));
+
+    join_segments(chamfer, segment, h, g_prime);
+
+    return g_prime;
+}
+
+// When we can't miter and join segments, or when forming open path
+// strips, we need to cap their ends.
+
+template<typename T>
+static void cap_segments(
+    T &source, T &target,
+    const typename boost::graph_traits<T>::halfedge_descriptor &h,
+    const typename boost::graph_traits<T>::halfedge_descriptor &g)
+{
+    CGAL::Euler::fill_hole(CGAL::opposite(CGAL::next(h, source), source), source);
+    CGAL::Euler::fill_hole(CGAL::opposite(CGAL::prev(g, target), target), target);
 }
 
 // The following function forms a closed or open strip of segments for
 // the consecutive halfedges provided via the iterators.
 
 template<auto Make, typename InputIt, typename T, typename... Args>
-static T make_strip(
+static std::list<T> make_strip(
     const T &mesh, InputIt first, InputIt last, bool closed, Args &&... args)
 {
-    T C;
+    std::list<T> parts(1);
 
     assert(first != last);
 
@@ -562,21 +642,47 @@ static T make_strip(
     // current (or, when we're done, the ending) edge.  These are
     // halfedges in `mesh`.
 
-    // The associated halfedges in the chamfer mesh `C`, are kept in
-    // `s` and `t` respectively.
+    // The associated halfedges in the chamfer meshes in `parts`, are
+    // kept in `s` and `t` respectively.
 
     typename boost::graph_traits<T>::halfedge_descriptor s, t;
+    T &A = parts.front();
 
-    s = t = Make(mesh, *first, args..., C);
+    s = t = Make(mesh, *first, args..., A);
 
     // Now for each of the following edges, we create a segment and
-    // join it with the end of the strip.
+    // attempt to join it with the current end of the strip.
 
     for (auto it = first; ++it != last; ) {
-        const auto u = Make(mesh, *it, args..., C);
+        T &B = parts.back(), &C = parts.emplace_back();
+        auto u = Make(mesh, *it, args..., C);
 
-        join_segments(C, t, u);
+        // There's one edge case: if we're making one long closed
+        // strip and discover at the end that we can't close the loop,
+        // because the ends don't miter, we're stuck with a
+        // self-intersecting mesh.
 
+        // Therefore, for closed loops we always miter the back to the
+        // front before merging the last segment.  If they don't
+        // miter, we avoid merging if it would form one large strip.
+
+        if (closed && std::next(it) == last &&
+            !miter_segments(C, A, u, s)) {
+            closed = false;
+
+            if (parts.size() == 2) {
+                goto cap;
+            }
+        }
+
+        if (miter_segments(B, C, t, u)) {
+            t = merge_segments(B, C, t, u);
+            parts.pop_back();
+            continue;
+        }
+
+      cap:
+        cap_segments(B, C, t, u);
         t = u;
     }
 
@@ -585,18 +691,22 @@ static T make_strip(
         // the final segment back to the source end of the first.
         // This join may leave the segment following `s` with
         // non-planar faces^[See discussion about moving vertices `c`
-        // and `d` in `join_segments`.], but it will be taken care of
+        // and `d` in `miter_segments`.], but it will be taken care of
         // when the mesh is triangulated in post-processing.
 
-        join_segments(C, t, s);
+        if (parts.size() > 1) {
+            merge_segments(parts.back(), A, t, s);
+            parts.pop_front();
+        } else {
+            join_segments(parts.back(), A, t, s);
+        }
     } else {
         // If not, we need to cap the open hole at each end.
 
-        CGAL::Euler::fill_hole(CGAL::opposite(CGAL::prev(s, C), C), C);
-        CGAL::Euler::fill_hole(CGAL::opposite(CGAL::next(t, C), C), C);
+        cap_segments(parts.back(), A, t, s);
     }
 
-    return C;
+    return parts;
 }
 
 // ## Inner and Outer Chamfers
@@ -762,6 +872,17 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
     }
 
     this->annotations.insert({"selected", std::to_string(edges.size())});
+
+    assert(!this->polyhedron);
+    this->polyhedron = std::make_shared<T>();
+
+    if (edges.empty()) {
+        if constexpr (!Make_only) {
+            *this->polyhedron = mesh;
+        }
+
+        return;
+    }
 
     // ## Assembling the Chamfer Geometry
 
@@ -971,13 +1092,13 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
             // Finally, we form a strip out of the path or cycle and add
             // it to our mesh.
 
-            parts.emplace_back(
-                make_strip<Fillet
-                           ? make_fillet_segment<T>
-                           : make_chamfer_segment<T>>(
-                    mesh, component.begin(), component.end(), !p,
-                    parameters[0], parameters[1]));
-
+            for (auto &x: make_strip<Fillet
+                     ? make_fillet_segment<T>
+                     : make_chamfer_segment<T>>(
+                         mesh, component.begin(), component.end(), !p,
+                         parameters[0], parameters[1])) {
+                parts.emplace_back(x);
+            }
 
             n += !p;
             m += p;
@@ -995,8 +1116,18 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
         this->annotations.insert({"paths", std::to_string(m)});
     }
 
-    for (auto &x: parts) {
-        CGAL::Polygon_mesh_processing::triangulate_faces(x);
+    for (auto &X: parts) {
+        CGAL::Polygon_mesh_processing::triangulate_faces(X);
+
+#if 0
+        {
+            static std::size_t i;
+            CGAL::IO::write_OFF(
+                "part_" + std::to_string(i++) + ".off", X);
+        }
+#endif
+
+        assert (!CGAL::Polygon_mesh_processing::does_self_intersect(X));
     }
 
     // Although it doesn't make a big difference, we join all segments
@@ -1046,9 +1177,6 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
     // ourselves to remeshing planar patches with a miniscule fudge
     // factor at this point call `remove_almost_degenerate_faces` on
     // the final result below.
-
-    assert(!this->polyhedron);
-    this->polyhedron = std::make_shared<T>();
 
     CGAL::Polygon_mesh_processing::remesh_planar_patches(
         merge(0, parts.size(), merge), *this->polyhedron,
