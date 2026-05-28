@@ -20,13 +20,18 @@
 #include "kernel.h"
 #include "tolerances.h"
 
+// Document: program
+
+// ## Recovering the Roots of Rational Squares
+
 // Although the square root of a rational is generally not rational,
 // in certain cases numbers are known to be squares of rational
-// numbers (for instance when only the square of a rational radius is
-// available).  The roots of these can be recovered exactly, as the
-// root is guaranteed by the floating-point standard to be exact, if
-// it can be exactly represented as a floating point number, which is
-// the case for the integer numerator and denominator of the rational.
+// numbers, for instance when we know we're dealing with the square of
+// a rational radius.  The roots of these can be recovered exactly, as
+// the root is guaranteed by the floating-point standard to be exact,
+// if it can be exactly represented as a floating point number, which
+// is the case for the integer numerator and denominator of the
+// rational.
 
 FT rational_sqrt(const FT &x)
 {
@@ -40,6 +45,16 @@ FT rational_sqrt(const FT &x)
 
     return FT::ET(n, d);
 }
+
+// ## Approximate Normalization of Vectors
+
+// We can't normalize a given vector in rational arithmetic, as the
+// coefficients will generally not be rational numbers.  Nevertheless,
+// we can create approximations that will have exactly unit length and
+// whose endpoint will lie arbitrarily close one the unit circle or
+// sphere, to that of the normalized vector.
+
+// The technique below is based on arXiv:1707.08549.
 
 Point_2 project_to_circle(
     const double x, const double y, const FT &radius, const FT&epsilon)

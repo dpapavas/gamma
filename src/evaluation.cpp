@@ -28,6 +28,7 @@
 #include "assertions.h"
 #include "options.h"
 #include "rewrites.h"
+#include "evaluation.h"
 #include "kernel.h"
 #include "basic_operations.h"
 #include "sink_operations.h"
@@ -270,10 +271,11 @@ class Worker {
     std::list<Operation *> &ready_list_ref;
     const int index;
 
-    inline static int working;
     std::thread thread;
 
 public:
+    inline static std::size_t working;
+
     Worker(int i): ready_list_ref(ready_list[i > 0]), index(i) {
         if (i > 0) {
             thread = std::thread(&Worker::work, this);
@@ -1351,4 +1353,114 @@ void evaluate_operations()
 
     had_failure = false;
     evaluation_sequence = 0;
+}
+
+// ## Task Workers
+
+// The `Task_worker` class allows operations, which may or may not be
+// thread-safe themselves, to do part of their work in parallel.  They
+// do so by registering parcels of work, that may be run in a separate
+// thread if the number of threads used at the time does not exceed
+// the `threads` option.
+
+// This does not guarantee that the set thread limit won't be exceeded
+// at any point in time, but it shouldn't be exeeded for a prolonged
+// period, which is good enough.
+
+static std::mutex task_mutex;
+static std::condition_variable task_condition;
+static std::size_t task_count, task_worker_count;
+static std::exception_ptr exception;
+
+bool Task_worker::try_allocate_thread()
+{
+    if (Options::threads == 0) {
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lock(task_mutex);
+
+    // The accounting is somewhat complicated here.  Threads may be
+    // allocated to:
+
+    //   1. operation workers dedicated to other operations,
+
+    //   2. running tasks belong either to this, or to other workers.
+
+    // We assume operations using task workers will be either creating
+    // tasks in their main thread, potentially blocking until more
+    // threads become available, or waiting on running tasks.  We
+    // therefore discount them from the sum of allocated threads.
+
+    while (
+        Worker::working + task_count - task_worker_count
+        >= static_cast<std::size_t>(Options::threads)) {
+        task_condition.wait(lock);
+    }
+
+    // Below, `working` counts this worker's threads, `task_count`
+    // counts all task worker's threads.
+
+    working++;
+    task_count++;
+
+    return true;
+}
+
+void Task_worker::release_thread()
+{
+    std::lock_guard<std::mutex> lock(task_mutex);
+
+    working--;
+    task_count--;
+
+    task_condition.notify_all();
+}
+
+// A thread may fail, which would lead to termination via
+// `std::terminate`.  We catch all exceptions and reraise them^[Not
+// all; rather the last saved exception.] so that our handler can
+// catch them and report them properly.
+
+void Task_worker::save_exception()
+{
+    std::lock_guard<std::mutex> lock(task_mutex);
+    exception = std::current_exception();
+}
+
+bool Task_worker::empty() {
+    std::lock_guard<std::mutex> lock(task_mutex);
+    return (working == 0);
+}
+
+bool Task_worker::wait() {
+    std::unique_lock<std::mutex> lock(task_mutex);
+
+    if (working == 0) {
+        return false;
+    }
+
+    task_condition.wait(lock);
+
+    return true;
+}
+
+Task_worker::Task_worker(): working(0)
+{
+    std::lock_guard<std::mutex> lock(task_mutex);
+    task_worker_count++;
+}
+
+Task_worker::~Task_worker()
+{
+    for (auto &t: threads) {
+        t.join();
+    }
+
+    std::lock_guard<std::mutex> lock(task_mutex);
+    task_worker_count--;
+
+    if (exception) {
+        std::rethrow_exception(exception);
+    }
 }

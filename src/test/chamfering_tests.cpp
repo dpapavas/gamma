@@ -172,7 +172,7 @@ BOOST_AUTO_TEST_CASE(prism_2)
     const auto &P = *result.value;
 
     // The volume of the prism, is $2 \sqrt{2} R^2 H$.  The volume
-    // removed by the fillet, is rougly that swept by a profile of
+    // removed by the fillet, is roughly that swept by a profile of
     // area $r^2 - \frac{\pi r^2}{4}$^[The profile is a square of side
     // equal to the fillet radius $r$ minus the fillet quarter disk.],
     // along the circumference of the octagon, which is $8 R \sqrt{2 -

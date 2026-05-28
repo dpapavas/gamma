@@ -24,12 +24,8 @@
 #include <CGAL/Polygon_mesh_processing/remesh_planar_patches.h>
 
 #include "kernel.h"
+#include "evaluation.h"
 #include "chamfering_operations.h"
-
-inline double round_epsilon(const FT &value, double epsilon)
-{
-    return std::floor(CGAL::to_double(value) / epsilon);
-}
 
 // Document: program
 
@@ -458,7 +454,7 @@ static bool miter_segments(
     // determined that all can be applied.
 
     std::vector<std::pair<Point_3 *, Point_3>> shifts;
-    shifts.reserve(2);
+    shifts.reserve(3);
 
     for (auto s = h, t = g;
          (s = CGAL::opposite(
@@ -552,10 +548,16 @@ static bool miter_segments(
         shifts.push_back({&boost::get(map_s, CGAL::target(s, source)), b_prime});
 
         // When `join_loop` is called during joining, `c` will also be
-        // shifted to `b_prime`.  As a consequence, if we leave `d` as
-        // is, we will lose planarity in the faces of segment `t`.
-        // Even worse, its edges won't be parallel any more, which
-        // will lead to problems when joining subsequent segments.
+        // shifted to `b_prime`, so we don't need to do it explicitly.
+        // We do so anyway, because we may not be able to join in the
+        // end (ref: chamfer loop edge case).
+
+        shifts.push_back({&boost::get(map_t, CGAL::source(t, target)), b_prime});
+
+        // As a consequence, if we leave `d` as is, we will lose
+        // planarity in the faces of segment `t`.  Even worse, its
+        // edges won't be parallel any more, which will lead to
+        // problems when joining subsequent segments.
 
         shifts.push_back({
                 &boost::get(map_t, CGAL::target(t, target)),
@@ -622,91 +624,6 @@ static void cap_segments(
 {
     CGAL::Euler::fill_hole(CGAL::opposite(CGAL::next(h, source), source), source);
     CGAL::Euler::fill_hole(CGAL::opposite(CGAL::prev(g, target), target), target);
-}
-
-// The following function forms a closed or open strip of segments for
-// the consecutive halfedges provided via the iterators.
-
-template<auto Make, typename InputIt, typename T, typename... Args>
-static std::list<T> make_strip(
-    const T &mesh, InputIt first, InputIt last, bool closed, Args &&... args)
-{
-    std::list<T> parts(1);
-
-    assert(first != last);
-
-    // Since `edges` isn't empty, it contains at least one edge.  We
-    // make a chamfer for it.
-
-    // Below, `b` holds the edge we began with and `e` holds the
-    // current (or, when we're done, the ending) edge.  These are
-    // halfedges in `mesh`.
-
-    // The associated halfedges in the chamfer meshes in `parts`, are
-    // kept in `s` and `t` respectively.
-
-    typename boost::graph_traits<T>::halfedge_descriptor s, t;
-    T &A = parts.front();
-
-    s = t = Make(mesh, *first, args..., A);
-
-    // Now for each of the following edges, we create a segment and
-    // attempt to join it with the current end of the strip.
-
-    for (auto it = first; ++it != last; ) {
-        T &B = parts.back(), &C = parts.emplace_back();
-        auto u = Make(mesh, *it, args..., C);
-
-        // There's one edge case: if we're making one long closed
-        // strip and discover at the end that we can't close the loop,
-        // because the ends don't miter, we're stuck with a
-        // self-intersecting mesh.
-
-        // Therefore, for closed loops we always miter the back to the
-        // front before merging the last segment.  If they don't
-        // miter, we avoid merging if it would form one large strip.
-
-        if (closed && std::next(it) == last &&
-            !miter_segments(C, A, u, s)) {
-            closed = false;
-
-            if (parts.size() == 2) {
-                goto cap;
-            }
-        }
-
-        if (miter_segments(B, C, t, u)) {
-            t = merge_segments(B, C, t, u);
-            parts.pop_back();
-            continue;
-        }
-
-      cap:
-        cap_segments(B, C, t, u);
-        t = u;
-    }
-
-    if (closed) {
-        // If we're forming a closed path, we join the target end of
-        // the final segment back to the source end of the first.
-        // This join may leave the segment following `s` with
-        // non-planar faces^[See discussion about moving vertices `c`
-        // and `d` in `miter_segments`.], but it will be taken care of
-        // when the mesh is triangulated in post-processing.
-
-        if (parts.size() > 1) {
-            merge_segments(parts.back(), A, t, s);
-            parts.pop_front();
-        } else {
-            join_segments(parts.back(), A, t, s);
-        }
-    } else {
-        // If not, we need to cap the open hole at each end.
-
-        cap_segments(parts.back(), A, t, s);
-    }
-
-    return parts;
 }
 
 // ## Inner and Outer Chamfers
@@ -848,13 +765,17 @@ static auto partition_edges(const T &mesh, const E &edges, CGAL::Sign orientatio
 template<typename T, bool Fillet, bool Make_only>
 void Chamfering_operation<T, Fillet, Make_only>::evaluate()
 {
+    using vertex_descriptor =
+        typename boost::graph_traits<T>::vertex_descriptor;
+    using halfedge_descriptor =
+        typename boost::graph_traits<T>::halfedge_descriptor;
+
     const auto &mesh = *this->operand->get_value();
 
     // We start with partitioning the edges and selecting either the
     // inner or outer chamfers, as requested.
 
-    std::unordered_map<
-        typename boost::graph_traits<T>::halfedge_descriptor, Vector_3> edges;
+    std::unordered_map<halfedge_descriptor, Vector_3> edges;
 
     {
         const auto n =
@@ -891,6 +812,8 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
     // strips, or, in the parlance of graphs, into simple cycles and
     // paths.
 
+    // ### Extracting Chamfer Edge Paths
+
     // We must be careful in how we go about it though: If we have two
     // (open) paths meet at a vertex of degree 2^[With respect to the
     // subgraph induced by the selected edges.], which means that only
@@ -903,260 +826,412 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
     // meeting at the single common vertex that was coincident with
     // the chamfered edge.].
 
-    std::vector<T> parts;
+    Task_worker worker;
+    std::mutex mutex;
+    std::condition_variable condition;
 
-    {
-        using vertex_descriptor =
-            typename boost::graph_traits<T>::vertex_descriptor;
-        using halfedge_descriptor =
-            typename boost::graph_traits<T>::halfedge_descriptor;
+    std::list<T> parts;
+    std::unordered_set<vertex_descriptor> extracted;
+    std::size_t n = 0, m = 0;
 
-        std::unordered_set<vertex_descriptor> extracted;
-        std::size_t n = 0, m = 0;
+    // We therefore proceed as follows, until all selected edges
+    // have been chamfered:
 
-        // We therefore proceed as follows, until all selected edges
-        // have been chamfered:
+    while (!edges.empty()) {
+        // We first extract all vertex-disjoint^[Requiring that
+        // the cycles be vertex-disjoint is not strictly
+        // necessary, but seems to make a substantial difference
+        // in the quality of the generated mesh and the chamfering
+        // result.] cycles we can find using a simple recursive
+        // DFS.
 
-        while (!edges.empty()) {
-            // We first extract all vertex-disjoint^[Requiring that
-            // the cycles be vertex-disjoint is not strictly
-            // necessary, but seems to make a substantial difference
-            // in the quality of the generated mesh and the chamfering
-            // result.] cycles we can find using a simple recursive
-            // DFS.
+        std::unordered_set<vertex_descriptor> visited;
+        std::list<
+            std::tuple<halfedge_descriptor, Vector_3, Vector_3>> component;
 
-            std::unordered_set<vertex_descriptor> visited;
+        const auto null_vertex = boost::graph_traits<T>::null_vertex();
 
-            // We could have used an `std::forward_list` here, but
-            // choose not to, to avoid having to compile the
-            // `make_strip` template for both types.
+        auto visit = [&](
+            const vertex_descriptor &u,
+            const vertex_descriptor &v,
+            auto &&visit) -> vertex_descriptor {
 
-            std::list<
-                std::tuple<halfedge_descriptor, Vector_3, Vector_3>> component;
+            // At each step, we arrive at vertex `v`, having come
+            // from `u`.  We:
 
-            const auto null_vertex = boost::graph_traits<T>::null_vertex();
+            //   1. mark it as visited,
 
-            auto visit = [&](
-                const vertex_descriptor &u,
-                const vertex_descriptor &v,
-                auto &&visit) -> vertex_descriptor {
+            safely_assert(visited.insert(v).second);
 
-                // At each step, we arrive at vertex `v`, having come
-                // from `u`.  We:
+            //   2. follow a selected edge to vertex `w` and,
 
-                //   1. mark it as visited,
+            for (const auto &h: CGAL::halfedges_around_source(v, mesh)) {
+                assert(CGAL::source(h, mesh) == v);
 
-                safely_assert(visited.insert(v).second);
+                if (edges.count(h) == 0) {
+                    continue;
+                }
 
-                //   2. follow a selected edge to vertex `w` and,
+                const auto w = CGAL::target(h, mesh);
 
-                for (const auto &h: CGAL::halfedges_around_source(v, mesh)) {
-                    assert(CGAL::source(h, mesh) == v);
+                //   3. skipping over opposite half-edges and edges
+                //   leading to extracted vertices,
 
-                    if (edges.count(h) == 0) {
-                        continue;
-                    }
+                if (w == u || extracted.count(w) == 1) {
+                    continue;
+                }
 
-                    const auto w = CGAL::target(h, mesh);
-
-                    //   3. skipping over opposite half-edges and edges
-                    //   leading to extracted vertices,
-
-                    if (w == u || extracted.count(w) == 1) {
-                        continue;
-                    }
-
-                    //   4. if we've arrived back at an already
-                    //   visited vertex (but not trivially following
-                    //   the opposite edge), we've found a cycle and
-                    //   start recording it returning the revisited
-                    //   vertex, so that we'll know when to stop on
-                    //   the way back,
+                //   4. if we've arrived back at an already
+                //   visited vertex (but not trivially following
+                //   the opposite edge), we've found a cycle and
+                //   start recording it returning the revisited
+                //   vertex, so that we'll know when to stop on
+                //   the way back,
 
 #define PUSH(H, WHERE) {                                                \
-                        auto n = edges.extract(H),                      \
-                            m = edges.extract(CGAL::opposite(H, mesh)); \
+                    auto n = edges.extract(H),                          \
+                        m = edges.extract(CGAL::opposite(H, mesh));     \
                                                                         \
-                        assert(!n.empty());                             \
-                        assert(!m.empty());                             \
-                        component.push_## WHERE({H, n.mapped(), m.mapped()}); \
-                        extracted.insert(CGAL::source(H, mesh));        \
-                    }
-
-                    if (visited.count(w) == 1) {
-                        PUSH(h, front);
-                        return w;
-                    }
-
-                    //   5. otherwise we recurse and,
-
-                    const auto &r = visit(v, w, visit);
-
-                    //   6. if the recursion ended in finding a cycle,
-                    //   we accumulate it,
-
-                    if (r != null_vertex) {
-                        PUSH(h, front);
-                        return r == v ? null_vertex : r;
-                    }
-
-                    //   7. otherwise, we either haven't found one yet
-                    //   and the component vector is empty, or we've
-                    //   found one, so we can terminate the rest of
-                    //   the DFS.
-
-                    if (!component.empty()) {
-                        break;
-                    }
+                    assert(!n.empty());                                 \
+                    assert(!m.empty());                                 \
+                    component.push_## WHERE({H, n.mapped(), m.mapped()}); \
+                    extracted.insert(CGAL::source(H, mesh));            \
                 }
 
-                return null_vertex;
-            };
-
-            // We can start anywhere, so we start at the first edge.
-            // Note that it is not necessary to check that the
-            // starting vertex hasn't already been extracted.  If it
-            // has, no cycle will be able to close at it.
-
-            visit(null_vertex, CGAL::source(edges.begin()->first, mesh), visit);
-
-            // If we couldn't find a cycle, it means the connected
-            // component to which our starting edge belonged doesn't
-            // have any more cycles; it is a forest, i.e. a set of
-            // disconnected trees of edges.  We can further decompose
-            // these into paths by simply starting at any vertex and
-            // following any two halfedges out of it.
-
-            // Forming paths in this manner removes two degrees from
-            // the selected vertex and all other vertices along the
-            // path, except from the ends.  The formed paths will
-            // therefore cross themselves at vertices of even degree
-            // and only end at vertices from the same component that
-            // are of odd degree, or at vertices that are part of a
-            // cycle.  Since such cycle vertices started out with
-            // degree 2 and got another 2 edges for any path that
-            // crossed, but didn't end at them, a path ending there
-            // will make make their degree odd.
-
-            // We're therefore guaranteed that no path will end at a
-            // vertex of degree 2.
-
-            // We proceed, but only for our starting edge, as that's the
-            // only that certainly belongs to the forest component.
-
-            const bool p = component.empty();
-
-            if (p) {
-                auto h = edges.begin()->first, g = h;
-                PUSH(h, back);
-
-                visited.clear();
-                visited.insert(CGAL::source(h, mesh));
-                visited.insert(CGAL::target(h, mesh));
-
-                // We:
-
-                //   1. follow the first available edge in the target
-                //   direction and
-
-              next:
-
-                for (const auto &x:
-                         CGAL::halfedges_around_source(
-                             CGAL::target(h, mesh), mesh)) {
-                    if (x != CGAL::opposite(h, mesh)
-                        && edges.count(x) == 1
-                        && visited.insert(CGAL::target(x, mesh)).second) {
-                        h = x;
-                        PUSH(h, back);
-                        goto next;
-                    }
+                if (visited.count(w) == 1) {
+                    PUSH(h, front);
+                    return w;
                 }
 
-                //  2. the same for the source direction.
+                //   5. otherwise we recurse and,
 
-              prev:
-                for (const auto &x:
-                         CGAL::halfedges_around_target(
-                             CGAL::source(g, mesh), mesh)) {
-                    if (x != CGAL::opposite(g, mesh)
-                        && edges.count(x) == 1
-                        && visited.insert(CGAL::source(g, mesh)).second) {
-                        g = x;
-                        PUSH(g, front);
-                        goto prev;
-                    }
+                const auto &r = visit(v, w, visit);
+
+                //   6. if the recursion ended in finding a cycle,
+                //   we accumulate it,
+
+                if (r != null_vertex) {
+                    PUSH(h, front);
+                    return r == v ? null_vertex : r;
+                }
+
+                //   7. otherwise, we either haven't found one yet
+                //   and the component vector is empty, or we've
+                //   found one, so we can terminate the rest of
+                //   the DFS.
+
+                if (!component.empty()) {
+                    break;
                 }
             }
 
-            // Finally, we form a strip out of the path or cycle and add
-            // it to our mesh.
-
-            for (auto &x: make_strip<Fillet
-                     ? make_fillet_segment<T>
-                     : make_chamfer_segment<T>>(
-                         mesh, component.begin(), component.end(), !p,
-                         parameters[0], parameters[1])) {
-                parts.emplace_back(x);
-            }
-
-            n += !p;
-            m += p;
-
-            // Having now extracted our starting edge, we repeat the same
-            // process, starting with the first remaining edge.  This
-            // might be in the same component, where all cycles have been
-            // cleared, so that looking for cycles is a waste of time, but
-            // in practice this shouldn't matter much and it makes the
-            // algorithm simpler.
-        }
-#undef PUSH
-
-        this->annotations.insert({"cycles", std::to_string(n)});
-        this->annotations.insert({"paths", std::to_string(m)});
-    }
-
-    for (auto &X: parts) {
-        CGAL::Polygon_mesh_processing::triangulate_faces(X);
-
-#if 0
-        {
-            static std::size_t i;
-            CGAL::IO::write_OFF(
-                "part_" + std::to_string(i++) + ".off", X);
-        }
-#endif
-
-        assert (!CGAL::Polygon_mesh_processing::does_self_intersect(X));
-    }
-
-    // Although it doesn't make a big difference, we join all segments
-    // using a divide and conquer approach.  It seems to be somewhat
-    // faster and also more stable in terms of time compared to a
-    // simple sequential join or a heap-based approach where the
-    // smallest (in terms of faces) segments are joined at each step.
-
-    auto merge = [&](std::size_t a, std::size_t b, auto &&merge) -> T & {
-        auto join = [&](T &P, T &Q) -> T& {
-            safely_assert(
-                CGAL::Polygon_mesh_processing::corefine_and_compute_union(
-                    P, Q, P));
-
-            Q.clear();
-            return P;
+            return null_vertex;
         };
 
-        if (b - a > 2) {
-            const auto m = (a + b) / 2;
-            return join(merge(a, m, merge), merge(m, b, merge));
+        // We can start anywhere, so we start at the first edge.
+        // Note that it is not necessary to check that the
+        // starting vertex hasn't already been extracted.  If it
+        // has, no cycle will be able to close at it.
+
+        visit(null_vertex, CGAL::source(edges.begin()->first, mesh), visit);
+
+        // If we couldn't find a cycle, it means the connected
+        // component to which our starting edge belonged doesn't
+        // have any more cycles; it is a forest, i.e. a set of
+        // disconnected trees of edges.  We can further decompose
+        // these into paths by simply starting at any vertex and
+        // following any two halfedges out of it.
+
+        // Forming paths in this manner removes two degrees from
+        // the selected vertex and all other vertices along the
+        // path, except from the ends.  The formed paths will
+        // therefore cross themselves at vertices of even degree
+        // and only end at vertices from the same component that
+        // are of odd degree, or at vertices that are part of a
+        // cycle.  Since such cycle vertices started out with
+        // degree 2 and got another 2 edges for any path that
+        // crossed, but didn't end at them, a path ending there
+        // will make make their degree odd.
+
+        // We're therefore guaranteed that no path will end at a
+        // vertex of degree 2.
+
+        // We proceed, but only for our starting edge, as that's the
+        // only that certainly belongs to the forest component.
+
+        bool open = component.empty();
+
+        if (open) {
+            auto h = edges.begin()->first, g = h;
+            PUSH(h, back);
+
+            visited.clear();
+            visited.insert(CGAL::source(h, mesh));
+            visited.insert(CGAL::target(h, mesh));
+
+            // We:
+
+            //   1. follow the first available edge in the target
+            //   direction and
+
+          next:
+
+            for (const auto &x:
+                     CGAL::halfedges_around_source(
+                         CGAL::target(h, mesh), mesh)) {
+                if (x != CGAL::opposite(h, mesh)
+                    && edges.count(x) == 1
+                    && visited.insert(CGAL::target(x, mesh)).second) {
+                    h = x;
+                    PUSH(h, back);
+                    goto next;
+                }
+            }
+
+            //  2. the same for the source direction.
+
+          prev:
+            for (const auto &x:
+                     CGAL::halfedges_around_target(
+                         CGAL::source(g, mesh), mesh)) {
+                if (x != CGAL::opposite(g, mesh)
+                    && edges.count(x) == 1
+                    && visited.insert(CGAL::source(g, mesh)).second) {
+                    g = x;
+                    PUSH(g, front);
+                    goto prev;
+                }
+            }
         }
 
-        if (b - a > 1) {
-            return join(parts[a], parts[a + 1]);
+        // ### Generating Chamfer Geometry
+
+        // We are now ready to form a strip out of the path or cycle
+        // and add it to our mesh.  Mitering and joining segments is
+        // cheap relative to assembly by corefinement, so we try to
+        // make a single mesh out of every path.  Nevertheless, it's
+        // not always possible to miter two segments (ref: Forming
+        // Chamfer Strips and Loops), so we may need to break the path
+        // up into multiple meshes.
+
+        // In either case, we gather all meshes in `parts`.
+
+        // Since each path can be processed independently of others,
+        // we form each in a separate thread (if multi-threading is
+        // enabled).
+
+        worker.insert(
+            [this, &mesh, &parts, component_ = std::move(component),
+             open, &mutex, &condition]() {
+                constexpr auto make =
+                    Fillet ? make_fillet_segment<T> : make_chamfer_segment<T>;
+
+                bool open_ = open;
+                std::list<T> ends;
+
+                assert(!component_.empty());
+
+                // Since `edges` isn't empty, it contains at least one
+                // edge.  We make a chamfer for it.
+
+                // Below, `s` holds the edge we began with and `t`
+                // holds the current (or, when we're done, the ending)
+                // edge.
+
+                halfedge_descriptor s, t;
+                T &A = ends.emplace_front();
+
+                s = t = make(
+                    mesh, component_.front(), parameters[0], parameters[1], A);
+
+                // Now for each of the following edges, we create a
+                // segment and attempt to join it with the current end
+                // of the strip.
+
+                for (auto it = component_.cbegin(), p = true;
+                     ++it != component_.cend(); ) {
+                    // At each point, `ends` will contain:
+
+                    //   1. the starting segment `A`, which we need to
+                    //   hold on to, in order to cap off, or loop back
+                    //   to at the end, as required and potentially,
+
+                    //   2. the segment we're currently extending `B`,
+                    //   which will initially be `A`, until we're
+                    //   forced to cap it off, in which case `p` will
+                    //   become false and finally, temporarily,
+
+                    assert(ends.size() == (1 + static_cast<std::size_t>(!p)));
+
+                    //   3. the segment we're adding for the current
+                    //   edge `C`, which will either be merged into
+                    //   `B`, or replace it.
+
+                    auto it_B = std::prev(ends.cend());
+                    T &B = ends.back(), &C = ends.emplace_back();
+                    auto u = make(mesh, *it, parameters[0], parameters[1], C);
+
+                    // Anchor: chamfer loop edge case
+
+                    // There's one edge case: if we're making one long
+                    // closed strip and discover at the end that we
+                    // can't close the loop, because the ends don't
+                    // miter, we're stuck with a self-intersecting
+                    // mesh.
+
+                    // Therefore, for closed loops we always miter the
+                    // back to the front before merging the last
+                    // segment `C` with `B`, but after mitering it, as
+                    // this process will change `C` as well.
+
+                    const bool q = miter_segments(B, C, t, u);
+
+                    if (!open_
+                        && std::next(it) == component_.cend()
+                        && !miter_segments(C, A, u, s)) {
+                        open_ = true;
+
+                        // If they don't miter, we avoid merging
+                        // if it would form one large strip.
+
+                        if (p) {
+                            goto cap;
+                        }
+                    }
+
+                    // We use the flag `q` instead of just having the
+                    // test in the `if` statement, because we want to
+                    // miter `C` to `A` above unconditionally for the
+                    // last segment.
+
+                    if (q) {
+                        t = merge_segments(B, C, t, u);
+                        ends.pop_back();
+                        continue;
+                    }
+
+                  cap:
+                    cap_segments(B, C, t, u);
+
+                    // If we got here, we can't extend `B` any more so
+                    // we may as well ship it off, unless it's
+                    // actually the first segment `A`.
+
+                    if (ends.size() > 2) {
+                        CGAL::Polygon_mesh_processing::triangulate_faces(B);
+
+                        std::lock_guard<std::mutex> lock(mutex);
+                        parts.splice(parts.cend(), ends, it_B, std::next(it_B));
+                        condition.notify_all();
+                    }
+
+                    p = false;
+                    t = u;
+                }
+
+                if (open_) {
+                    // If we're forming an open path, we need to cap
+                    // the open hole at each end.
+
+                    cap_segments(ends.back(), A, t, s);
+                } else {
+                    // Otherwise, we need to join the target end of
+                    // the final segment back to the source end of the
+                    // first.  This join may leave the segment
+                    // following `s` with non-planar faces^[See
+                    // discussion about moving vertices `c` and `d` in
+                    // `miter_segments`.], but it will be taken care
+                    // of when the mesh is triangulated in
+                    // post-processing.
+
+                    if (ends.size() > 1) {
+                        merge_segments(ends.back(), A, t, s);
+                        ends.pop_front();
+                    } else {
+                        join_segments(ends.back(), A, t, s);
+                    }
+                }
+
+                for (auto &X: ends) {
+                    CGAL::Polygon_mesh_processing::triangulate_faces(X);
+                }
+
+                std::lock_guard<std::mutex> lock(mutex);
+                parts.splice(parts.cend(), ends);
+                condition.notify_all();
+            });
+
+        n += !open;
+        m += open;
+
+        // We can now proceed to extract the next path, starting with
+        // the first remaining edge.  This might be in the same
+        // connected component, where all cycles have been cleared, so
+        // that looking for cycles is a waste of time, but in practice
+        // this shouldn't matter much and it makes the algorithm
+        // simpler.
+    }
+#undef PUSH
+
+    this->annotations.insert({"cycles", std::to_string(n)});
+    this->annotations.insert({"paths", std::to_string(m)});
+
+    // ### Final Chamfer Geometry Assembly
+
+    // We can now assembly the finale chamfer mesh by taking the union
+    // of all parts via corefinement.  We merge every pair of meshes
+    // in a separate thread if possible.
+
+    // So we:
+
+    while (true) {
+        std::unique_lock<std::mutex> lock(mutex);
+
+        //   1. wait for two parts to become available, if necessary,
+
+        while (parts.size() < 2 && !worker.empty()) {
+            condition.wait(lock);
         }
 
-        return parts[a];
-    };
+        if (parts.size() < 2) {
+            break;
+        }
+
+        //   2. splice these off into a separate list to pass to the
+        //   worker, which is necessary as the meshes aren't movalble
+        //   and we don't want to copy them,
+
+        decltype(parts) work;
+        work.splice(
+            work.cbegin(), parts,
+            parts.cbegin(), std::next(std::next(parts.cbegin())));
+
+        lock.unlock();
+
+        //   3. then finally create a task to merge them and puth the
+        //   result back on the parts list.
+
+        worker.insert(
+            [work_ = std::move(work), &parts, &mutex, &condition]() {
+                auto work__ = std::move(work_);
+
+                safely_assert(
+                    CGAL::Polygon_mesh_processing::
+                    corefine_and_compute_union(
+                        work__.front(), work__.back(), work__.front()));
+
+                work__.pop_back();
+
+                std::lock_guard<std::mutex> lock(mutex);
+                parts.splice(parts.cend(), work__);
+                condition.notify_all();
+            });
+    }
+
+    // The above will go on until there's only one part left: the
+    // finaly result.
+
+    assert(parts.size() == 1);
 
     // The result although correct, may contain many almost degenerate
     // triangles caused by exactly computing the boolean union of
@@ -1179,7 +1254,7 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
     // the final result below.
 
     CGAL::Polygon_mesh_processing::remesh_planar_patches(
-        merge(0, parts.size(), merge), *this->polyhedron,
+        parts.front(), *this->polyhedron,
         CGAL::parameters::cosine_of_maximum_angle(1.0 - 1e-12));
 
     // We either export the chamfer geometry itself if `Make_only` is

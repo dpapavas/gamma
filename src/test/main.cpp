@@ -19,6 +19,8 @@
 #define BOOST_TEST_DYN_LINK
 
 #include <boost/test/unit_test.hpp>
+#include <boost/test/data/test_case.hpp>
+#include <boost/test/data/monomorphic.hpp>
 
 #include <filesystem>
 #include <CGAL/assertions.h>
@@ -32,22 +34,44 @@
 
 #include "fixtures.h"
 
+// Document: program
+
+// ### The Global Test Fixture
+
+// This fixture is automatically installed for every test.  It mostly
+// takes care of some required initialization, nromally done in the
+// `main` function of the program, which is not run when running the
+// code through the test driver.
+
+// Additionally, it:
+
 struct Global_fixture {
     void setup() {
         CGAL::set_error_behaviour(CGAL::THROW_EXCEPTION);
         CGAL::set_warning_behaviour(CGAL::THROW_EXCEPTION);
+
+        //   1. disables storing and loading of operations since we
+        //   want the code under test to actually run,
 
         Flags::store_operations = 0;
         Flags::load_operations = 0;
 
 #ifdef HAVE_SCHEME
         Options::library_directories.push_front(PROJECT_SOURCE_DIR "/scheme");
+
+        //   2. prevents Guile from using cached version of the main
+        //   libraries, which makes starting a bit slower, but ensures
+        //   we always run the current library code,
+
         setenv("GUILE_AUTO_COMPILE", "fresh", 1);
 #endif
 
 #ifdef HAVE_LUA
         Options::library_directories.push_front(PROJECT_SOURCE_DIR "/lua");
 #endif
+
+        //   3. parses any options entered after a `--`,
+        //   e.g. `driver -t misc -- --dump-list=-`.
 
         parse_options(
             boost::unit_test::framework::master_test_suite().argc,
@@ -60,20 +84,24 @@ struct Global_fixture {
 
 BOOST_TEST_GLOBAL_FIXTURE(Global_fixture);
 
-//////////////////////////
-// Command line options //
-//////////////////////////
+// # Command Line Option Tests
 
-static int test_options(std::initializer_list<const char *> args)
-{
-    return parse_options(args.size(), const_cast<char **>(std::data(args)));
-}
+// The following test suite exercices option parsing.  Tests mainly
+// consist in using the the `test_options` method to parse options as
+// the main program would, then testing that the options have been
+// set, or that parsing failed in the expected way.
+
+struct Options_fixture: Main_fixture {
+    int test_options(std::initializer_list<const char *> args) {
+        return parse_options(args.size(), const_cast<char **>(std::data(args)));
+    }
+};
 
 BOOST_TEST_DONT_PRINT_LOG_VALUE(Polyhedron_booleans_mode)
 BOOST_TEST_DONT_PRINT_LOG_VALUE(Diagnostics_color_mode)
 BOOST_TEST_DONT_PRINT_LOG_VALUE(Language)
 
-BOOST_FIXTURE_TEST_SUITE(options, Main_fixture)
+BOOST_FIXTURE_TEST_SUITE(options, Options_fixture)
 
 BOOST_AUTO_TEST_CASE(dump)
 {
@@ -359,6 +387,8 @@ BOOST_AUTO_TEST_CASE(flags)
 #ifdef HAVE_SCHEME
     TEST_FLAG(print-scheme-warnings, print_scheme_warnings);
 #endif
+
+#undef TEST_FLAG
 }
 
 BOOST_AUTO_TEST_CASE(warnings)
@@ -404,9 +434,11 @@ BOOST_AUTO_TEST_CASE(warnings)
 
 BOOST_AUTO_TEST_SUITE_END()
 
-/////////////////
-// Miscellanea //
-/////////////////
+// # Miscellaneous Tests
+
+// These are tests that don't fit anywhere else; usually because they
+// test sundry functionality that isn't tied to a specific kind of
+// operation.
 
 BOOST_AUTO_TEST_SUITE(misc)
 
@@ -418,6 +450,10 @@ BOOST_AUTO_TEST_CASE(messages)
     p->message(Operation::WARNING, "warning about %");
     p->message(Operation::NOTE, "hello world");
 }
+
+// Here, we test that trying to instantiate two identical operations,
+// results in two shared pointers to the same single instantiated
+// operation.
 
 BOOST_AUTO_TEST_CASE(simple_duplicate)
 {
@@ -440,9 +476,12 @@ BOOST_AUTO_TEST_CASE(misc_tags)
         == "x(plane(0,1,2,3/4))");
 }
 
+// Below are tests testing proper composition of transformations.
+// There are multiple cases:
+
 BOOST_AUTO_TEST_CASE(transformation_tags)
 {
-    // 2D
+    //  1. simple 2D transformations,
 
     BOOST_TEST(compose_tag(
                    "x", TRANSLATION_2(1, 2)) ==
@@ -464,18 +503,18 @@ BOOST_AUTO_TEST_CASE(transformation_tags)
                        CGAL::REFLECTION, Line_2(1, -1, 0))) ==
                "x(reflection(0,1,1,0))");
 
-    // SL2, but not SO2 (i.e. unit determinant, but not orthogonal).
+    //  2. SL2, but not SO2 (i.e. unit determinant, but not orthogonal),
 
     BOOST_TEST(compose_tag(
                    "x", Aff_transformation_2(2, 1, 1, 1)) ==
                "x(transformation(2,1,1,1))");
 
-    // General affine transform.
+    //  3. a general affine transform,
 
     BOOST_TEST(compose_tag(
                    "x", Aff_transformation_2(2, 3, 5, 7, 11, 13)) ==
                "x(transformation(2,3,5,7,11,13))");
-    // 3D
+    //  4. simple 23 transformations,
 
     BOOST_TEST(compose_tag(
                    "x", TRANSLATION_3(1, 2, 3)) ==
@@ -496,26 +535,28 @@ BOOST_AUTO_TEST_CASE(transformation_tags)
                    "x", Aff_transformation_3(0, 0, 1, 0, 1, 0, 1, 0, 0)) ==
                "x(reflection(0,0,1,0,1,0,1,0,0))");
 
-    // SL3, but not SO3.
+    //   5. SL3, but not SO3,
 
     BOOST_TEST(compose_tag(
                    "x", Aff_transformation_3(2, 1, 1, 1, 1, 1, 1, 1, 2)) ==
                "x(transformation(2,1,1,1,1,1,1,1,2))");
 
-    // Translation + scaling.
+    //  6. translation plus scaling, and
 
     BOOST_TEST(compose_tag(
                    "x", Aff_transformation_3(
                        1, 0, 0, 1, 0, 2, 0, 2, 0, 0, 3, 3)) ==
                "x(transformation(1,0,0,1,0,2,0,2,0,0,3,3))");
 
-    // General affine transform.
+    //  7. a general affine transform.
 
     BOOST_TEST(compose_tag(
                    "x", Aff_transformation_3(
                        2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37)) ==
                "x(transformation(2,3,5,7,11,13,17,19,23,29,31,37))");
 }
+
+// These are tests for bounding volume and selection tags.
 
 BOOST_AUTO_TEST_CASE(bounding_volume_tags)
 {
@@ -614,7 +655,28 @@ BOOST_AUTO_TEST_CASE(selection_tags)
         == "x(contract(faces_in(bounding_sphere(point(0,0,0),5)),3))");
 }
 
-BOOST_AUTO_TEST_CASE(basic, * boost::unit_test::tolerance(0.0001))
+// Below are tests for rotation transforamtions, specifically:
+
+//   1. rotation in 2D,
+
+BOOST_AUTO_TEST_CASE(basic_2, * boost::unit_test::tolerance(0.0001))
+{
+    const Point_2 O(CGAL::ORIGIN);
+    const Point_2 P(1, 0);
+    const Point_2 T = basic_rotation(30).transform(P);
+
+    BOOST_TEST(CGAL::squared_distance(T, O) == FT(1));
+    BOOST_TEST(
+        CGAL::to_double(
+            CGAL::approximate_angle(
+                Point_3(P.x(), P.y(), 0),
+                Point_3(O.x(), O.y(), 0),
+                Point_3(T.x(), T.y(), 0))) == 30.0);
+}
+
+//   2. 3D rotation about one of the axes,
+
+BOOST_AUTO_TEST_CASE(basic_3, * boost::unit_test::tolerance(0.0001))
 {
     for (int j = 0; j < 3; j++) {
         const Point_3 O(CGAL::ORIGIN);
@@ -634,6 +696,8 @@ BOOST_AUTO_TEST_CASE(basic, * boost::unit_test::tolerance(0.0001))
     }
 }
 
+//   3. 3D rotation about an aribrary axis.
+
 BOOST_AUTO_TEST_CASE(axis_angle, * boost::unit_test::tolerance(0.0001))
 {
     const double v[3] = {1, 2, 3};
@@ -646,6 +710,10 @@ BOOST_AUTO_TEST_CASE(axis_angle, * boost::unit_test::tolerance(0.0001))
                CGAL::to_double(CGAL::squared_distance(T, Q)));
     BOOST_TEST(CGAL::to_double(CGAL::approximate_angle(P, Q, T)) == 78.9);
 }
+
+// Below we test approximate projections of points to the unit circle
+// or sphere.  These are used in calculating rational approximations
+// to normalized vectors (ref: Approximate Normalization of Vectors).
 
 BOOST_AUTO_TEST_CASE(project_2)
 {
@@ -702,6 +770,119 @@ BOOST_AUTO_TEST_CASE(project_3)
              + (z - CGAL::to_double(P.z())) * (z - CGAL::to_double(P.z())))
             <= epsilon * epsilon);
     }
+}
+
+// These classes implement simple test operations that instantiate a
+// task worker and spawn a number of tasks, each of which spins for a
+// given interval.
+
+class Task_test_operation: public Threadsafe_operation {
+    int tasks, interval;
+
+public:
+    inline static int done;
+    Task_test_operation(int n, int ms): tasks(n), interval(ms) {}
+
+    void reset() override {}
+
+    std::string describe() const override {
+        return compose_tag("task_test", tasks, interval);
+    }
+
+    void evaluate() override {
+        Task_worker worker;
+
+        for (int i = 0; i < tasks; i++) {
+            worker.insert(
+                [this, i]() {
+#ifdef _POSIX_THREAD_CPUTIME
+                    struct timespec tp_0, tp;
+
+                    assert(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tp_0) == 0);
+
+                    do {
+                        assert(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tp) == 0);
+                    } while (
+                        (tp.tv_sec - tp_0.tv_sec) * 1000
+                        + (tp.tv_nsec - tp_0.tv_nsec) / 1000000 < interval);
+#else
+                    auto t_0 = std::chrono::high_resolution_clock::now();
+
+                    while (
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::high_resolution_clock::now()
+                            - t_0).count() < interval);
+#endif
+
+                    {
+                        std::ostringstream s;
+                        s << "Task " << i << " finished";
+                        message(NOTE, s.str());
+                    }
+                });
+        }
+
+        while (worker.wait());
+
+        done++;
+    }
+};
+
+// This operation spins until all instantiated `Task_test_operation`s
+// have been evaluated.  It is meant to represent other operations,
+// thread-safe or not that may be executing along with tasks.
+
+template<typename T>
+class Other_test_operation: public T {
+    int tasks;
+
+public:
+    Other_test_operation(int n): tasks(n) {}
+
+    void reset() override {}
+
+    std::string describe() const override {
+        return compose_tag("other_test", tasks);
+    }
+
+    void evaluate() override {
+        this->message(Operation::Message_level::NOTE, "starting other operation");
+        while (Task_test_operation::done < tasks);
+        this->message(Operation::Message_level::NOTE, "finished other operation");
+    }
+};
+
+// Using the above test operations we instantiate a mixture of
+// operations and tasks.  Although we can't test anything
+// automatically, we can use a uility like `top` to monitor CPU usage
+// and determine whether it matches the requested number of threads.
+
+// E.g. the following invocation will simulate two operations lauching
+// a series of tasks agains a background of two other operation, which
+// shold be using 4 threads on average:
+
+// ```
+// driver -t misc/tasks/_1 -- --dump-list=- --threads=4
+// ```
+
+BOOST_TEST_DECORATOR(* boost::unit_test::disabled())
+BOOST_DATA_TEST_CASE(tasks, boost::unit_test::data::xrange(1, 4), n)
+{
+    sink_operation(
+        map_operation(
+            make_operation<Other_test_operation<Operation>>(n)));
+
+    sink_operation(
+        map_operation(
+            make_operation<Other_test_operation<Threadsafe_operation>>(n)));
+
+    for (int i = 0; i < n; i++) {
+        sink_operation(
+            map_operation(
+                make_operation<Task_test_operation>(100, 500 + i * 1000)));
+    }
+
+    evaluate_operations();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
