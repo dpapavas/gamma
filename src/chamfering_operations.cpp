@@ -486,15 +486,22 @@ static bool miter_segments(
         const Line_3 m(c, d);
 
         // If the segements we're mitering are collinear, so will be
-        // $l$ and $m$.  All edges should be lined up in such cases,
-        // though, so we can leave point `b` as is.  We still need to
-        // update `d` below as `b` will be snapped to the
-        // quasi-coincident `c`.
+        // $l$ and $m$.  All edges should be lined up in such cases
+        // though^[They *should* be in well-behaved cases, but won't
+        // always be so.  For instance, the collinear edges may have
+        // incident faces that are not coplanar.  This can come about,
+        // for example, if the faces incident to the edges are not
+        // consecutive faces,i.e. three or more faces fan out from the
+        // shared endpoint of the edges.  Such cases, although not
+        // necessarily rare --- they can easily come about when
+        // remeshing geometry for instance --- won't yield good
+        // results anyway, so we ignore them.], so we can leave point
+        // `b` as is.  We still need to update `d` below as `b` will
+        // be snapped to the quasi-coincident `c`.
 
         std::optional<std::variant<Point_3, Line_3>> x;
 
         if (CGAL::parallel(l, m)) {
-            assert(CGAL::squared_distance(b, c) < DBL_EPSILON);
             x = b;
         } else {
             x = CGAL::intersection(l, m);
@@ -996,7 +1003,7 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
                          CGAL::source(g, mesh), mesh)) {
                 if (x != CGAL::opposite(g, mesh)
                     && edges.count(x) == 1
-                    && visited.insert(CGAL::source(g, mesh)).second) {
+                    && visited.insert(CGAL::source(x, mesh)).second) {
                     g = x;
                     PUSH(g, front);
                     goto prev;
@@ -1214,6 +1221,16 @@ void Chamfering_operation<T, Fillet, Make_only>::evaluate()
         worker.insert(
             [work_ = std::move(work), &parts, &mutex, &condition]() {
                 auto work__ = std::move(work_);
+
+#if 0
+                {
+                    static std::size_t i;
+                    CGAL::IO::write_OFF(
+                        "part_" + std::to_string(i++) + ".off", work__.front());
+                    CGAL::IO::write_OFF(
+                        "part_" + std::to_string(i++) + ".off", work__.back());
+                }
+#endif
 
                 safely_assert(
                     CGAL::Polygon_mesh_processing::
