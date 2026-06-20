@@ -326,6 +326,31 @@ BOOST_AUTO_TEST_CASE(backend)
     Options::definitions.pop_front();
 }
 
+#ifdef _DEFAULT_SOURCE
+BOOST_AUTO_TEST_CASE(run)
+{
+    BOOST_REQUIRE(Options::language == Language::AUTO);
+
+    for (auto [s, t]: {
+#ifdef HAVE_SCHEME
+            std::pair<std::string, std::string> {"source_XXXXXX.scm", "(list 1 2 3)\n"},
+#endif
+#ifdef HAVE_LUA
+            std::pair<std::string, std::string> {"source_XXXXXX.lua", "assert(true)\n"},
+#endif
+        }) {
+        const int fd = mkstemps(s.data(), 4);
+
+        BOOST_REQUIRE(fd != -1);
+        write(fd, t.c_str(), t.size());
+        BOOST_REQUIRE(close(fd) == 0);
+
+        BOOST_TEST(test_options({"test", s.c_str()}) == 2);
+        BOOST_REQUIRE(std::remove(s.c_str()) == 0);
+    }
+}
+#endif
+
 BOOST_AUTO_TEST_CASE(threads)
 {
     push(Options::threads, 0);
@@ -393,42 +418,43 @@ BOOST_AUTO_TEST_CASE(flags)
 
 BOOST_AUTO_TEST_CASE(warnings)
 {
-#define TEST_WARNING_S(X, S) {                                  \
-        push(Flags::warn_## X, 0);                              \
-        BOOST_TEST(test_options({"test", "-W" S}) == 2);        \
-        BOOST_TEST(Flags::warn_## X == 1);                      \
-        BOOST_TEST(test_options({"test", "-Wno-" S}) == 2);     \
-        BOOST_TEST(Flags::warn_## X == 0);                      \
-        pop(Flags::warn_## X);                                  \
+#define TEST_WARNING(OPTION, VAR) {                                     \
+        push(Flags::warn_## VAR, 0);                                    \
+        BOOST_TEST(test_options({"test", "-W" #OPTION}) == 2);          \
+        BOOST_TEST(Flags::warn_## VAR == 1);                            \
+        BOOST_TEST(test_options({"test", "-Wno-" #OPTION}) == 2);       \
+        BOOST_TEST(Flags::warn_## VAR == 0);                            \
+        pop(Flags::warn_## VAR);                                        \
     }
 
-#define TEST_GROUPED_WARNING(G, X)              \
-    TEST_WARNING_S(G ## _ ## X, #G);            \
-    TEST_WARNING_S(G ## _ ## X, #G  "-" #X);
+#define TEST_SIMPLE_WARNING(X) TEST_WARNING(X, X)
 
-#define TEST_WARNING(X) TEST_WARNING_S(X, #X)
-    TEST_WARNING_S(fatal_errors, "fatal-errors");
-    TEST_WARNING(error);
+#define TEST_GROUPED_WARNING(GROUP, OPTION, VAR)        \
+    TEST_WARNING(GROUP, VAR);                           \
+    TEST_WARNING(OPTION, VAR);
 
-    TEST_WARNING(duplicate);
-    TEST_WARNING(manifold);
-    TEST_WARNING(nef);
-    TEST_WARNING(unused);
-    TEST_WARNING(store);
-    TEST_WARNING(load);
-    TEST_WARNING(outputs);
+    TEST_WARNING(fatal-errors, fatal_errors);
+    TEST_SIMPLE_WARNING(error);
 
-    TEST_GROUPED_WARNING(mesh, valid);
-    TEST_GROUPED_WARNING(mesh, closed);
-    TEST_GROUPED_WARNING(mesh, manifold);
-    TEST_GROUPED_WARNING(mesh, degenerate);
-    TEST_GROUPED_WARNING(mesh, degenerate);
-    TEST_GROUPED_WARNING(mesh, intersects);
-    TEST_GROUPED_WARNING(mesh, bounds);
-    TEST_GROUPED_WARNING(mesh, oriented);
+    TEST_SIMPLE_WARNING(duplicate);
+    TEST_SIMPLE_WARNING(manifold);
+    TEST_SIMPLE_WARNING(nef);
+    TEST_SIMPLE_WARNING(unused);
+    TEST_SIMPLE_WARNING(store);
+    TEST_SIMPLE_WARNING(load);
+    TEST_SIMPLE_WARNING(outputs);
+
+    TEST_GROUPED_WARNING(mesh, mesh-valid, mesh_valid);
+    TEST_GROUPED_WARNING(mesh, mesh-closed, mesh_closed);
+    TEST_GROUPED_WARNING(mesh, mesh-manifold, mesh_manifold);
+    TEST_GROUPED_WARNING(mesh, mesh-degenerate, mesh_degenerate);
+    TEST_GROUPED_WARNING(mesh, mesh-degenerate, mesh_degenerate);
+    TEST_GROUPED_WARNING(mesh, mesh-self-intersects, mesh_self_intersects);
+    TEST_GROUPED_WARNING(mesh, mesh-bounds-volume, mesh_bounds_volume);
+    TEST_GROUPED_WARNING(mesh, mesh-oriented, mesh_oriented);
 
 #undef TEST_WARNING
-#undef TEST_WARNING_S
+#undef TEST_SIMPLE_WARNING
 #undef TEST_GROUPED_WARNING
 }
 

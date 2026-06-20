@@ -21,6 +21,7 @@ add_custom_command(
 add_executable(gammadb glad.c commands.c main.c windows.c viewports.c "${SHADER_STRINGS}")
 target_compile_definitions(
   gammadb PRIVATE
+  "GAMMADB_VERSION=\"${GAMMADB_VERSION}\""
   "DEFAULT_PROGRAM=\"$<IF:$<CONFIG:Release>,$<TARGET_FILE_NAME:gamma>,$<TARGET_FILE:gamma>>\"")
 target_compile_definitions(gammadb PRIVATE "SHADER_STRINGS=\"${SHADER_STRINGS}\"")
 target_link_libraries(gammadb OpenGL::GL Freetype::Freetype Fontconfig::Fontconfig glfw m readline ${GL2PS_LIBRARY})

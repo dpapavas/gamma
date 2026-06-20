@@ -135,12 +135,12 @@ void Operation::message(Message_level level, const std::string &message) const
             if (auto l = annotations.find(x); l != annotations.end()) {
                 std::cerr << ANSI_COLOR(1, 37)
                           << l->second << ANSI_COLOR(0, 37)
-                          << ": ";
+                          << ":";
             }
         }
 
         if (i == 0) {
-            std::cerr << "in operation '" << t << "'\n";
+            std::cerr << " in operation '" << t << "'\n";
         }
     }
 
@@ -148,15 +148,15 @@ void Operation::message(Message_level level, const std::string &message) const
 
     switch (level) {
     case NOTE:
-        std::cerr << ANSI_COLOR(1, 32) << "note"
+        std::cerr << ANSI_COLOR(1, 32) << " note"
                   << ANSI_COLOR(0, 37) << ": ";
         break;
     case WARNING:
-        std::cerr << ANSI_COLOR(1, 33) << "warning"
+        std::cerr << ANSI_COLOR(1, 33) << " warning"
                   << ANSI_COLOR(0, 37) << ": ";
         break;
     case ERROR:
-        std::cerr << ANSI_COLOR(1, 31) << "error"
+        std::cerr << ANSI_COLOR(1, 31) << " error"
                   << ANSI_COLOR(0, 37) << ": ";
         break;
     }
@@ -230,7 +230,7 @@ bool Operation::dispatch()
     {
         std::ostringstream s;
         s.precision(2);
-        s << delta << "s";
+        s << std::fixed << delta << "s";
 
         annotations.insert({"in", s.str()});
     }
@@ -245,7 +245,7 @@ bool Operation::dispatch()
     {
         std::ostringstream s;
         s.precision(2);
-        s << cost << "s";
+        s << std::fixed << cost << "s";
 
         annotations.insert({"cost", s.str()});
     }

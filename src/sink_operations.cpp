@@ -279,7 +279,7 @@ void Inspect_operation::evaluate()
     if (connect(fd,
                 (const struct sockaddr *)&addr,
                 stpncpy(
-                    addr.sun_path + 1, Options::debugger_address,
+                    addr.sun_path + 1, Options::ipc_address,
                     sizeof(addr.sun_path) - 2) - (char *)&addr) == -1) {
         message(
             Operation::WARNING, make_error_string("could not connect socket"));

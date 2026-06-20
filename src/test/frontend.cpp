@@ -56,7 +56,13 @@ struct Frontend_fixture: Main_fixture {
     std::forward_list<std::pair<std::string, std::ofstream>> files;
 
     const char *add_file(const char *s) {
+#if _XOPEN_SOURCE >= 500 || _POSIX_C_SOURCE >= 200809L
+        std::string t = "/tmp/file_XXXXXX";
+        assert(!close(mkstemp(t.data())));
+#else
         std::string t = std::tmpnam(nullptr);
+#endif
+
         files.emplace_front(t, t);
         files.front().second << s << std::endl;
 

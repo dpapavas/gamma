@@ -36,8 +36,7 @@
         @c Center tildes vertically
         literate={~}{{\raisebox{0.5ex}{\texttildelow}}}{1}
 }
-\lstset{
-}
+
 \lstdefinestyle{lua} {
         language={[5.3]Lua}
 }
@@ -49,11 +48,46 @@
 \lstdefinestyle{init} {
         language={sh}
 }
+
+\lstdefinestyle{make} {
+        language={[gnu]make}
+}
+
 @end latex
+
+@copying
+Copyright @copyright{} 2026 Dimitris Papavasiliou.
+
+This manual is for version @value{gamma_version} of Gamma and version
+@value{gammadb_version} of its Debgugger.  It is covered by the
+@acronym{GNU} Free Documentation License.  @xref{@acronym{GNU} Free
+Documentation License}.
+
+Gamma is freely redistributable software. You may redistribute it
+and/or modify it under the terms of the @acronym{GNU} General Public
+License as published by the Free Software Foundation.
+@xref{@acronym{GNU} General Public License}.
+@end copying
+
+@documentinfo
+@title Gamma
+@subtitle For Gamma version @value{gamma_version}, Debugger version @value{gammadb_version}
+@subtitle @value{updated}
+@author Dimitris Papavasiliou
+@end documentinfo
+
+@maketitle
 
 @contents
 
+@node Top
+@top Gamma
+
+This manual is for version @value{gamma_version} of Gamma and version
+@value{gammadb_version} of its Debgugger, updated @value{updated}.
+
 @include doc_manual_introduction.texi
+@include doc_manual_getting_started.texi
 
 @node @acronym{GNU} General Public License
 @appendix @acronym{GNU} General Public License

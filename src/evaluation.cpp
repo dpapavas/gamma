@@ -236,7 +236,7 @@ static bool try_dispatch_operation(Operation *op)
         {
             std::ostringstream t;
 
-            t << e.filename() << ": " << std::to_string(e.line_number())
+            t << e.filename() << ":" << std::to_string(e.line_number())
               << ": " << s.str();
 
             op->annotations.insert({"failure", t.str()});
@@ -447,48 +447,63 @@ void Worker::work()
 
             failed = try_dispatch_operation(op);
 
-            if (Options::dump_log) {
-                std::lock_guard<std::mutex> lock(dump_mutex);
-
-                log_dump << evaluation_timestamp()
-                         << ": $" << n
-                         << (failed ? " failed" : " concluded")
-                         << std::endl;
-            }
-
             if (Options::dump_list) {
                 std::lock_guard<std::mutex> lock(dump_mutex);
 
                 list_dump << "$" << n << " = "
                           << maybe_shortened_tag(l);
+            }
 
-                if (Flags::dump_annotations
-                    && op->annotations.size() > 0) {
-                    std::vector<std::pair<std::string, std::string>> v(
-                        op->annotations.cbegin(), op->annotations.cend());
-                    std::sort(v.begin(), v.end());
+            if (Options::dump_log) {
+                std::lock_guard<std::mutex> lock(dump_mutex);
 
-                    list_dump << " (";
+                log_dump << evaluation_timestamp()
+                         << ": $" << n
+                         << (failed ? " failed" : " concluded");
+            }
 
-                    for (auto it = v.cbegin(); ;) {
-                        list_dump << it->first;
-
-                        if (!it->second.empty()) {
-                            list_dump << ": " << it->second;
-                        }
-
-                        if (++it == v.cend()) {
-                            break;
-                        }
-
-                        list_dump << ", ";
-                    }
-
-                    list_dump << ")";
+            for (auto &[q, dump_ref]: {
+                    std::pair {!!Options::dump_list, std::ref(list_dump)},
+                    std::pair {!!Options::dump_log, std::ref(log_dump)}}) {
+                if (!(q
+                      && Flags::dump_annotations
+                      && op->annotations.size() > 0)) {
+                    continue;
                 }
 
+                std::vector<std::pair<std::string, std::string>> v(
+                    op->annotations.cbegin(), op->annotations.cend());
+                std::sort(v.begin(), v.end());
+
+                auto &s = dump_ref.get();
+
+                s << " (";
+
+                for (auto it = v.cbegin(); ;) {
+                    s << it->first;
+
+                    if (!it->second.empty()) {
+                        s << ": " << it->second;
+                    }
+
+                    if (++it == v.cend()) {
+                        break;
+                    }
+
+                    s << ", ";
+                }
+
+                s << ")";
+            }
+
+            if (Options::dump_list) {
                 list_dump << std::endl;
                 list_dump.flush();
+            }
+
+            if (Options::dump_log) {
+                log_dump << std::endl;
+                log_dump.flush();
             }
 
             // Here we output Graphivz dot source for the
@@ -592,7 +607,7 @@ void Worker::work()
 
         had_failure = had_failure || failed;
 
-        if (failed || (had_failure  && Flags::warn_fatal_errors)) {
+        if (failed || (had_failure && Flags::warn_fatal_errors)) {
             continue;
         }
 
@@ -1070,7 +1085,7 @@ void evaluate_operations()
 
     // We now attempt to rewrite parts of the graph, so as to
     // restructure the calculation in a way that will hopefully allow
-    // us to calculate it more efficiently.  Ref: Graph Rewriting.
+    // us to evaluate it more efficiently.  Ref: Graph Rewriting.
 
     // Each rewrite can potentially create opportunities for further
     // rewrites, so we keep making passes until no rewrites are
@@ -1155,7 +1170,7 @@ void evaluate_operations()
 
     // ### Operation Caching
 
-    // While developing front-end code, we tend to make small changes
+    // While developing front end code, we often make small changes
     // before re-evaluating to inspect the results.  These tend to
     // change only small parts of the graph, with the rest of the
     // operations remaining unchanged.  We can speed up the evaluation
@@ -1199,9 +1214,7 @@ void evaluate_operations()
                 op->loadable = f && f.is_open();
             }
 
-            const bool p = Flags::eliminate_dead_operations && op->loadable;
-
-            if (!p) {
+            if (!(op->loadable && Flags::eliminate_dead_operations)) {
                 for (Operation *x: op->predecessors) {
                     visit(x, visit);
                 }
@@ -1222,7 +1235,7 @@ void evaluate_operations()
             // Ready operations can be either loadable operations, or
             // source operations.
 
-            if (p) {
+            if (op->loadable) {
                 // The operation will be loaded from the store, so we
                 // need to abridge the to-be-loaded operation's tag
                 // here, as it won't happen during evaluation (since

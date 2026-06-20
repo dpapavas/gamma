@@ -1078,9 +1078,9 @@ BOOST_AUTO_TEST_CASE(inspect)
         while (!q) cv.wait(l);
     }
 
-    push(Options::debugger_address, "gammadb-test");
+    push(Options::ipc_address, "gammadb-test");
     evaluate_operations();
-    pop(Options::debugger_address);
+    pop(Options::ipc_address);
 
     t.join();
     test_unit_tetrahedron(P);

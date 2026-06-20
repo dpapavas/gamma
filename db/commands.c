@@ -1477,9 +1477,9 @@ int read_commands(FILE *fp)
                     buffer,                                             \
                     (n += snprintf(                                     \
                         nullptr, 0,                                     \
-                        " --debugger-address=gammadb-%d", getpid())));  \
+                        " --ipc-address=gammadb-%d", getpid())));       \
                 sprintf(                                                \
-                    buffer.p + n_0, " --debugger-address=gammadb-%d",   \
+                    buffer.p + n_0, " --ipc-address=gammadb-%d",        \
                     getpid());                                          \
             }
 

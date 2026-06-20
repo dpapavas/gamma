@@ -49,7 +49,7 @@ static inline void test_result(const U &op, const T &P)
 
     bool is_closed = true;
     if ((Flags::warn_mesh_closed
-         || Flags::warn_mesh_bounds
+         || Flags::warn_mesh_bounds_volume
          || Flags::warn_mesh_oriented)
         && !CGAL::is_closed(P)) {
         is_closed = false;
@@ -109,7 +109,7 @@ static inline void test_result(const U &op, const T &P)
     }
 
     bool does_self_intersect = false;
-    if (Flags::warn_mesh_intersects
+    if (Flags::warn_mesh_self_intersects
         && CGAL::Polygon_mesh_processing::
         does_self_intersect<CGAL::Parallel_if_available_tag>(Q)) {
         does_self_intersect = true;
@@ -121,7 +121,7 @@ static inline void test_result(const U &op, const T &P)
     // if it isn't.  Also disable it if it is known to self intersect,
     // as the test has undefine behavior in that case.
 
-    if (Flags::warn_mesh_bounds && is_closed && !does_self_intersect
+    if (Flags::warn_mesh_bounds_volume && is_closed && !does_self_intersect
         && !CGAL::Polygon_mesh_processing::does_bound_a_volume(Q)) {
         op->message(
             Operation::WARNING,

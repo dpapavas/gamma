@@ -65,6 +65,16 @@ function substitute_weight(from, to, inside)
   }
 }
 
+function substitute_alias(s, a) {
+  n = index(s, a)
+
+  if (n == 0) {
+    return s
+  }
+
+  return substr(s, 1, n - 1) aliases[a] substitute_alias(substr(s, n + length(a)), a)
+}
+
 function flush_text()
 {
   if (text) {
@@ -77,7 +87,7 @@ function flush_text()
       in_figure = 0
     }
 
-    sub(/\n*$/, "\n", text)
+    sub(/\n+$/, "\n", text)
 
     print text
     text = ""
@@ -104,6 +114,22 @@ function close_list()
   }
 }
 
+function close_print()
+{
+  print "" | in_print
+  close(in_print)
+  in_print = ""
+
+  # Convert the generated PDF images to JPEG when outputting HTML.
+
+  if (format == "html") {
+    system("gs -dQUIET -dNOPAUSE -dBATCH " \
+           "-dTextAlphaBits=4 -dGraphicsAlphaBits=4 "     \
+           "-sDEVICE=jpeg -r60x60 -sOutputFile=" \
+           in_print_basename ".jpg " in_print_basename ".pdf")
+  }
+}
+
 $0 ~ "^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*" {
   close_list()
   flush_text()
@@ -111,7 +137,16 @@ $0 ~ "^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*" {
   sub("^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*", "")
   sub("/all$", "")
 
-  primed = ($0 == target) || (target ~ "^" $0 "/")
+  split($0, v, "[[:space:]]*,[[:space:]]*")
+
+  primed = 0
+  for (i in v) {
+    if ((v[i] == (document "/" variant)) || (v[i] == document)) {
+      primed = 1
+      break;
+    }
+  }
+
   next
 }
 
@@ -124,6 +159,7 @@ $0 ~ "^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*" {
     # When inside text, blank lines flush the text to create
     # paragraphs.  They should only close figures and their captions.
 
+    text = text "\n"
     flush_text()
     text = ""
   }
@@ -166,9 +202,7 @@ $0 ~ "^[[:space:]]*" prefix {
   }
 
   for (a in aliases) {
-    while ((n = index($0, a)) > 0) {
-      $0 = substr($0, 1, n - 1) aliases[a] substr($0, n + length(a))
-    }
+    $0 = substitute_alias($0, a)
   }
 
   # Lists and tables
@@ -183,14 +217,16 @@ $0 ~ "^[[:space:]]*" prefix {
       $0 = substr($0, in_indent + 1)
     }
 
-    # Table item
-
     if (in_figure) {
+      # Figure
+
       if (in_figure == 1) {
         text = text "@caption{"
         in_figure = 2
       }
     } else if (split($0, v, "[[:space:]]*:=[[:space:]]*") == 2) {
+      # Table item
+
       if (!in_table) {
         in_table = 1
         text = text "\n@table @code"
@@ -210,6 +246,8 @@ $0 ~ "^[[:space:]]*" prefix {
         in_table = 2
       }
     } else if (match($0, /^[[:digit:]]+\. /)) {
+      # Enumeration item
+
       if (!in_enumerate) {
         in_enumerate = 1
         text = text "\n@enumerate " substr($0, RSTART, RLENGTH - 2)
@@ -219,6 +257,8 @@ $0 ~ "^[[:space:]]*" prefix {
 
       sub(/^[[:digit:]]+\. /, "")
     } else if (/^[*-] /) {
+      # List item
+
       if (!in_itemize) {
         in_itemize = 1
         text = text "\n@itemize"
@@ -231,6 +271,8 @@ $0 ~ "^[[:space:]]*" prefix {
 
       sub(/^[*-] /, "")
     } else if (/^> /) {
+      # Quotation
+
       if (!in_quotation) {
         in_quotation = 1
         text = text "\n@quotation\n"
@@ -281,10 +323,9 @@ $0 ~ "^[[:space:]]*" prefix {
         in_print = in_print " -c \"" substr(x, 2) "\""
       } else {
         in_print = in_print " -c \"run\" -c \"print " a ".pdf\""
+        in_print_basename = a
         if (x == "```") {
-          print "" | in_print
-          close(in_print)
-          in_print = ""
+          close_print()
         } else {
           print x | in_print
         }
@@ -325,11 +366,15 @@ $0 ~ "^[[:space:]]*" prefix {
       in_graph = ""
       dummy_nodes = 0
     } else if (in_print) {
-      close(in_print)
-      in_print = ""
+      close_print()
     } else {
       if (in_listing) {
-        text = text "\\end{lstlisting}\n@end latex\n"
+        if (format == "pdf") {
+          text = text "\n\\end{lstlisting}\n@end latex\n"
+        } else {
+          text = text "\n@end example\n"
+        }
+
         in_listing = 0
       } else if (in_example) {
         text = text "\n@end example\n"
@@ -342,11 +387,21 @@ $0 ~ "^[[:space:]]*" prefix {
         in_displaymath = 0
       } else if ($0 != "```") {
         split($0, v)
-        text = text "\n@latex\n\\begin{lstlisting}[style=" substr(v[1], 4) "]"
+        if (format == "pdf") {
+          text = text "\n@latex\n\\begin{lstlisting}[style=" substr(v[1], 4) "]"
+        } else {
+          text = text "\n@example " substr(v[1], 4)
+        }
 
         if (v[2]) {
           text = text "\n"
           while ((getline x < (srcdir "/" v[2])) > 0) {
+            if (format == "html") {
+              x = gensub(/([{}@])/, "@\\1", "g", x)
+            } else {
+              sub("@", "@@", x)
+            }
+
             text = text x "\n"
           }
 
@@ -378,6 +433,14 @@ $0 ~ "^[[:space:]]*" prefix {
   } else if (in_print) {
     print $0 | in_print
   } else if (in_example || in_displaymath || in_listing || in_geometry) {
+    if (in_listing) {
+      if (format == "html") {
+        $0 = gensub(/([{}@])/, "@\\1", "g")
+      } else {
+        sub("@", "@@")
+      }
+    }
+
     text = text "\n" $0
   } else  {
     # Structure
@@ -488,7 +551,7 @@ $0 ~ "^[[:space:]]*" prefix {
 
 # Progam source code
 
-prefix && (target ~ /^program/) {
+prefix && (document == "program") {
   if (in_text) {
     in_text = 0
   }

@@ -69,8 +69,8 @@ namespace Flags {
     extern int warn_mesh_closed;
     extern int warn_mesh_manifold;
     extern int warn_mesh_degenerate;
-    extern int warn_mesh_intersects;
-    extern int warn_mesh_bounds;
+    extern int warn_mesh_self_intersects;
+    extern int warn_mesh_bounds_volume;
     extern int warn_mesh_oriented;
 
     // Evaluation
@@ -104,7 +104,7 @@ namespace Options {
     extern const char *dump_list;
     extern const char *dump_log;
     extern int dump_short_tags;
-    extern const char *debugger_address;
+    extern const char *ipc_address;
 
     // Diagnostics
 

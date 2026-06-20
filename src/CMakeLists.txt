@@ -40,6 +40,7 @@ add_executable(gamma main.cpp)
 
 target_compile_definitions(objects PRIVATE
   $<$<CONFIG:Debug>:CGAL_DISABLE_ROUNDING_MATH_CHECK>
+  "GAMMA_VERSION=\"${GAMMA_VERSION}\""
 )
 
 target_compile_options(objects PRIVATE

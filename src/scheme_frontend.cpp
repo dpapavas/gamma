@@ -2473,10 +2473,10 @@ static SCM inner_handler(SCM exn)
     // We're only interested in the middle section, so we shave the
     // two top frames explicitly.  Discarding the bottom frames is
     // more tricky, but the best way seems to be to run the user code
-    // within a *prompt*.  Prompts have many uses no doubt, but we
-    // mainly use them to delimit the part of the stack that belongs
-    // to the user's program.  We also abort to the prompt on error,
-    // as a way to terminate execution an return control to C++.
+    // within a *prompt*.  Prompts have many uses, but we mainly use
+    // one here to delimit the part of the stack that belongs to the
+    // user's program.  We also abort to the prompt on error, as a way
+    // to terminate execution an return control to C++.
 
     SCM s = scm_make_stack(
         SCM_BOOL_T,
@@ -2620,6 +2620,30 @@ static SCM read_hash_greater(SCM chr, SCM port)
     }
 
     return scm_cons(scm_from_latin1_symbol("output"), s);
+}
+
+// When the user passes `-` as one of the input files, we want to read
+// code from the standard input.  Although Guiles `primitive-load`
+// reads from a port internally, it exposes no way to pass a port
+// directly, so we need the following simple reimplementation.
+
+static SCM load_from_current_input(void)
+{
+    const SCM t = scm_variable_ref(scm_c_lookup("read-syntax"));
+
+    SCM v;
+
+    while (1) {
+        const SCM u = scm_call_0 (t);
+
+        if (SCM_EOF_OBJECT_P(u)) {
+          break;
+        }
+
+        v = scm_primitive_eval_x(u);
+    }
+
+    return v;
 }
 
 static void *run_scheme_with_guile(void *data)
@@ -2874,10 +2898,15 @@ static void *run_scheme_with_guile(void *data)
                             scm_from_latin1_symbol("lambda"),
                             SCM_EOL,
                             scm_cons(scm_from_latin1_symbol("begin"), s),
-                            scm_list_3(
-                                scm_from_latin1_symbol("load"),
-                                scm_from_locale_string(context->input),
-                                scm_from_latin1_symbol("read-syntax")),
+                            (!std::strcmp(context->input, "-")
+                             ? scm_list_1(
+                                 scm_c_make_gsubr(
+                                     "%load-from-current-input", 0, 0, 0,
+                                     reinterpret_cast<void *>(load_from_current_input)))
+                             : scm_list_3(
+                                 scm_from_latin1_symbol("load"),
+                                 scm_from_locale_string(context->input),
+                                 scm_from_latin1_symbol("read-syntax"))),
                             SCM_BOOL_T,
                             SCM_UNDEFINED),
 

@@ -1,0 +1,589 @@
+-*- mode: weave; -*-
+
+Document: manual
+
+# Getting started
+
+This chapter explains some of Gamma's basic features, including how to
+invoke it from the command line to run programs and build outputs,
+how each of the available options affects its behavior, how to
+interpret its diagnostic output.
+
+## Invoking Gamma from the Command Line
+
+You can invoke Gamma by typing s`gamma` on the command line, followed
+by options and input files.  Typically, you will need to pass at least
+one or more options to specify what results to output and how to
+output them, followed by at least one file containing a program in one
+of the supported languages. Gamma will then proceed to read and
+execute each program, evaluate the operations necessary to produce the
+requested outputs and write them out as requested.
+
+Options and input files can be mixed arbitrarily and an option only
+has effect on the execution and evaluation of program files specified
+after it in the command line.
+
+Document: manual/scheme
+Alias: .ext .scm
+Document: manual/lua
+Alias: .ext .lua
+Document: manual
+
+Consider for example the following invocation:
+
+```
+gamma -o first.stl utility.ext -o second.stl -Wmesh main.ext
+```
+
+Gamma will read and execute both f`utility.ext` and f`main.ext`.  If
+any of them define an output named `first`, it will be written to the
+file f`first.stl`, in STL format.  Because its specification came
+after f`utility.ext`, an output named `second` will only be written to
+file if it is defined in f`main.ext`.  Similarly, mesh-related
+warnings due to o`-Wmesh` will only be enabled in the evaluation of
+f`main.ext`.
+
+Unalias: .ext
+
+You can further control many aspects of Gamma's behavior by using the
+command-line options described in ref: Gamma Command Line Options, and
+Gamma itself can remind you of the available options. Type s`gamma
+--help` to display all available options along with a brief
+description of their use.
+
+## Running Programs
+
+Any argument in Gamma's invocation that does not look like an option,
+that is, it does not start with s`-`, or s`--`, is interpreted as a
+file containing source code in one of the supported languages.  One of
+the input files can also be f`-`, in which case the program will be
+read from the standard input.
+
+If the o`-x` option is not given, or if it is given the value `auto`,
+the language of an input file is deduced based on its extension.
+Document: manual/scheme
+A file ending in f`.scm` is assumed to contain Scheme source code.
+
+Gamma uses GNU Guile to execute Scheme programs.  A relatively bare
+R7RS environment is used for evaluation, containing only the `(scheme
+base)` and `(gamma base)` libraries by default.  The former is
+provided by Guile and contains core Scheme funcitons, while the latter
+is supplied by Gamma, and defines Gamma's types along with a few of
+its core functions.  It also contains a set of utility functions that
+are not provided by Guile itself and can be convenient when writing
+programs.  These will be described in subsequent chapters.
+
+You can of course use other libraries with your program.  Many are
+provided by Guile, notably including implementations of many SRFIs and
+you only need to import them.  For instance, adding s`(import (srfi
+1))` to the top of your program will import SRFI 1, a library with
+many standard list-related functions.
+
+Gamma also exposes much of its functionality in the form of a set of
+libraries, each containing functions related to a particular
+functional area.  For instance `(gamma polygons)` and `(gamma
+polyhedra)` provide operations for creating many polygonal and
+polyhedral primitives, in the form of functions like `rectangle` or
+`sphere`, which become available once the libraries are imported.
+
+Finally, you can also install your own libraries, by placing a file
+containing library source code, in any of the forms supported by
+Guile, in one of the paths where Guile expects to find them.  If you
+don't wish to install the library, but prefer for example to bundle it
+up with your program, you can use the o`-L` option to add the path
+containing your library to Guile's load path.
+
+For example, a file named f`utilities.scm`, placed in the current
+directory with the contents shown below, will be avaiable for import
+from you program with s`(import (utilities))`, provided you pass the
+option s`-L .` when invoking Gamma.
+
+```scheme
+(define-library (utilities)
+  (import (scheme base))
+  (export double)
+
+  (begin
+    (define (double x) (* 2 x))))
+```
+
+Consult Guile's documentation for more information on the available
+libraries and the ways in which you can define your own.
+
+Document: manual/lua
+A file ending in f`.lua` is assumed to contain Lua source code.
+
+Lua programs are executed in an environment where only Lua's basic
+library and Gamma's base library are exported.  The latter is supplied
+by Gamma, and defines a few of its core functions.  Both have their
+functions exported to the global environment.
+
+You can of course use other libraries with your program.  Lua's
+standard libraries are avaialable and need only be imported using
+`require`, as is done in any Lua program.
+
+Gamma also exposes much of its functionality in the form of a set of
+libraries, each containing functions related to a particular
+functional area.  For instance the `gamma.polygons` and
+`gamma.polyhedra` libraries provide operations for creating many
+polygonal and polyhedral primitives, in the form of functions like
+`rectangle` or `sphere`.  You can use them in the same way as you
+would any Lua library.  For example:
+
+```Lua
+polygons = require "gamma.polygons"
+
+C = polygons.circle(10)
+```
+
+Finally, you can also install your own libraries, by placing a file
+containing library source code in one of the paths where `require`
+expects to find them.  If you don't wish to install the library, but
+prefer for example to bundle it up with your program, you can use the
+o`-L` option to add the path containing your library to Lua's search
+path.
+
+Consult Lua's reference manual for more information on the available
+libraries and the ways in which you can define your own.
+
+Document: manual
+
+### Passing Arguments from the Command Line
+
+If the arguments passed to Gamma contain s`--` as a separate argument,
+option processing stops at this point and any arguments following it
+are passed directly to each executed program.
+
+Document: manual/scheme
+In Scheme, these arguments can be accessed by the program using the
+`(command-line)` procedure, which returns them as a list where the
+first element is the program name and the supplied arguments follow.
+
+Document: manual/lua
+In Lua, following the convention of Lua's standalone interpreter,
+these arguments can be accessed by the program using the predefined
+variable `arg`, which is a table where the program name is available
+under index 0 and the supplied arguments follow.
+
+Document: manual
+Concept: parameters
+
+You can also pass arguments to your programs in a more convenient way
+using parameter defintions.  These are made using the o`-D` option,
+which can be supplied multiple times in either of the forms s`-Dname`,
+or s`-Dname=value`.
+
+For each such option, Gamma will define a variable with the given name
+for you.  If no value is given explicitly, the variable value will be
+defined as a boolean flag, holding the value
+Document: manual/scheme
+`#true`.  Since in Scheme it is customary for predicate variables to
+have a name ending in `?`, Gamma will also append a `?` to your
+specified name in this case.
+Document: manual/lua
+`true`.
+Document: manual
+When a value is specified, Gamma will evaluate it as source code and
+assign the result to the variable.  This means that you can use an
+option like s`-Dheight=10` to set the variable `height` to the
+numerical value 10, but you can also use more complex expressions like
+Document: manual/scheme
+s`-Dheight="(+ (* 2 3) 4)"`
+Document: manual/lua
+s`-Dheight="(2 * 3) + 4"`
+Document: manual
+to achieve the same effect, taking care to quote the expression
+appropriately.  A string parameter would be passed with something like
+s`-Dlabel='"Hello world"'`.
+
+You can access the variable as if you had defined it yourself inside
+the program, but since its existence will depend on whether the `-D`
+option has been passed, it will usually be convenient to define it
+explictly, giving it a default value.
+
+Document: manual/scheme
+Gamma provides the functions `define-option` and `define-parameter`
+for this purpose.  They are equivalent to `define`, but only have
+effect if the variable has not already been defined with the `-D`
+option.
+
+For example, to define a flag named `draft?` with an initial value of
+`#false` and a parameter named `height`, with an initial value of 5,
+you would use the following code.
+
+```scheme
+(define-option draft?)
+(define-parameter height 5)
+```
+Document: manual/lua
+For example, to define a flag named `draft` with an initial value of
+`#false` and a parameter named `height`, with an initial value of 5,
+you could use the following code.
+
+```lua
+draft = draft or false
+height = height or 5
+```
+Document: manual
+
+You could then override the default values on the command line with an
+invocation like the following.
+
+```
+gamma -Ddraft -Dheight=10 ...
+```
+
+### How Programs are Executed
+
+When you invoke Gamma, it goes through a series of stages in order to
+produce its output.  It begins by parsing the arguments you specify in
+the invocation, in the order in which they appear.  If the argument is
+an input file, it is executed at that point and its execution is only
+affected by the options and input files that preceded them in the
+command line.  You can execute programs written in different languages
+in the same invocations and all programs for a given language are
+executed in the same environment, so that global variables and other
+side-effects introduced in one program are also visible in programs
+following it.
+
+Document: manual/scheme
+Alias: {the language} Scheme
+Document: manual/lua
+Alias: {the language} Lua
+Document: manual
+
+Concept: operations
+
+A program is executed much like it would be in the language's
+standalone interpreter and all interaction with Gamma is mediated by
+functions that are made available through a set of libraries.  These
+functions can be imported and called by the program and most of them
+return special values called *operations*, that describe to Gamma how
+to create geometry.
+
+The `cuboid` function for example, takes three numerical parameters
+--- the side lengths along each axis --- and returns an operation
+whose evaluation produces the geometry of a cuboid centered at the
+origin.  Operations can also be combined: two or more operations, such
+as those returned by the `cuboid` function, may be passed to the
+`union` function for instance, returning an operation that evaluates
+to their boolean union.
+
+Concept: outputs
+
+You can control which operations will have their resulting geometry
+written to disk, or otherwise exported by Gamma, by designating them
+as *outputs* using the `output` function provided in Gamma's base
+library.  There can be as many outputs as you need and each has a
+distinct name.  When a program executes, one or more outputs may have
+been enabled using the `-o`, or `--output` options and only the
+results of these operations will be evaluated and written out.  This
+allows you to write programs which produce several outputs, selecting
+which of them will be built when the program is executed.
+
+The evaluation process begins once all programs are executed and all
+invocation arguments have been processed. Gamma will first cull the
+generated operations, retaining only operations corresponding to
+enabled outputs along with all operations that are needed to calculate
+them.  All other operations are discarded.
+
+The culled operations may then be modified^[Such modifications are
+called def:rewrites, since they constitute rewrites of the underlying
+operation dependency graph.] in an attempt to improve the efficiency
+of the calculation, without altering its result.  Finally, they're
+evaluated to generate geometry.  This evaluation takes place in an
+unspecified order^[Of course an operation that is passed as an operand
+to another operation is evaluated before it.] and operations
+may also be evaluated in parallel if multithreaded evaluation is
+enabled.
+
+If there are no errors, Gamma exits once all operations have been
+evaluated, at which point all requested outputs will have been written
+out.
+
+Unalias: {the language}
+
+### How Errors are Reported
+
+If Gamma finds an error when executing a program, it prints it out,
+accompanied by all available information on its location in the source
+and a stack trace of the calls that led up to it. Although Gamma tries
+to restrict the trace to frames that concern your program, it may
+still contain lines corresponding to library functions, or functions
+within Gamma's core, so that some interpretation is often required to
+determine the root of the problem.
+Document: manual/scheme
+In Scheme this inconvenience may be further exacerbated by macros and
+tail call elimination.
+Document: manual
+
+Consider the simple program shown below.
+
+Document: manual/scheme
+```scheme
+(import (gamma polyhedra) (gamma operations))
+
+(define (hollow radius width)
+  (difference (sphere radius) (sphere (- radius width))))
+
+(output 1 (hollow 5))
+```
+Document: manual/lua
+```lua
+polyhedra = require "gamma.polyhedra"
+operations = require "gamma.operations"
+
+function hollow(radius, width)
+   return operations.difference(
+      polyhedra.sphere(radius),
+      polyhedra.sphere(radius - width))
+end
+
+output(1, hollow(5))
+```
+Document: manual
+
+If called upon to execute it, Gamma will exit after printing the
+following diagnostic inforamtion^[Long lines have been broken and
+indented to fit the page width.  They would normally appear as a
+single line in the output.].
+
+Document: manual/scheme
+```
+example.scm:3:0: in procedure 'hollow':
+example.scm:3:0: error: Wrong number of arguments to
+    #<procedure hollow (radius width)>
+
+#0 in procedure 'hollow', at example.scm:3:0: (hollow _ _)
+#1 at example.scm:6:10: (_)
+#2 at ice-9/boot-9.scm:4408:12: (_)
+#3 in procedure 'save-module-excursion', at
+    ice-9/boot-9.scm:2858:4: (save-module-excursion _)
+#4 at ice-9/eval.scm:619:8: (_ #(#(#<directory (gamma %environment)
+    7fb9ea3a6140>)))
+```
+
+The error is identified as arising in the use of the function
+`hollow`, defined at the very beginning of line 3, which is called
+with only one argument when it takes two.  The site of the offending
+call is at line 6, column 10 of the source file, as reported in the
+second frame of the stack trace.  All frames below that, are part of
+Guile's startup process and can be ignored.
+
+Document: manual/lua
+```
+example.lua:7: in global function: 'hollow'
+example.lua:7: error: attempt to perform arithmetic on a nil value
+    (local 'width')
+
+#0 in a C function
+#1 in function 'hollow', at example.lua:7
+#2 in the main chunk, at example.lua:10
+```
+
+The error is identified as arising inside the function `hollow`,
+specifically at line 7 of the input file.  It is reported as illegal
+arithmetic involving the argument `width`, which is `nil`, but
+the real cause lies in the call to `hollow` made at line 10, shown in
+the third frame in the stack trace.
+
+This call is made with only one argument, when `hollow` takes two.
+While not an error in itself, Lua's semantics dictate that the second
+argument is simply left with the value `nil`, so that the error is
+only caught and reported when the argument is used to calculate the
+radius of the inner sphere.
+
+Document: manual
+
+Errors may be reported even with correct programs when Gamma tries to
+evaluate the operations contained in them.  They're usually still
+rooted in programmer error, but diagnostic information may be less
+precise, making their nature harder to understand.  Furthermore
+whether they occur at all and how they're reported may depend on how
+the calculation is made, perhaps only manifesting when a parameter
+takes certain values, and sometimes they may go undetected altogether.
+In the latter case, they will still result in errors in the calculated
+geometry.
+
+Still, enough information is usually provided to give you an idea of
+what the issue is and how it can be fixed.  As an example, consider
+the program shown below.
+
+Document: manual/scheme
+```scheme
+(import (gamma transformation) (gamma polygons)
+        (gamma operations))
+
+(output 1 (extrusion
+           (circle 5)
+           (translation 0 0 0)
+           (translation 0 0 2)
+           (translation 0 0 1)))
+```
+Document: manual/lua
+```lua
+transformation = require "gamma.transformation"
+polygons = require "gamma.polygons"
+operations = require "gamma.operations"
+
+output(1, operations.extrusion(
+          polygons.circle(5),
+          transformation.translation(0, 0, 0),
+          transformation.translation(0, 0, 2),
+          transformation.translation(0, 0, 1)))
+```
+Document: manual
+
+It will be executed without problems, yielding an operation that
+requests the extrusion of a circle.  The problem lies in that the
+circle is first extruded to height 2 and then back down to height 1,
+so that the extruded geometry turns in into itself.  The result
+contains self-intersections and is not a valid solid.
+
+When Gamma tries to evaluate the operation, it will fail with the
+following error.
+
+Document: manual/scheme
+```
+example.scm:4:10: in operation 'extrusion(segments(...),
+    translation(...),translati...'
+example.scm:4:10: error: evaluation of 'extrusion(segments(...),
+    translation(...),translati...' failed due to a CGAL assertion 
+    violation 'p1p2p3_2d!=COLLINEAR || p2p1p4_2d!=COLLINEAR'
+```
+Document: manual/lua
+```
+example.lua:5: in operation 'extrusion(segments(...),
+    translation(...),translati...'
+example.lua:5: error: evaluation of 'extrusion(segments(...),
+    translation(...),translati...' failed due to a CGAL assertion 
+    violation 'p1p2p3_2d!=COLLINEAR || p2p1p4_2d!=COLLINEAR'
+```
+Document: manual
+
+The error does not contain a stack trace in this case, since the
+program has finished executing and no stack exists.  For the same
+reason, it can only describe the location of the error in terms of the
+operation that caused it.  Here it is the `extrusion` operation, shown
+with its operands abbreviated, as operation descriptions can get
+rather long.  The source file location where the offending operation
+was created is also reported, so if the program contained more than
+one `extrusion` operations, you would still know which of them caused
+the problem.
+
+The problem itself, is regrettably reported as a cryptic message
+originating in a check made by CGAL, the library that forms Gamma's
+computational geometry core.  This is not likely to make much sense to
+anyone who isn't familiar with the internals of CGAL, but it may at
+least serve as a lead for further investigation.
+
+@include src_options_cpp.texi
+
+## Using GNU Make
+
+You can use GNU Make to take care of invoking Gamma for you.  Although
+its main function --- deciding which pieces of a large program need to
+be rebuilt --- is not needed^[This is because Gamma caches the results
+of calculations, so that rebuilding a previously built output of a
+program, typically consists in loading the cached result and writing
+it out, which doesn't take much time. Moreover, because Gamma doens't
+have anything analogous to separate compilation and linking stages,
+this function of Make is not appropriate.  If a program is split into
+multiple files, all files containing source relevant to the
+computation of an output must be processed each time the output is
+built, regardless of whether they have been changed since the last
+build, or not.], it can still help make development and use of a
+program more convenient.
+
+Here's a simple makefile, that could be used with the sprocket program
+shown in ref:A Few Examples.
+
+Document: manual/scheme
+Alias: .ext .scm
+Document: manual/lua
+Alias: .ext .lua
+Document: manual
+
+```make
+OPT ?= --dump-list=-
+
+sprocket.stl sprocket.off: sprocket.ext
+	gamma $(OPT) -o $@ $<
+
+.PHONY: clean
+clean:
+	rm -f sprocket.stl sprocket.off *.zo
+```
+
+You could use this to build the sprocket geometry and write it to a
+file in either STL or OFF format simply by s`make sprocket.stl` or
+s`make sprocket.off` repsectively.  You can also clean your working
+directory of generated output files and stored cache files with the
+traditional s`make clean` rule.
+
+Concept: parameters
+
+If on occasion you need to specify different options to Gamma than
+those contained in the makefile, you can simply append them to your
+Make invocation, e.g. s`make sprocket.stl OPT=-Ddraft`.
+Alternatively, the makefile can be extended to support parameters more
+directly.  Here is one possible approach.
+
+```make
+OPT ?= --dump-list=-
+
+ifdef draft
+OPT += -Ddraft
+endif
+
+ifdef diameter
+OPT += -Dd_1=$(diameter)
+endif
+
+ifdef pitch
+OPT += -Dp=$(pitch)
+endif
+
+ifdef teeth
+OPT += -Dz=$(teeth)
+endif
+
+ifdef width
+OPT += -Db_f1=$(width)
+endif
+
+sprocket.stl sprocket.off sprocket.wrl: sprocket.ext
+	gamma $(OPT) -o $@ $<
+
+.PHONY: clean
+clean:
+	rm -f sprocket.stl sprocket.off *.zo
+```
+
+With this makefile, you can build an arbitrary sprocket with an
+invocation like s`make sprocket.stl draft=true diameter=6.35
+pitch=12.7 teeth=40 width=7.37`.  This can be more convenient,
+especially if your program is going to be used by others, who are not
+familiar with the specifics of how your parameters are named, or what
+Gamma options can be used to set them.
+
+Finally, here is a simple makefile that can be used with any program
+contained in a single source file which defines an output of the same
+name (without the f`.ext` suffix).
+
+```make
+OPT ?= --dump-list=-
+
+%.stl %.off %.wrl: %.ext
+	gamma $(OPT) -o $@ $<
+
+.PHONY: clean
+clean:
+	rm -f *.stl *.off *.zo
+```
+
+This can be convenient for use during development, but you should
+probably write something more specific if you're going to distribute
+your program for use by others.
+
+Unalias: .ext

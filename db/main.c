@@ -20,8 +20,6 @@
 
 #include "common.h"
 
-#define VERSION_NUMBER "0.1.0"
-
 // Document: program
 
 // # The Debugger
@@ -44,7 +42,7 @@ static void error_callback(int error, const char *description)
     print_error("GLFW error: %s\n", description);
 }
 
-// ## Command Line Options
+// ## Debugger Command Line Options
 
 enum {
     VERSION = 1000,
@@ -854,7 +852,7 @@ Options:\n\
 
         case VERSION:
             print_output("\
-Gamma Debugger " VERSION_NUMBER "\n\
+Gamma Debugger " GAMMADB_VERSION "\n\
 Copyright (C) 2025 Dimitris Papavasiliou.\n\
 \n\
 This program is free software; you can redistribute it and/or modify\n\
@@ -954,6 +952,12 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
         exit(EXIT_SUCCESS);
     }
 
+    print_output("gammadb, version " GAMMADB_VERSION "\n\
+Copyright (C) 2025 Dimitris Papavasiliou.\n\
+This is free software; see the source code for copying conditions.\n\
+There is ABSOLUTELY NO WARRANTY; not even for MERCHANTABILITY or\n\
+FITNESS FOR A PARTICULAR PURPOSE.\n\n");
+
     // We read in the local init file, if it exists, and execute any
     // commands in it.
 
@@ -1024,12 +1028,6 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
     rl_completion_word_break_hook = word_break_hook;
     rl_callback_handler_install("# ", line_handler);
 
-    print_output("gammadb, version " VERSION_NUMBER "\n\
-Copyright (C) 2025 Dimitris Papavasiliou.\n\
-This is free software; see the source code for copying conditions.\n\
-There is ABSOLUTELY NO WARRANTY; not even for MERCHANTABILITY or\n\
-FITNESS FOR A PARTICULAR PURPOSE.\n\n");
-
     while (true) {
         //   1. update the UI as required,
 
@@ -1073,9 +1071,6 @@ FITNESS FOR A PARTICULAR PURPOSE.\n\n");
 
                     exit(EXIT_FAILURE);
                 }
-
-                //   We wrap the data socket inside a `FILE *` to let
-                //   the C library handle I/O on the file.
 
                 FILE *fp = fdopen(fd, "r");
                 read_commands(fp);

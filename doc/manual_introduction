@@ -26,29 +26,23 @@ command line, to "compile" geometry out of a program composed using an
 editor, or it can be used as a graphical application through Gamma
 Debugger, its accompanying geometry inspection tool.
 
-Gamma is freely redistributable software. You may redistribute it
-and/or modify it under the terms of the GNU General Public License as
-published by the Free Software Foundation. Ref: GNU General Public
-License.
-
 This manual provides comprehensive documentation on how to install,
-run and use Gamma and the Gamma Debugger.  It is covered by the GNU
-Free Documentation License. Ref: GNU Free Documentation License.
+run and use Gamma and the Gamma Debugger.
 
-Separate editions of this manual exist for each language supported by
-Gamma.
 Document: manual/scheme
-This edition is for the Scheme language.
+Separate editions of this manual exist for each language supported by
+Gamma.  This edition is for the Scheme language.
 Document: manual/lua
-This edition is for the Lua language.
+Separate editions of this manual exist for each language supported by
+Gamma.  This edition is for the Lua language.
 Document: manual
 
 ## Running Gamma
 
 Document: manual/scheme
-Alias: cube.ext cube.scm
+Alias: .ext .scm
 Document: manual/lua
-Alias: cube.ext cube.lua
+Alias: .ext .lua
 Document: manual
 
 The simplest way to use Gamma, is by invoking it much like one would a
@@ -145,14 +139,14 @@ again.].  The displayed model should change accordingly.
 When you've finished working, enter the command c`exit`, or c`quit`,
 or press k`Ctrl-D` to exit the Debugger.
 
-Unalias: cube.ext
+Unalias: .ext
 
 ## A Program in Broad Strokes
 
 Although very simple, the program shown in the previous section
 illustrates the basic structure of most programs.  After importing
 functions from one or more libraries, they are first used to create
-def:primitive geometry, that is, geometry that isn't based on some
+def:{primitive geometry}, that is, geometry that isn't based on some
 previous result, but is produced from scratch.  These are typically
 simple geometric objects and are therefore rarely the intended output
 of the program. Instead, they serve as basic building blocks which are
@@ -428,7 +422,7 @@ the tips.
 After calculating a number of derived quantities following the
 formulas laid out in the standard^[For the tip diameter, a value
 halfway between the smallest and largest diameters allowed in the
-standard is used.] the program defines a utlity function that places
+standard is used.] the program defines a utility function that places
 its argument relative to the roller seating curves.  Such placement
 functions are very useful in practice, because they can exploit
 symmetries in a design.  This one first rotates the given shape to
@@ -454,7 +448,7 @@ of fig: sprocket.
 
 Figure: sprocket-diagram
 ```print sprocket_diagram.scm
-# resize 500 250
+# resize 1000 500
 # set recenter-on-reload no
 # translate 0.3 11
 # zoom 1.3
@@ -531,25 +525,6 @@ Document: manual/lua
 ```
 Document: manual/all
 
-Figure: bolt
-```print bolt.scm
-# set print-frames yes
-# split horizontally 3 1
-# split vertically 2
-# focus 2
-# target bolt
-# rotate 55 -40 -20
-# zoom -0.2
-# focus 3
-# zoom -0.5
-# rotate 90 -45 30
-```
-  The output of the fastener example program, as seen in the Debugger.
-  The lower left viewport shows the thread profile polygon, which is
-  extruded along a helical path, forming the threads shown in the
-  upper left viewport.  A shaft and a chamfered hexagonal head is
-  added, to form the final bolt shown in the right viewport.
-
 The extrusion operation takes a polygon and a list of arbitrary
 transformations.  It transforms the polygon with each of the
 transformations in order and connects the corresponding vertices to
@@ -569,6 +544,25 @@ operation.  To illustrate that any transformation can be used in the
 extrusion, a gradual scaling is included in the first revolution.
 This tapers the thread towards the end of the bolt, to ease threading
 into a nut.
+
+Figure: bolt
+```print bolt.scm
+# set print-frames yes
+# split horizontally 3 1
+# split vertically 2
+# focus 2
+# target bolt
+# rotate 55 -40 -20
+# zoom -0.2
+# focus 3
+# zoom -0.5
+# rotate 90 -45 30
+```
+  The output of the fastener example program, as seen in the Debugger.
+  The lower left viewport shows the thread profile polygon, which is
+  extruded along a helical path, forming the threads shown in the
+  upper left viewport.  A shaft and a chamfered hexagonal head is
+  added, to form the final bolt shown in the right viewport.
 
 The `draft_p` parameter is used here to select the number of steps for
 each revolution of the thread, but its purpose and effect is much the
@@ -669,17 +663,21 @@ be seen in the upper left viewport in ref:wye-fitting.
 
 Figure: more-fittings
 ```print fittings.scm
-# resize 500 250
+# resize 750 250
 # split horizontally 2
 # split vertically 2
 # rotate 0 -90
+# zoom -0.2
 # focus 2
 # split vertically 2
 # rotate 0 -60 -45
+# zoom -0.4
 # focus 3
 # rotate 15 -85 120
+# zoom -0.2
 # focus 4
 # rotate 0 -60
+# zoom -0.2
 ```
   More outputs from the fitting example program.  From left to right,
   top to bottom: The result of remeshing the basic geometry without
@@ -699,7 +697,7 @@ geometry at its boundaries.]
 In this case, fairing must only be applied to the vertices of the
 central portion created by the hulling operation.  These are selected
 as those lying inside the volume defined by the intersection of three
-bounding halfspaces, a kind o def:{bounding volume}^[There are many
+bounding halfspaces, a kind of def:{bounding volume}^[There are many
 kinds of bounding volumes, such as boxes, spheres and cylinders and
 they can be transformed and combined much like geometry.], placed at
 the bases of the three ends by means of the placement function.  Each
@@ -718,3 +716,5 @@ used again much like before, to select a coarser mesh through higher
 curve tolerance and remeshing targets during development.  Try to
 undefine it and run the build again.  The result should be more
 detailed and of higher quality, but be prepared for a longer wait.
+
+Unalias: _p

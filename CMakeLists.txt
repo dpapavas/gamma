@@ -59,6 +59,8 @@ option(USE_LUA "Try to build the Lua backend" TRUE)
 
 cmake_minimum_required(VERSION 3.21...3.29)
 project(main)
+Set(GAMMA_VERSION "0.6.0")
+set(GAMMADB_VERSION "0.1.0")
 
 if (POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)

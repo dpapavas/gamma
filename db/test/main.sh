@@ -20,7 +20,7 @@ test_run_invalid_2() { run -c "run all bogus" | syntax_error; }
 test_run_invalid_3() { run -c "run single bogus" | syntax_error; }
 
 match_run() {
-    match --debugger-address=gammadb-$(while ! pidof -s gammadb; do :; done) "$@"
+    match --ipc-address=gammadb-$(while ! pidof -s gammadb; do :; done) "$@"
 }
 
 test_run_no_window() {
