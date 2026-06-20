@@ -6,10 +6,10 @@
           point plane
 
           λ case-λ assert tile roll range linear-partition with-curve-tolerance
-          with-sine-tolerance list-for match-for partial ~> when~> lambda~>
-          λ~>)
+          with-sine-tolerance list-for match-list-for partial partial* ~> when~>
+          lambda~> λ~> enumerate)
 
-  (import (gamma %base)
+  (import (gamma %base) (rnrs syntax-case)
           (scheme base) (scheme case-lambda) (scheme write)
           (srfi 1)
           (ice-9 match))
@@ -30,6 +30,12 @@
         (if (zero? j)
             (append lis (reverse head))
             (recur (cons (car lis) head) (cdr lis) (- j 1)))))
+
+    (define (enumerate x)
+      (let loop ((i 0) (x x) (lis '()))
+        (if (null? x)
+            (reverse lis)
+            (loop (+ i 1) (cdr x) (cons (cons i (car x)) lis)))))
 
     (define range
       (case-lambda
@@ -103,19 +109,19 @@
         ((_ ((x xs) rest ...) exp ...)
          (%list-for '() ((x xs) rest ...) exp ...))))
 
-    (define-syntax %match-for
+    (define-syntax %match-list-for
       (syntax-rules ()
         ((_ out () exp ...) (cons (begin exp ...) out))
         ((_ out ((x xs) rest ...) exp ...)
          (let loop ((x_i xs))
            (if (null? x_i) out
                (match-let ((x (car x_i)))
-                 (%match-for (loop (cdr x_i)) (rest ...) exp ...)))))))
+                 (%match-list-for (loop (cdr x_i)) (rest ...) exp ...)))))))
 
-    (define-syntax match-for
+    (define-syntax match-list-for
       (syntax-rules ()
         ((_ ((x xs) rest ...) exp ...)
-         (%match-for '() ((x xs) rest ...) exp ...))))
+         (%match-list-for '() ((x xs) rest ...) exp ...))))
 
     (define-syntax %partial
       (syntax-rules (_)
@@ -136,6 +142,44 @@
       (syntax-rules ()
         ((partial . args)
          (%partial () () . args))))
+
+    (define-syntax partial*
+      (lambda (x)
+        (syntax-case x ()
+          ((_ . forms)
+           (let* ((formals '())
+                  (new-forms
+
+                   ;; Walk through the forms recursively, creating and
+                   ;; substituting a new formal argument for each
+                   ;; occurence of `_`.
+
+                   (let recur ((stx #'forms))
+                     (syntax-case stx (_)
+                       ;; Generated formal aguments are gathered in
+                       ;; reverse order.
+
+                       (_ (let ((v (car (generate-temporaries #'(x)))))
+                            (set! formals (cons v formals))
+                            v))
+
+                       ;; This clause handles pairs as well as lists
+                       ;; etc.
+
+                       ((a . d) #`(#,(recur #'a) . #,(recur #'d)))
+
+                       ;; Symbols, literals, etc. are simply passed
+                       ;; through.
+
+                       (other #'other)))))
+
+             ;; We can now create the final lambda, consisting of the
+             ;; formal arguments, after reversal and the filled in
+             ;; body.
+
+             (with-syntax (((arg ...) (reverse formals))
+                           ((form ...) new-forms))
+               #'(lambda (arg ... . rest) (apply form ... rest))))))))
 
     (define-syntax %~>
       (syntax-rules (_)

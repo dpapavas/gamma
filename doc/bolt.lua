@@ -17,21 +17,21 @@ function thread(d, P, L)
    c = -H / 4
    d = H * 5 / 8
 
-   profile = output(            -- The basic profile
+   local profile = output(      -- The basic profile
       1, polygons.simple(
          point(b, c), point(b, 0), point(a, d),
          point(-a, d), point(-b, 0), point(-b, c)))
 
    -- The transformations making up the helical path.
 
-   path = {}
+   local path = {}
    for s = 0, math.ceil(L / P) - 1 do
       for t = 0, n - 1 do
-         u = t / n
-         x = (transformation.rotation(90, 1)
-              * transformation.rotation(360 * u, 0)
-              * transformation.translation(
-                 P * (s + u) - L, d_1 / 2, 0))
+         local u = t / n
+         local x = (transformation.rotation(90, 1)
+                    * transformation.rotation(360 * u, 0)
+                    * transformation.translation(
+                       P * (s + u) - L, d_1 / 2, 0))
 
          if s == 0 then
             x = x *  transformation.scaling(u, u, 1)

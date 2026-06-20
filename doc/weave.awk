@@ -42,7 +42,7 @@ function substitute_weight(from, to, inside)
 {
   while(1) {
     if (in_weight) {
-      a = gensub("(" inside ")" from "([[:space:].,\"')]|$)", "\\1}\\2", 1)
+      a = gensub("(" inside ")" from "([[:space:].,\"'^)]|$)", "\\1}\\2", 1)
       if ($0 != a) {
         in_weight = 0
         $0 = a
@@ -114,7 +114,7 @@ $0 ~ "^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*" {
 
 # Blank lines
 
-!(in_example || in_listing) && /^[[:space:]]*$/ {
+!(in_example || in_listing || in_print) && /^[[:space:]]*$/ {
   if (in_text && text) {
     close_list()
     flush_text()
@@ -243,6 +243,7 @@ $0 ~ "^[[:space:]]*" prefix {
     }
 
     in_print = (bindir "/db/gammadb -q --batch"  \
+                " -c \"set default-vertex-color 0.95 0.95 0.95 1\"" \
                 " -c \"set resize-on-split yes\"" \
                 " -c \"set default-zoom 0.85\"" \
                 " -c \"define draft\"" \

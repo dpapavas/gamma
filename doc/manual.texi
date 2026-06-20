@@ -7,7 +7,7 @@
 \renewcommand{\topfraction}{.85}
 \renewcommand{\bottomfraction}{.75}
 \renewcommand{\textfraction}{.15}
-\renewcommand{\floatpagefraction}{.7}
+\renewcommand{\floatpagefraction}{.85}
 \geometry{margin=1.25in}
 
 \overfullrule=1mm
@@ -33,8 +33,11 @@
         identifierstyle=\color{black}\bfseries,
         keywordstyle=\color{gray3},
         commentstyle=\slshape,
+        @c Center tildes vertically
+        literate={~}{{\raisebox{0.5ex}{\texttildelow}}}{1}
 }
-
+\lstset{
+}
 \lstdefinestyle{lua} {
         language={[5.3]Lua}
 }

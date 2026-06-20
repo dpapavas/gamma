@@ -30,9 +30,7 @@
          (rotation 90 1)
          (rotation (* 360 t) 0)
          (translation (- (* P (+ s t)) L) (/ d_1 2) 0)
-         (if (zero? s)
-             (scaling t t 1)
-             (scaling 1 1 1))))))))
+         (if (zero? s) (scaling t t 1) (scaling 1 1 1))))))))
 
 (define-output bolt
   (union

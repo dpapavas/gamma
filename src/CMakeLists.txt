@@ -54,7 +54,8 @@ if (WIN32)
 target_link_options(objects PUBLIC -static)
 endif ()
 
-target_link_libraries(objects PUBLIC CGAL::CGAL CGAL::Eigen3_support
+target_link_libraries(objects PUBLIC
+  CGAL::CGAL CGAL::Eigen3_support CGAL::TBB_support
   ${ZLIB_LIBRARIES})
 
 # Scheme backend
