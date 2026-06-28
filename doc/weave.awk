@@ -68,6 +68,15 @@ function substitute_weight(from, to, inside)
 function flush_text()
 {
   if (text) {
+    if (in_figure) {
+      if (in_figure == 2) {
+        text = text "}"
+      }
+
+      text = text "\n@end float\n"
+      in_figure = 0
+    }
+
     sub(/\n*$/, "\n", text)
 
     print text
@@ -77,14 +86,7 @@ function flush_text()
 
 function close_list()
 {
-  if (in_figure) {
-    if (text ~ /@caption{/) {
-      text = text "}"
-    }
-
-    text = text "\n@end float\n"
-    in_figure = 0
-  } else if (in_table) {
+  if (in_table) {
     text = text "\n@end table\n"
     in_table = 0
   } else if (in_enumerate) {
@@ -103,6 +105,9 @@ function close_list()
 }
 
 $0 ~ "^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*" {
+  close_list()
+  flush_text()
+
   sub("^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*", "")
   sub("/all$", "")
 
@@ -116,9 +121,10 @@ $0 ~ "^[[:space:]]*" prefix "[[:space:]]?Document:[[:space:]]*" {
 
 !(in_example || in_listing || in_print) && /^[[:space:]]*$/ {
   if (in_text && text) {
-    close_list()
-    flush_text()
+    # When inside text, blank lines flush the text to create
+    # paragraphs.  They should only close figures and their captions.
 
+    flush_text()
     text = ""
   }
 
@@ -167,16 +173,22 @@ $0 ~ "^[[:space:]]*" prefix {
 
   # Lists and tables
 
-  if (/^ {2,}/ && (in_indent || !(in_example || in_listing || in_displaymath || in_graph || in_print || in_geometry))) {
-    in_indent = 1
-
-    sub(/^ */, "")
+  if (/^ {2,}/ && (in_indent || !(in_example || in_listing || in_displaymath ||
+                                  in_graph || in_print || in_geometry))) {
+    if (!in_indent) {
+      a = length()
+      sub(/^ */, "")
+      in_indent = a - length()
+    } else {
+      $0 = substr($0, in_indent + 1)
+    }
 
     # Table item
 
     if (in_figure) {
-      if (!(text ~ /@caption\{/)) {
+      if (in_figure == 1) {
         text = text "@caption{"
+        in_figure = 2
       }
     } else if (split($0, v, ":=") == 2) {
       if (!in_table) {
@@ -224,6 +236,8 @@ $0 ~ "^[[:space:]]*" prefix {
     }
   } else if (in_indent) {
     in_indent = 0
+
+    flush_text()
     close_list()
   }
 
@@ -462,7 +476,7 @@ $0 ~ "^[[:space:]]*" prefix {
 
 # Progam source code
 
-prefix {
+prefix && (target ~ /^program/) {
   if (in_text) {
     in_text = 0
   }
@@ -480,8 +494,8 @@ prefix {
 END {
   if (in_program) {
     print_program()
-  } else {
-    close_list()
-    flush_text()
   }
+
+  close_list()
+  flush_text()
 }
