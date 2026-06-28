@@ -402,11 +402,12 @@ $0 ~ "^[[:space:]]*" prefix {
     # `code` spans
 
     while ((in_code && sub(/`/, "}")) ||
-           (!in_code && match($0, /[ksvfco]?`/))) {
+           (!in_code && match($0, /[rksvfco]?`/))) {
       if (!in_code) {
         s = substr($0, RSTART, RLENGTH)
 
-        (s == "k`" && sub(/k`/, "@kbd{")) ||
+        (s == "r`" && sub(/r`/, "@r{")) ||
+          (s == "k`" && sub(/k`/, "@kbd{")) ||
           (s == "s`" && sub(/s`/, "@samp{")) ||
           (s == "v`" && sub(/v`/, "@var{")) ||
           (s == "f`" && sub(/f`/, "@file{")) ||
