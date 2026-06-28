@@ -190,14 +190,25 @@ $0 ~ "^[[:space:]]*" prefix {
         text = text "@caption{"
         in_figure = 2
       }
-    } else if (split($0, v, ":=") == 2) {
+    } else if (split($0, v, "[[:space:]]*:=[[:space:]]*") == 2) {
       if (!in_table) {
         in_table = 1
         text = text "\n@table @code"
       }
 
-      text = text "\n@item "
-      $0 = v[1] "\n" v[2]
+      if (in_table == 1) {
+        text = text "\n@item "
+      } else {
+        text = text "\n@itemx "
+      }
+
+      if (v[2]) {
+        $0 = v[1] "\n" v[2]
+        in_table = 1
+      } else {
+        $0 = v[1]
+        in_table = 2
+      }
     } else if (match($0, /^[[:digit:]]+\. /)) {
       if (!in_enumerate) {
         in_enumerate = 1
