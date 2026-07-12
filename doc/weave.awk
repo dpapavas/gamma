@@ -464,6 +464,11 @@ $0 ~ "^[[:space:]]*" prefix {
 
     # `code` spans
 
+    # Protect "empty spans" from the transformations below and let
+    # Texinfo treat two consecutive graves as quotation marks.
+
+    $0 = gensub(/([^`]?)``([^`]?)/, "\\1@quotedblleft{}\\2", "g")
+
     while ((in_code && sub(/`/, "}")) ||
            (!in_code && match($0, /[rksvfco]?`/))) {
       if (!in_code) {
@@ -483,6 +488,10 @@ $0 ~ "^[[:space:]]*" prefix {
         in_code = 0;
       }
     }
+
+    # Restore the graves.
+
+    $0 = gensub(/@quotedblleft\{\}/, "``", "g")
 
     # **strong** and *emphasized* text
 

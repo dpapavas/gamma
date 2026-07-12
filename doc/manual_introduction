@@ -22,7 +22,7 @@ attractive option for the design of objects that are best described in
 mathematical terms, or need to be parametric.
 
 It can be used like a traditional compiler, by invoking it on the
-command line, to "compile" geometry out of a program composed using an
+command line, to ``compile'' geometry out of a program composed using an
 editor, or it can be used as a graphical application through Gamma
 Debugger, its accompanying geometry inspection tool.
 
@@ -33,7 +33,7 @@ Document: manual/scheme
 Separate editions of this manual exist for each language supported by
 Gamma.  This edition is for the Scheme language.
 Document: manual/lua
-Separate editions of this manual exist for each language supported by
+Separate editions of this manual exist for each language supported by=
 Gamma.  This edition is for the Lua language.
 Document: manual
 
@@ -410,12 +410,12 @@ to a lower number while working on the sprocket.]
 
 Being a toothed wheel, a sprocket is defined in terms of the disk from
 which it is machined and the geometry of the parts that need to be cut
-out from its rim to form the teeth.  These are called the "tooth gap
-forms" in the standard and are based on two curves.
+out from its rim to form the teeth.  These are called the ``tooth gap
+forms'' in the standard and are based on two curves.
 
 The roots of the gaps are formed by segments of the small circles
 shown in ref:sprocket-diagram, subtending a specified angle, called
-the "roller-seating angle" in the standard.  From there, arcs along
+the ``roller-seating angle'' in the standard.  From there, arcs along
 the larger circles are followed to form the flanks of the teeth, up to
 the tips.
 
@@ -485,24 +485,24 @@ Gamma with outputs enabled for each of the current window's viewport
 targets.  If matching outputs are defined in the program, their
 geometry is loaded in the corresponding viewports.  Since the window
 is divided into three viewports, two of which have their default
-targets, "1" and "2", while the third's target is "sprocket", these
+targets, s`1` and s`2`, while the third's target is s`sprocket`, these
 are the outputs that will be loaded on each run.
 
-The outputs "1" and "2" are meant for debugging.  In this example,
+The outputs s`1` and s`2` are meant for debugging.  In this example,
 they are set to the two components that make up the sprocket's
 cross-section, but in general you would set them to output the part of
 the design you're currently working on.  The `output` function returns
 its first argument, so you can usually just wrap any expression that
 returns geometry that you'd like to inspect inside an `output` call
 and press the k`r` key on the respective viewport.  This is
-essentially analogous to "`printf()` debugging".
+essentially analogous to ``@w{}`printf()` debugging''.
 
 Document: manual/scheme
 
 In Scheme, there is a more convenient way to insert the `output` call,
 by simply adding s`#>@var{target}` before the form whose results you
 wish to inspect.  This syntax has been used to output the result of
-the intersections forming the teeth flanks to viewport "2", by
+the intersections forming the teeth flanks to viewport s`2`, by
 preceding the call to `intersection` with `#>3`.
 
 Document: manual/all
@@ -579,7 +579,7 @@ simple shapes, either linear or made up of simple circular curves.  A
 final example demonstrates that more complex surfaces can also be
 obtained, often without much effort.
 
-The following program produces a "Wye" fitting, such as one might use
+The following program produces a ``Wye'' fitting, such as one might use
 to connect three pipes, splitting a flow into two branches, each at 45
 degrees to the incoming direction.
 
@@ -591,13 +591,14 @@ Document: manual/lua
 ```
 Document: manual/all
 
-The final part is produced in three steps.  First a basic, "unfaired"
-version of the part is produced by distributing the three cylindrical
-ends at the required angles and at a certain distance from the center
-of the mesh given by the parameter `radius`.  Here too, this is
-accomplished by means of a "placement" function that transforms the
-ends into place.  To that is added the simplest possible geometry that
-can join the ends together: the convex hull of their bases.
+The final part is produced in three steps.  First a basic,
+``unfaired'' version of the part is produced by distributing the three
+cylindrical ends at the required angles and at a certain distance from
+the center of the mesh given by the parameter `radius`.  Here too,
+this is accomplished by means of a ``placement'' function that
+transforms the ends into place.  To that is added the simplest
+possible geometry that can join the ends together: the convex hull of
+their bases.
 
 The ends are formed by extrusions of the circular shapes that define
 their cross-sections to a length given by the parameter `height`.  The
@@ -619,7 +620,7 @@ kept unaltered, as they need to mate with the incoming and outgoing
 pipes, the central section can be made more smooth.
 
 This is accomplished with the `fair` operation, which moves the
-vertices of a mesh so as to make it "smoother", but since the base
+vertices of a mesh so as to make it ``smoother'', but since the base
 mesh has no vertices in the area that must be smoothed, applying
 fairing to it as it is would not have much effect.  It must therefore
 first be refined using the `remesh` operation.
@@ -643,11 +644,11 @@ Figure: wye-fitting
   faired version is shown in the right viewport.
 
 The remeshing operation splits, flips and moves the edges and vertices
-of the input, so as to produce an "isotropic" mesh, that is, one whose
-edges are all close to a given target length, keeping the shape as
-much as possible the same.  When operating on geometry with features
-that must be exactly preserved, it can often still distort the shape
-to an unacceptable degree.  Had it been applied without any
+of the input, so as to produce an ``isotropic'' mesh, that is, one
+whose edges are all close to a given target length, keeping the shape
+as much as possible the same.  When operating on geometry with
+features that must be exactly preserved, it can often still distort
+the shape to an unacceptable degree.  Had it been applied without any
 constraints to the base mesh of the fitting, such distortions would be
 visible in the sharp edges of the ends, as can be seen in ref:
 more-fittings.
@@ -656,8 +657,8 @@ To avoid this problem, the remeshing operation optionally accepts a
 set of edges that should be protected, in the from of a def:selection.
 Such selections can be made on the vertex, edge, or face level and can
 be obtained in various ways.  In this case edges are selected based on
-their "sharpness angle", the angle formed by their incident faces, and
-which should be 90 degrees or larger.  As a result, only the sharp
+their ``sharpness angle'', the angle formed by their incident faces,
+and which should be 90 degrees or larger.  As a result, only the sharp
 edges at the ends are selected and protected during remeshing, as can
 be seen in the upper left viewport in ref:wye-fitting.
 
