@@ -63,10 +63,11 @@ static void key_callback(
     }
 }
 
-// The following callback handles mouse motion.  Modes such as
-// rotation, zooming and tracking are concerned with relative motion,
-// so we need to calculate the position relative to the previous
-// callback.  We keep the cursor location in a couple of variables.
+// The following callbacks handles mouse motion and button presses.
+// Modes such as rotation, zooming and tracking are concerned with
+// relative motion, so we need to calculate the position relative to
+// the previous callback.  We keep the cursor location in a couple of
+// variables.
 
 static double previous_x = NAN, previous_y = NAN;
 
@@ -155,8 +156,6 @@ static void cursor_position_callback(GLFWwindow *window, double x, double y)
     previous_y = y;
 }
 
-// Finally this callback handles mouse button presses.
-
 static void mouse_button_callback(
     GLFWwindow *window, int button, int action, int mods)
 {
@@ -171,6 +170,28 @@ static void mouse_button_callback(
     } else if (action == GLFW_RELEASE && mode == button + 1) {
         mode = IDLE;
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    }
+}
+
+// Finally this callback handles focus events.  When a window is
+// focused by the user via the mouse pointer, we want it to also be
+// the target of terminal commands.  We issue an implicit `window`
+// command to select it.
+
+static void focus_callback(GLFWwindow *window, int focused)
+{
+    if (focused) {
+        struct window *w = (struct window *)glfwGetWindowUserPointer(window);
+
+        const size_t n = strlen(w->name), m = sizeof("window ") + n;
+        char s[m] = {};
+
+        strcat(s, "window ");
+        strcat(s, w->name);
+
+        FILE *fp = fmemopen(s, m, "r");
+        read_commands(fp);
+        fclose(fp);
     }
 }
 
@@ -658,6 +679,7 @@ struct window *find_window(const char *name)
     glfwSetKeyCallback(w->window, key_callback);
     glfwSetMouseButtonCallback(w->window, mouse_button_callback);
     glfwSetCursorPosCallback(w->window, cursor_position_callback);
+    glfwSetWindowFocusCallback(w->window, focus_callback);
 
     lock_window(w);
 
@@ -1171,7 +1193,7 @@ bool refresh_windows(void)
     bool p = false;
 
     for (struct window *w = windows; w; w = w->next) {
-        p = p || refresh_window(w);
+        p = p | refresh_window(w);
     }
 
     return p;
