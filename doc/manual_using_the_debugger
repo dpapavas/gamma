@@ -1,0 +1,154 @@
+-*- mode: weave; -*-
+
+Document: manual
+
+# Using the Debugger
+
+Gamma Debugger, or the Debugger for short, is the interactive
+companion to Gamma.  You can use it to inspect the geometry from
+multiple program outputs inside one or more windows, which can be
+partitioned arbitrarily into viewports.  When you make changes to your
+program, it can invoke Gamma for you and refresh the displayed
+outputs, collectively or separately.  It is operated by commands which
+you can type at the terminal, if you prefer to use it as a
+command-driven debugger.  Alternatively, you can bind commands to
+keystokes and use the Debugger exclusively through the viewing
+windows, for an interface similar to an Integrated Development
+Environment (IDE).
+
+Concept: debugger
+
+## Invoking the Debugger from the Command Line
+
+You can start the Debugger by running the program c`gammadb`, possibly
+followed by one or more options. Once started, it reads commands from
+the terminal until you tell it to exit, which you can do by typing the
+c`quit` or c`exit` commands (they are equivalent), or by pressing
+k`Ctrl-D` when the command line is empty.
+
+Concept: debugger,initialization file
+
+During startup, the Debugger looks in the current working directory
+for a file named f`.gammadbinit`.  This is called an
+def:{initialization file}.  If it exists, lines are read from it and
+executed as commands, exactly as if they had been typed at the prompt.
+The initialization file can contain any of the commands described in
+ref: Debugger Commands.  It may additionally contain comments, which
+start with a s`#` anywhere on a line and extend until the end of the
+line.  They are ignored.  Blank lines are also allowed and are
+likewise ignored.
+
+You can place an initialization file in the same directory as your
+program and then simply invoke c`gammadb` from this directory, without
+need of any further arguments.  Here are some things you can do with
+an initialization file:
+
+  1. Set up Debugger settings.  At a minimum, you should set `args` to
+     tell the Debugger how to run your program, but there are other
+     useful settings.  Ref:{Commands for Settings} for a complete
+     list.
+  2. Create and configure one or more windows to view your program's
+     output.  Every window can be partitioned arbitrarily into
+     viewports, each of which is dedicated to displaying the geometry
+     of a single output.  Ref:{Window Commands} for details on how to
+     create windows and ref:{Viewport Commands} on how to set them up.
+  3. Define key bindings, so that key presses while the mouse cursor
+     is inside one of the viewing windows execute specific commands.
+     You can use such key bindings to tell the Debugger to re-run your
+     program and update its viewports, toggle viewport state, such as
+     whether vertices, edges or faces are drawn, or temporarily
+     maximize a vieport for easier inspection of its geometry.
+     Ref:{Binding Commands} for details.
+
+You may want to end your initialization file with a c`run` or
+c`present` command for each window.  These ensure the window is made
+visible and if not present in the initialization file will need to be
+typed at the prompt on each startup.  Once a viewing window is
+visible, further interaction can then proceed by means of key
+bindings. Ref:{A Few Examples} for a practical example of a complete
+initialization file.
+
+## Typing Commands Interactively
+
+Concept: debugger,commands
+
+The Debugger uses the GNU Readline library, so when you need to type
+commands interactively, you can benefit from its extensive set of
+command-line editing and history features.  These are documented in
+Readline's manual, so this section will only describe the aspects that
+are particular to the Debugger.
+
+### Command History
+
+Readline keeps track of the commands you type and they can be
+recalled, to be edited or re-executed.  By default the 100 last
+commands are retained in the command history, but you can change that
+limit if needed, by means of the `history-size` setting.  Consecutive
+identical commands are included in the history only once.  Blank lines
+are ignored.
+
+When the `save-history` setting is enabled, the Debugger writes the
+command history to a file named f`.gammadb_history` in the current
+directory on exit.  The history is then automatically recovered from
+this file on the next startup.  If the setting is disabled (this is
+the default), command history is discarded when you quit.
+
+You can configure these settings in your initialization file.  Ref:
+Commands for Settings, for details.
+
+### Command Completion
+
+The Debugger also provides context-sensitive command completion.  You
+can use it to type only part of a keyword and let Readline fill in the
+rest for you.  The default completion key is k`Tab`.
+
+The Debugger knows what part of a command you're typing and completes
+accordingly.  For example, if you type s`sp` right after the prompt
+and press k`Tab`, it will be completed to s`split`, with a space
+character helpfully appended so that you can immediately continue
+typing in the first argument.  If you do so by typing s`h` and
+pressing k`Tab` again, it is completed to s`horizontally`, which is
+one of the two arguments expected by the `split` command.  Had you
+tried to complete s`h` right after the prompt, it would have resulted
+in the s`hide` command instead.
+
+When there are more than one possible candidates, only their common
+prefix will be completed when you press k`Tab`.  Completion cannot
+continue after that, but you can press k`Tab` twice to display the
+list of candidates.  You can then consult it and type in more text so
+as to make the completionn unambiguous, before pressing k`Tab` again.
+
+For example, if you type s`p` at the start of a command and press
+k`Tab`, it will be completed only up to s`pr`.  Pressing k`Tab` two
+more times, will list the two candidates, which are the commands
+s`present` and s`print`.  You need only add s`e`, before pressing
+k`Tab` again to get to s`present`.
+
+Because the suggested completions are sensitive to the command you
+have typed in so far, this feature can be helpful in more than one
+ways.  For instance you can type s`set`, or s`show` and press k`Tab`
+twice to get a list of all available settings Doing the same with
+s`bind` instead of s`set` will get you a list of all keys you can
+bind.
+
+## Debugger Commands
+
+Concept: debugger,commands
+
+This section describes the commands understood by the Debugger.  You
+can type these at the prompt, bind them to key presses, or have the
+Debugger read them from command files, or from the initialization
+file.  The effect will be the same in each case^[However, only
+commands entered at the prompt will be retained in the command
+history.].
+
+@include db_commands_c.texi
+
+## Debugger Command Line Options
+
+Here is a list of the command line options understood by the Debugger.
+
+Concept: command line options
+Concept: debugger,command line options
+
+@include db_main_c.texi

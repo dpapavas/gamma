@@ -449,28 +449,7 @@ int parse_options(int argc, char *argv[])
             // accepted by Gamma.  Many options have both long and
             // short forms; both are shown in such cases.
 
-        case VERSION:
-            //   --version := Print the program version number,
-            //   along with copyright information and exit.
-
-            std::cout
-                << ("Gamma " GAMMA_VERSION R"(
-Copyright (C) 2022 Dimitris Papavasiliou.
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see http://www.gnu.org/licenses/.)")
-                << std::endl;
-            break;
+            // Concept: command line options
 
         case 'h':
             //   -h :=
@@ -582,6 +561,29 @@ Debugging options:
 
             break;
 
+        case VERSION:
+            //   --version := Print the program version number,
+            //   along with copyright information and exit.
+
+            std::cout
+                << ("Gamma " GAMMA_VERSION R"(
+Copyright (C) 2022 Dimitris Papavasiliou.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see http://www.gnu.org/licenses/.)")
+                << std::endl;
+            break;
+
             // ### Options Controlling Language Front Ends
 
             // These options control how programs are executed by the
@@ -628,6 +630,8 @@ Debugging options:
             PUSH_SIMPLE_OPTION(library_directories);
 
         case 'D':
+            // Concept: parameters
+
             //   -D v`name`[=v`value`] :=
             //   --define-parameter=v`name`[=v`value`] := Define
             //   a global variable before executing each of the

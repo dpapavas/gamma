@@ -53,7 +53,11 @@
         language={[gnu]make}
 }
 
+\indexsetup{level=,toclevel=,noclearpage}
 @end latex
+
+@defcodeindex dc
+@defcodeindex ds
 
 @copying
 Copyright @copyright{} 2026 Dimitris Papavasiliou.
@@ -88,6 +92,7 @@ This manual is for version @value{gamma_version} of Gamma and version
 
 @include doc_manual_introduction.texi
 @include doc_manual_getting_started.texi
+@include doc_manual_using_the_debugger.texi
 
 @node @acronym{GNU} General Public License
 @appendix @acronym{GNU} General Public License
@@ -97,8 +102,31 @@ This manual is for version @value{gamma_version} of Gamma and version
 @appendix @acronym{GNU} Free Documentation License
 @include fdl-1.3.texi
 
+@node Indices
+@appendix Indices
+
+@node Debugger Command Index
+@appendixsec Debugger Command Index
+
+This index lists all commands understood by the Debugger.  These can
+be typed at the prompt or used in command files or the o`-c` command
+line option.
+
+@printindex dc
+
+@node Debugger Setting Index
+@appendixsec Debugger Setting Index
+
+Here are all available settings controlling some aspects of the
+Debugger's behavior.  You can set them with the c`set` command, or
+show their current value with the c`show` command.  Ref: Commands for
+Settings.
+
+@printindex ds
+
 @node Concept Index
-@unnumbered Concept Index
+@appendixsec Concept Index
 
 @printindex cp
+
 @bye

@@ -42,7 +42,7 @@ function substitute_weight(from, to, inside)
 {
   while(1) {
     if (in_weight) {
-      a = gensub("(" inside ")" from "([[:space:].,\"'^)]|$)", "\\1}\\2", 1)
+      a = gensub("(" inside ")" from "([[:space:].,:\"'^)]|$)", "\\1}\\2", 1)
       if ($0 != a) {
         in_weight = 0
         $0 = a
@@ -99,6 +99,9 @@ function close_list()
   if (in_table) {
     text = text "\n@end table\n"
     in_table = 0
+  } else if (in_definition) {
+    text = text "@end defblock\n"
+    in_definition = 0
   } else if (in_enumerate) {
     text = text "\n@end enumerate\n"
     in_enumerate = 0
@@ -225,25 +228,69 @@ $0 ~ "^[[:space:]]*" prefix {
         in_figure = 2
       }
     } else if (split($0, v, "[[:space:]]*:=[[:space:]]*") == 2) {
-      # Table item
+      if (split(v[1], w, ":[[:space:]]*") == 2 &&
+          w[1] ~ /[[:space:]]*[[:upper:]][[:alpha:]]+/) {
+        # Command definition
 
-      if (!in_table) {
-        in_table = 1
-        text = text "\n@table @code"
-      }
+        if (!in_definition) {
+          in_definition = 1
+          text = text "@defblock\n"
+        }
 
-      if (in_table == 1) {
-        text = text "\n@item "
+        # Extract the index name from the category.  First look for a
+        # braced multi-word category and extract the first letter of
+        # the first two words.
+
+        a = gensub("\\{([[:alnum:]])[[:alnum:]]+[[:space:]]+([[:alnum:]]).*",
+                   "\\1\\2", "g", w[1])
+
+        # For a single-word category, extract the first two letters.
+
+        if (a == w[1]) {
+          a = gensub("([[:alnum:]]{2}).*", "\\1", "g", w[1])
+        }
+
+        # Now extract the term.  Try to extract a braced multi-word
+        # term first.
+
+        b = gensub("\\{([^}]*)\\}.*", "\\1", "g", w[2])
+
+        # For single-word terms, get the first word only skipping the
+        # arguments.
+
+        if (b == w[2]) {
+          b = gensub("([^[:space:]]*).*", "\\1", "g", w[2])
+        }
+
+        text = text "@" tolower(a) "index " b "\n"
+        in_definition_deflines = in_definition_deflines "@defline " w[1] " " w[2] "\n"
+
+        if (!v[2]) {
+          next
+        }
+
+        $0 = v[2]
       } else {
-        text = text "\n@itemx "
-      }
+        # Table item
 
-      if (v[2]) {
-        $0 = v[1] "\n" v[2]
-        in_table = 1
-      } else {
-        $0 = v[1]
-        in_table = 2
+        if (!in_table) {
+          in_table = 1
+          text = text "\n@table @code"
+        }
+
+        if (in_table == 1) {
+          text = text "\n@item "
+        } else {
+          text = text "\n@itemx "
+        }
+
+        if (v[2]) {
+          $0 = v[1] "\n" v[2]
+          in_table = 1
+        } else {
+          $0 = v[1]
+          in_table = 2
+        }
       }
     } else if (match($0, /^[[:digit:]]+\. /)) {
       # Enumeration item
@@ -280,6 +327,7 @@ $0 ~ "^[[:space:]]*" prefix {
 
       sub(/^> /, "")
     } else if (!in_table \
+               && !in_definition \
                && !in_enumerate \
                && !in_itemize \
                && !in_quotation \
@@ -294,11 +342,26 @@ $0 ~ "^[[:space:]]*" prefix {
     close_list()
   }
 
-  if (/^(Figure|Program):/) {
+  if (in_definition_deflines) {
+    text = text in_definition_deflines
+    in_definition_deflines = ""
+  }
+
+  # Vertical space
+
+  if (/^Skip:/) {
+    text = text "@vskip " substr($0, 6)
+  } else if (/^(Figure|Program):/) {
     text = text gensub(/^([^:]+):[[:space:]]*(.*)$/, "@float \\1,\\2\n", 1)
     in_figure = 1
   } else if (/^Concept:/) {
-    text = text gensub(/^Concept:[[:space:]]*(.*)$/, "@cindex \\1\n", 1)
+    split(substr($0, 9), v, "[[:space:]]*,[[:space:]]*")
+
+    for (i in v) {
+      text = text (i == 1 ? "@cindex " : "@subentry ") v[i]
+    }
+
+    text = text "\n"
   } else if (/^```print/) {
     sub(/^```print[[:space:]]*/, "")
 
@@ -387,6 +450,7 @@ $0 ~ "^[[:space:]]*" prefix {
         in_displaymath = 0
       } else if ($0 != "```") {
         split($0, v)
+
         if (format == "pdf") {
           text = text "\n@latex\n\\begin{lstlisting}[style=" substr(v[1], 4) "]"
         } else {
@@ -470,11 +534,12 @@ $0 ~ "^[[:space:]]*" prefix {
     $0 = gensub(/([^`]?)``([^`]?)/, "\\1@quotedblleft{}\\2", "g")
 
     while ((in_code && sub(/`/, "}")) ||
-           (!in_code && match($0, /[rksvfco]?`/))) {
+           (!in_code && match($0, /[rtksvfco]?`/))) {
       if (!in_code) {
         s = substr($0, RSTART, RLENGTH)
 
         (s == "r`" && sub(/r`/, "@r{")) ||
+          (s == "t`" && sub(/t`/, "@t{")) ||
           (s == "k`" && sub(/k`/, "@kbd{")) ||
           (s == "s`" && sub(/s`/, "@samp{")) ||
           (s == "v`" && sub(/v`/, "@var{")) ||
@@ -517,15 +582,15 @@ $0 ~ "^[[:space:]]*" prefix {
 
     # Whole sentence cross-references
 
-    substitute_directive("Ref", "  @xref", "", ".")
+    substitute_directive("Ref", "  @xref", "", ",.")
 
     # End of sentence or parenthesized cross-references
 
     substitute_directive("ref", "@pxref", "(", ")")
-    substitute_directive("ref", " @pxref", ";", ".")
-    substitute_directive("ref", " @pxref", ",", ".")
-    substitute_directive("ref", " @ref", "", ".,")
-    substitute_directive("fig", " @ref", "", " .,")
+    substitute_directive("ref", " @pxref", ";", ",.")
+    substitute_directive("ref", " @pxref", ",", ",.")
+    substitute_directive("ref", " @ref", "", ",.,")
+    substitute_directive("fig", " @ref", "", " ,.")
 
     if (sub(/^[[:space:]]*Anchor:[[:space:]]*/, "@anchor{")) {
       sub(/$/, "}")

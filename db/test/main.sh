@@ -97,14 +97,25 @@ test_set() {
     default-zoom 0.5
     default-rotation 10 20 30
     default-translation 50 60 70
+    history-size 1000
 EOF
 }
 
-# This is a special case.  Once we set it to "yes", we expect no
-# further ouput in the show command.
+# These are special cases.
+
+# Once we set "quiet" to "yes", we expect no further ouput in the show
+# command.
 
 test_set_quiet() {
     run -c "set quiet yes" -c "show quiet" | ok
+}
+
+# We need to restore "save-history" to "no" here, before exitting,
+# otherwise it will clobber any existing history file.
+
+test_set_save_history() {
+    run -c "set save-history yes" -c "show save-history" -c "set save-history no" |
+        match "yes"
 }
 
 test_bind_no_key() { run -c "bind" | error "no key specified"; }

@@ -17,7 +17,7 @@ set(program_SOURCES src/operation.h src/operation.cpp src/evaluation.cpp
   doc/program_frontend_introduction)
 
 set(manual_SOURCES doc/manual_introduction doc/manual_getting_started
-  src/options.cpp)
+   doc/manual_using_the_debugger src/options.cpp db/commands.c db/main.c)
 
 string(TIMESTAMP UPDATED "%B %Y")
 

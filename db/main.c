@@ -234,10 +234,10 @@ static char **completion_function(const char *text, int start, int end)
     {
         char *v[] = {
             "program", "args", "quiet", "present-on-reload", "recenter-on-reload",
-            "resize-on-split", "print-frames", "default-vertex-color",
-            "default-view", "default-zoom", "default-rotation",
-            "default-translation", "edge-line-width", "mouse-sensitivity",
-            "vertex-point-size", nullptr};
+            "resize-on-split", "print-frames", "save-history", "history-size",
+            "default-vertex-color", "default-view", "default-zoom",
+            "default-rotation", "default-translation", "edge-line-width",
+            "mouse-sensitivity", "vertex-point-size", nullptr};
 
         WHEN_IN_1("set", {
                 return MATCHES(nullptr, v);
@@ -641,7 +641,12 @@ static void line_handler(char *line)
             evaluate(history_get(history_base + history_length - 1)->line);
         }
     } else {
-        add_history(line);
+        if (history_length == 0
+            || strcmp(
+                history_get(history_base + history_length - 1)->line, line)) {
+            add_history(line);
+        }
+
         evaluate(line);
     }
 
@@ -737,6 +742,10 @@ static void *poll_streams(void *arg)
 
 static void clean_up(void)
 {
+    if (settings.save_history) {
+        write_history(".gammadb_history");
+    }
+
     if (rl_readline_state & RL_STATE_CALLBACK) {
         rl_callback_handler_remove();
     }
@@ -820,6 +829,10 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    // Document: program,manual
+    // Alias: [ r`[`
+    // Alias: ] r`]`
+
     int n, option, no_init = 0;
     while ((n = -1, option = getopt_long(
                 argc, argv,
@@ -827,6 +840,9 @@ int main(int argc, char *argv[])
                 options, &n)) != -1) {
         switch (option) {
         case 'h':
+            //   -h :=
+            //   --help := Print a short help message and exit.
+
             printf("\
 Usage: %s [OPTION...]\n\
 \n\
@@ -851,6 +867,9 @@ Options:\n\
             exit(EXIT_SUCCESS);
 
         case VERSION:
+            //   --version := Print the program version number,
+            //   along with copyright information and exit.
+
             print_output("\
 Gamma Debugger " GAMMADB_VERSION "\n\
 Copyright (C) 2025 Dimitris Papavasiliou.\n\
@@ -871,48 +890,20 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
             exit(EXIT_SUCCESS);
 
         case 'q':
+            //   -q :=
+            //   --quiet := Do not print any messages to standard
+            //   output.  This can also be enabled after startup, with
+            //   the command `set quiet yes`.
+
             settings.quiet = true;
             break;
 
-        case NO_INIT:
-            no_init = 1;
-            break;
-
-        case BATCH:
-            settings.batch = 1;
-            settings.present_on_reload = false;
-            break;
-
-        case ARGS:
-        {
-            size_t n = 0;
-            for (int i = optind; i < argc; n += strlen(argv[i++]) + 1);
-
-            settings.args = (char *)malloc(n + 1);
-
-            if (n == 0) {
-                settings.args[0] = '\0';
-            } else {
-                for (char *s = settings.args; optind < argc; optind++) {
-                    s = stpcpy(s, argv[optind]);
-                    s = stpcpy(s, " ");
-                }
-            }
-
-            break;
-        }
-
-        case TARGET:
-        {
-            struct viewport *v = find_window(optarg)->viewports;
-
-            free((char *)v->name);
-            v->name = strdup(optarg);
-
-            break;
-        }
-
         case 'c':
+            //   -c command := Execute a single command.  This option
+            //   may be used multiple times to run multiple
+            //   commands. It may also be interleaved with the o`-x`
+            //   option as required.
+
             if (evaluate(optarg) < 0) {
                 exit(EXIT_FAILURE);
             }
@@ -920,6 +911,19 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
             break;
 
         case 'x':
+            //   -x file :=
+            //   --execute file := Execute commands from v`file` in
+            //   the current directory.  The lines in the file are
+            //   executed sequentially.  The commands themselves and
+            //   are not printed as they are executed, but any command
+            //   output *is* printed as if the command had been typed
+            //   at the prompt, unless the o`-q` option or `quiet`
+            //   setting are enabled.
+
+            //   An error in any command terminates execution of the
+            //   command file and the Debugger exits with an error
+            //   status.
+
         {
             FILE *fp = strcmp(optarg, "-") ? fopen(optarg, "r") : stdin;
 
@@ -943,10 +947,108 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
             break;
         }
 
+        case NO_INIT:
+            //   --no-init := Do not execute commands from
+            //   initialization files.
+
+            no_init = 1;
+            break;
+
+        case BATCH:
+            //   --batch := Run in batch mode. Exit with status 0
+            //   after processing all the command files specified with
+            //   `-x` and all commands from initialization files, if
+            //   not inhibited with o`--no-init`. Exit with nonzero
+            //   status if an error occurs in executing a command.
+
+            //   Batch mode also causes error messages to be printed
+            //   to standard error instead of standard output.
+            //   Additionally, the `present-on-reload` setting is
+            //   disabled by default, to prevent viewing windows from
+            //   appearing unless explicitly requested.
+
+            //   Batch mode may be useful for running the Debugger as
+            //   a filter, for example to set up a view of one or more
+            //   pieces of geometry and print it to a PDF with the
+            //   c`print` command.  This is how most figures in this
+            //   manual are produced.
+
+            settings.batch = 1;
+            settings.present_on_reload = false;
+            break;
+
+        case ARGS:
+            //   --args argument... := Specify command line arguments
+            //   to be passed when invoking Gamma with the c`run` or
+            //   related commands.  Ref: Running Commands.
+
+            //   This option stops option processing.
+
+            //   Alternatively command line options can also be set by
+            //   means of the `args` setting.  Ref: Commands for
+            //   Settings.  This is often more convenient,
+            //   particularly when done inside a local initialization
+            //   file.
+
+        {
+            size_t n = 0;
+            for (int i = optind; i < argc; n += strlen(argv[i++]) + 1);
+
+            settings.args = (char *)malloc(n + 1);
+
+            if (n == 0) {
+                settings.args[0] = '\0';
+            } else {
+                for (char *s = settings.args; optind < argc; optind++) {
+                    s = stpcpy(s, argv[optind]);
+                    s = stpcpy(s, " ");
+                }
+            }
+
+            break;
+        }
+
+        case TARGET:
+            //   --target name:= Create a window named v`name` with a
+            //   single viewport, whose target is also v`name`.
+
+            //   Normally, no windows are created during startup, to
+            //   allow the user to create and configure windows as
+            //   required by the program inside the local
+            //   initialization file.  In more impromptu use of the
+            //   Debugger however, it may be convenient to be able to
+            //   use it with an existing program, without having to
+            //   write an initialization file.
+
+            // Document: manual/scheme
+            // Alias: .ext .scm
+            // Document: manual/lua
+            // Alias: .ext .lua
+            // Document: manual
+
+            //   For example, the Debugger can be directed to run the
+            //   program shown in ref: Faired Surfaces, by invoking it
+            //   with s`gammadb --target fitting --args fitting.ext -c
+            //   run`.
+
+            // Unalias: .ext
+        {
+            struct viewport *v = find_window(optarg)->viewports;
+
+            free((char *)v->name);
+            v->name = strdup(optarg);
+
+            break;
+        }
+
         case '?':
             exit(EXIT_FAILURE);
         }
     }
+
+    // Unalias: [
+    // Unalias: ]
+    // Document: program
 
     if (settings.batch) {
         exit(EXIT_SUCCESS);
@@ -1022,6 +1124,10 @@ FITNESS FOR A PARTICULAR PURPOSE.\n\n");
 
     // We can now initialize Readline and enter the main loop, where
     // we:
+
+    using_history();
+    stifle_history(settings.history_size);
+    read_history(".gammadb_history");
 
     rl_attempted_completion_function = completion_function;
     rl_basic_word_break_characters = WORD_BREAK_CHARACTERS;

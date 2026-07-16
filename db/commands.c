@@ -261,6 +261,7 @@ static int compare_edges(const void *a, const void *b)
 // values.
 
 struct settings settings = {
+    .history_size = 100,
     .present_on_reload = true,
     .recenter_on_reload = true,
     .default_zoom = 0.7f,
@@ -440,26 +441,1032 @@ int read_commands(FILE *fp)
             exit(EXIT_SUCCESS);
         }
 
-        // ## Binding Commands
+        // Document: program,manual
 
-        //   `bind key command` := Bind the action of pressing a key
-        //   inside one of the windows to a command.  The key can be
-        //   any printable character, or the name of a function key,
-        //   potentially prefixed by one or more of `C-`, `M-`, `S-`,
-        //   or `s-` to specify that the Control, Meta (Alt), Shift,
-        //   or Super modifiers should by present.  Use the completion
-        //   feature when entering this command in the terminal for a
-        //   list of function key names.
+        // ### Window Commands
 
-        //   The command is entered exactly as it would be entered in
+        // Document: manual
+
+        // The Debugger presents geometry for inspection in one or
+        // more windows.  None exist on startup, unless the
+        // o`--target` option has been specified, but you can create
+        // as many windows as you need, using the c`window` command.
+        // Once created, a window persists until the Debugger is
+        // exited.
+
+        // Document: program,manual
+
+        // This subsection describes commands that manipulate windows.
+
+        //   {Debugger Command}: window name := Select the window with
+        //   the given name.  All window related commands will affect
+        //   the selected window until the next c`window` command, or
+        //   until another window is focused with the mouse cursor.
+
+        //   If the window does not exist, it is first created.  The
+        //   new window is initially hidden, until it receives
+        //   geometry for one of its viewports, or unitl it is
+        //   explicitly made visible with the c`present` command.
+
+        // Document: program
+
+        else if (!strcmp(s, "window")) {
+
+            // We read in the name and look through the window list.
+
+            if (try_scan(fp, "%63s", s) != 1) {
+                print_error("error: no window name specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+
+            w = find_window(s);
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: hide := Hide the currently selected
+        //   window.  The window will remain hidden until one or more
+        //   of its viewports receive fresh geometry, or until made
+        //   visible again with the c`present` command.
+
+        // Document: program
+
+        else if (!strcmp(s, "hide")) {
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            // If the window is full screen, GLFW will ignore the hide
+            // request.  We need to restore it first.
+
+            if (w->saved_geometry[2] != 0) {
+                resize_window(w, 0, 0);
+            }
+
+            glfwHideWindow(w->window);
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: present := Present the currently
+        //   selected window to the user by instructing the window
+        //   system to focus it.  If the window is currently hidden,
+        //   it is first made visible.
+
+        // Document: program
+
+        else if (!strcmp(s, "present")) {
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            glfwShowWindow(w->window);
+            glfwFocusWindow(w->window);
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: resize width height :=
+        //   {Debugger Command}: {resize fullscreen} := Resize the
+        //   currently selected window to dimensions of v`widht` by
+        //   v`height`.  With s`fullscreen`, the window is made full
+        //   screen, if not already so.  If already full screen, its
+        //   old size and position is restored.  In either case,
+        //   viewport sizes are adjusted accordingly.
+
+        // Document: program
+
+        else if (!strcmp(s, "resize")) {
+            int a, b = -1;
+
+            if (try_scan(fp, "%63[a-z]", &s) == 1) {
+                if (!strcmp(s, "fullscreen")) {
+                    a = b = 0;
+                }
+            } else {
+                try_scan(fp, "%d", &a);
+                try_scan(fp, "%d", &b);
+            }
+
+            if (b == -1) {
+                print_error("error: new size not specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            resize_window(w, a, b);
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: print file := Print the contents of
+        //   the viewports in the current window to a file.  The file
+        //   format is chosen based on the file extension, which can
+        //   be either `ps`, `eps`, `pdf`, or `svg`.
+
+        // Document: program
+
+        else if (!strcmp(s, "print")) {
+            char *c;
+
+            // We proceed by:
+
+            //   1. scanning the file name^[We go through the stack
+            //   allocation and copying process below to make sure
+            //   that there are no memory leaks, no matter where we
+            //   exit.],
+
+            if (try_scan(fp, "%ms", &c) != 1) {
+                print_error("error: no output file name specified\n");
+                goto error;
+            }
+
+            char t[strlen(c) + 1];
+            strcpy(t, c);
+            free(c);
+
+            //   2. choosing the output format and
+
+            GLint i;
+
+            {
+                const char *c = strrchr(t, '.');
+
+                if (!strcasecmp(c, ".ps")) {
+                    i = GL2PS_PS;
+                } else if (!strcasecmp(c, ".eps")) {
+                    i = GL2PS_EPS;
+                } else if (!strcasecmp(c, ".pdf")) {
+                    i = GL2PS_PDF;
+                } else if (!strcasecmp(c, ".svg")) {
+                    i = GL2PS_SVG;
+                } else {
+                    print_error("error: output file has unknown extension\n");
+                    goto error;
+                }
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            //   3. writing the document.
+
+            FILE *fp = fopen(t, "wb");
+
+            if (!fp) {
+                print_error(
+                    "error: could not open output file (%s)\n",
+                    strerror(errno));
+                goto error;
+            }
+
+            print_window(w, i, fp);
+            fclose(fp);
+        }
+
+        // Document: program,manual
+
+        // ### Viewport Commands
+
+        // Each window can be further partitioned into *viewports*:
+        // separate rectangular regions of the window, each having a
+        // numerical *index* and *target*.  The index of a viewport is
+        // automatically assigned and cannot be changed.  The target
+        // can be any sequence of alphanumeric characters and when the
+        // viewport is created is the same as the index.  Both are
+        // shown in the lower left corner of each viewport, in the
+        // form @samp{v`index`: v`target`}.
+
+        // Document: manual
+
+        // When the Debugger runs Gamma to process your program, it
+        // will automatically enable all outputs with names
+        // corresponding to targets of one or more viewports of the
+        // current window and load the geometry associated with each
+        // ouput into the viewport that targets it.  Ref: Running
+        // Commands, for more details.
+
+        // One of the vieworts in each window is said to be *focused*
+        // at any given time and only it is affected by commands that
+        // manipulate viewports.  The focused viewport can be selected
+        // with the mouse cursor, or with the c`focus` command.
+
+        // Newly created windows have a single viewport spanning the
+        // entire window, which is always focused.
+
+        // Document: program,manual
+
+        //   {Debugger Command}: focus index := Focus the viewport
+        //   with the given index.  Viewport related commands will
+        //   manipulate this viewport until the next c`focus` command,
+        //   or until another viewport is focused with the mouse.
+
+        else if (!strcmp(s, "focus")) {
+            size_t i;
+
+            if (try_scan(fp, "%zu", &i) != 1) {
+                print_error("error: no viewport index specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            struct viewport *v = w->viewports;
+            while (v && --i > 0) {
+                v = v->next;
+            }
+
+            if (!v) {
+                print_error("error: no such viewport\n");
+                goto error;
+            }
+
+            w->focus = v;
+            glfwPostEmptyEvent();
+        }
+
+        //   {Debugger Command}: split [direction] [parts] [splits] :=
+        //   Split the focused viewport horizontally or vertically at
+        //   equally spaced intervals.  Possible values for
+        //   v`direction` are s`horizontally` or s`vertically`.  The
+        //   horizontal direction is assumed if none is explictly
+        //   specified.
+
+        //   If v`parts` is not specified the viewport is split along
+        //   its middle, otherwise it is split so as to produce
+        //   v`parts` equally sized parts.  If v`splits` is specified,
+        //   it is interpreted as a limit on the number of splits.
+
+        //   For example, a plain s`split` command will split the
+        //   viewport horizontally down its middle.  The command
+        //   s`split vertically 3` on the other hand, would split the
+        //   viewport vertically producing 3 equal viewports, while
+        //   s`split vertically 4 1` would split it in two, with a
+        //   quarter of the height allocated to one viewport and the
+        //   rest to the other.
+
+        // Document: program
+
+        else if (!strcmp(s, "split")) {
+            enum direction dir = HORIZONTALLY;
+            unsigned int q = 2;
+            size_t n = 0;
+
+            if (try_scan(fp, "%63[a-z]", s) == 1) {
+                if (!strcmp(s, "horizontally")) {
+                    dir = HORIZONTALLY;
+                } else if (!strcmp(s, "vertically")) {
+                    dir = VERTICALLY;
+                } else {
+                    print_error("error: invalid split direction specified\n");
+                    goto error;
+                }
+
+                size_t m;
+                if (try_scan(fp, "%u", &q) == 1
+                    && try_scan(fp, "%zu", &m) == 1
+                    && m < q) {
+                    n = q - m - 1;
+                }
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            struct viewport *v = w->focus;
+
+            // If enabled, we resize the whole window, so that the
+            // split viewport retains its current size.
+
+            if (settings.resize_on_split) {
+                int a, b;
+
+                glfwGetFramebufferSize(w->window, &a, &b);
+
+                if (dir == HORIZONTALLY) {
+                    resize_window(w, a + (q - 1) * (v->right - v->left), b);
+                } else {
+                    resize_window(w, a, b + (q - 1) * (v->top - v->bottom));
+                }
+            }
+
+            // We then perform the specified number of splits,
+            // creating and initializing new viewports accordingly.
+
+            for (size_t i = q; i > n + 1; i--) {
+                struct viewport *u =
+                    (struct viewport *)malloc(sizeof(struct viewport));
+
+                *u = *v;
+                u->annotation = nullptr;
+                u->object = nullptr;
+                u->vao = 0;
+
+                switch (dir) {
+                case HORIZONTALLY:
+                {
+                    const int m = v->left + (v->right - v->left) / i;
+                    u->left = m;
+                    v->right = m;
+                }
+
+                break;
+
+                case VERTICALLY:
+                {
+                    const int m = v->bottom + (v->top - v->bottom) / i;
+                    v->top = m;
+                    u->bottom = m;
+                }
+
+                break;
+                }
+
+                v->stale.projection = true;
+                u->stale.projection = true;
+
+                u->flags.maximized = false;
+
+                assert(w->viewports);
+
+                // We append new viewports at the end, so as not to
+                // upset the index numbers (and implicit names) of
+                // current viewports.
+
+                size_t j = 1;
+                for (v = w->viewports; v->next; v = v->next) {
+                    j++;
+                }
+
+                u->name = (const char *)malloc(4);
+                snprintf((char *)u->name, 3, "%zu", j + 1);
+                u->stale.annotation = true;
+
+                v->next = u;
+                u->next = nullptr;
+                v = u;
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: target name := Set or change the
+        //   target of the focused viewport.  After this, all geometry
+        //   produced by an output named v`name`, will be displayed in
+        //   this viewport.
+
+        // Document: program
+
+        else if (!strcmp(s, "target")) {
+            if (try_scan(fp, "%63s", s) != 1) {
+                s[0] = '\0';
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            free((char *)w->focus->name);
+            w->focus->name = strdup(s);
+            w->focus->stale.annotation = true;
+
+            glfwPostEmptyEvent();
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: rotate [alpha] [beta] [gamma] :=
+        //   Rotate the focused viewport by the given euler angles, in
+        //   degrees.  If no angles are given, reset the orientation.
+        //   If less than three angles are given, the reset are
+        //   assumed to be zero.
+
+        //   The current rotation, in Euler angles, can be shown with
+        //   the c`info viewports` command.  Ref: Commands that
+        //   Display Information.
+
+        // Document: program
+
+        else if (!strcmp(s, "rotate")) {
+            float v[3] = {};
+            size_t i;
+
+            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            if (i == 0) {
+                rotate_viewport(w->focus, NAN, NAN, NAN);
+            } else {
+                rotate_viewport(
+                    w->focus,
+                    v[0] / 180.0f * M_PI,
+                    v[1] / 180.0f * M_PI,
+                    v[2] / 180.0f * M_PI);
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: translate [x] [y] [z] := Translate
+        //   the focused viewport by the given displacements along the
+        //   axes of the global coordinate frame.  If no displacements
+        //   are given, reset the translation.  If less than three
+        //   displacements are given, the rest are assumed to be zero.
+
+        //   The current translation can be shown with the `info
+        //   viewports` command.  Ref: Commands that Display
+        //   Information.
+
+        // Document: program
+
+        else if (!strcmp(s, "translate")) {
+            float v[3] = {};
+            size_t i;
+
+            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            if (i == 0) {
+                translate_viewport(w->focus, NAN, NAN, NAN);
+            } else {
+                translate_viewport(w->focus, v[0], v[1], v[2]);
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: track [x] [y] [z] := Translate the
+        //   focused viewport by the given displacements
+        //   perpendicularly and along the camera viewing direction.
+        //   If no displacements are given, reset the translation.  If
+        //   less than three displacements are given, the rest are
+        //   assumed to be zero.
+
+        // Document: program
+
+        else if (!strcmp(s, "track")) {
+            float v[3] = {};
+            size_t i;
+
+            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            if (i == 0) {
+                translate_viewport(w->focus, NAN, NAN, NAN);
+            } else {
+                track_viewport(w->focus, v[0], v[1], v[2]);
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: zoom [increment] := Adjust the
+        //   focused viewport's zoom by v`increment` which can be
+        //   either positive or negative.  If no increment is
+        //   specified, reset the zoom.
+
+        //   The current zoom can be shown with the `info viewports`
+        //   command.  Ref: Commands that Display Information.
+
+        else if (!strcmp(s, "zoom")) {
+            float zeta = NAN;
+
+            try_scan(fp, "%f", &zeta);
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            zoom_viewport(w->focus, zeta);
+
+            glfwPostEmptyEvent();
+        }
+
+        //   {Debugger Command}: view mode := Change the projection
+        //   used to display geometry in the focused viewport.
+        //   Possible values for v`mode` are s`orthographic`,
+        //   s`perspective`, s`toggle`, or a field of view angle in
+        //   degrees.
+
+        //   With s`orthographic` or s`perspective` the projection is
+        //   set accordingly, without changing the field of view in
+        //   the case of perspective projection.  When perspective
+        //   projection is currently used, s`toggle` is equivalent to
+        //   s`orthographic` and vice versa.  Specifying a view angle
+        //   as a number, implicitly selects perspective projection
+        //   and also changes the view angle.
+
+        else if (!strcmp(s, "view")) {
+            float f = 0;
+            enum projection mode;
+            bool p = false;
+
+            if (try_scan(fp, "%f", &f) == 1 && f > 0.0f) {
+                mode = PERSPECTIVE;
+            } else if (try_scan(fp, "%63[a-z]", s) == 1) {
+                if (!strcmp(s, "orthographic")) {
+                    mode = ORTHOGRAPHIC;
+                } else if (!strcmp(s, "perspective")) {
+                    mode = PERSPECTIVE;
+                } else if (!strcmp(s, "toggle")) {
+                    p = true;
+                } else {
+                    print_error("error: invalid projection specified\n");
+                    goto error;
+                }
+            } else {
+                print_error("error: no projection specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            struct viewport *v = w->focus;
+
+            v->stale.projection = true;
+
+            if (p) {
+                v->projection = (
+                    v->projection == ORTHOGRAPHIC ? PERSPECTIVE : ORTHOGRAPHIC);
+            } else {
+                v->projection = mode;
+            }
+
+            if (f > 0.0f) {
+                v->angle = f / 2.0f / 180.0f * M_PI;
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        //   {Debugger Command}: toggle flag := Toggle a flag on the
+        //   currently focused viewport.  Possible values for `flag`
+        //   are the following:
+
+        else if (!strcmp(s, "toggle")) {
+            if (try_scan(fp, "%63s", s) != 1) {
+                print_error("error: no flag specified\n");
+                goto error;
+            }
+
+            PARSING_FINISHED;
+            NEEDS_WINDOW;
+
+            struct viewport *v = w->focus;
+
+#define TOGGLE(FLAG) v->flags.FLAG = !w->focus->flags.FLAG
+
+            //     `maximized` := Make the viewport occupy the entire
+            //     window.
+
+            if (!strcmp(s, "maximized")) {
+                TOGGLE(maximized);
+                v->stale.projection = true;
+            }
+
+            //     `vertices` := Draw points to show geometry vertices.
+
+            else if (!strcmp(s, "vertices")) {
+                TOGGLE(vertices);
+            }
+
+            //     `edges` := Draw lines to show geometry edges.
+
+            else if (!strcmp(s, "edges")) {
+                TOGGLE(edges);
+            }
+
+            //     `faces` := Draw the geometry faces.
+
+            else if (!strcmp(s, "faces")) {
+                TOGGLE(faces);
+            }
+
+#undef TOGGLE
+
+            else {
+                print_error("error: no such flag\n");
+                goto error;
+            }
+
+            glfwPostEmptyEvent();
+        }
+
+        // Document: program,manual
+
+        // ### Running Commands
+
+        // Document: manual
+
+        // Like all debuggers, the Debugger will arrange to run your
+        // program for you, once you tell it how to do so.  You can
+        // either do this by means of the o`--args` option (ref:
+        // Debugger Command Line Options) or equivalently by setting
+        // `args` (ref: Commands for Settings).  The latter is usually
+        // more convenient, as you can do it in your local
+        // initialization file and simply start the Debugger without
+        // any arguments.  Ref: A Few Examples, for an example.
+
+        // Regardless of how it's set, the `args` setting should
+        // contain all command line arguments you'd like to pass to
+        // Gamma, except for options that enable outputs, such as
+        // o`-o`, or o`--output` and options that make definitions,
+        // such as o`-D` and o`--define`.  These options are inserted
+        // by the Debugger; see the descritpion of the c`run` command
+        // below for more details.  As a minimum `args` should contain
+        // the source files containing the program whose outputs are
+        // to be inspected.
+
+        // Once `args` is set, you can use the c`run` command at the
+        // terminal, or more conveniently, bind it to a key (ref:
+        // Binding Commands), to re-evaluate the program and update
+        // the viewports.
+
+        // Document: program
+
+        // In order to run the inferior, we assemble a command line
+        // from the pieces defined below:
+
+        //   1. the executable,
+
+#define RUN                                                             \
+        do {                                                            \
+            static BUFFER_TYPE(char) buffer;                            \
+            size_t n = 1;                                               \
+                                                                        \
+            if (!settings.program) {                                    \
+                settings.program = strdup(DEFAULT_PROGRAM);             \
+            }                                                           \
+                                                                        \
+            {                                                           \
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.program))); \
+                stpcpy(buffer.p, settings.program);                     \
+            }
+
+            //   2. the IPC address option,
+
+#define WITH_ADDRESS                                                    \
+            {                                                           \
+                const size_t n_0 = n - 1;                               \
+                                                                        \
+                MAYBE_GROW_TO(                                          \
+                    buffer,                                             \
+                    (n += snprintf(                                     \
+                        nullptr, 0,                                     \
+                        " --ipc-address=gammadb-%d", getpid())));       \
+                sprintf(                                                \
+                    buffer.p + n_0, " --ipc-address=gammadb-%d",        \
+                    getpid());                                          \
+            }
+
+            //   3. parameter definitions,
+
+#define WITH_DEFINITIONS                                                \
+            for (size_t i = 0; i < definitions.n; i++) {                \
+                const struct definition *q = definitions.p + i;         \
+                                                                        \
+                if (!q->name) {                                         \
+                    continue;                                           \
+                }                                                       \
+                                                                        \
+                const size_t n_0 = n - 1;                               \
+                char *p;                                                \
+                                                                        \
+                if (q->value) {                                         \
+                    MAYBE_GROW_TO(                                      \
+                        buffer, (n += (strlen(q->name)                  \
+                                       + strlen(q->value) + 4)));       \
+                                                                        \
+                    p = stpcpy(buffer.p + n_0, " -D");                  \
+                    p = stpcpy(p, q->name);                             \
+                    p = stpcpy(p, "=");                                 \
+                    p = stpcpy(p, q->value);                            \
+                } else {                                                \
+                    MAYBE_GROW_TO(buffer, (n += (strlen(q->name) + 3))); \
+                                                                        \
+                    p = stpcpy(buffer.p + n_0, " -D");                  \
+                    p = stpcpy(p, q->name);                             \
+                }                                                       \
+            }
+
+            //   4. potentially more than one inspection outputs,
+
+#define WITH_RUN_OUTPUTS                                                \
+            if (w) {                                                    \
+                for (struct viewport *v = w->viewports; v; v = v->next) { \
+                    if (mode == SINGLE && v != w->focus) {              \
+                        continue;                                       \
+                    }                                                   \
+                                                                        \
+                    const size_t n_0 = n - 1;                           \
+                    char *p;                                            \
+                                                                        \
+                    MAYBE_GROW_TO(buffer, (n += 2 * strlen(v->name) + 5)); \
+                    p = stpcpy(buffer.p + n_0, " -o ");                 \
+                    p = stpcpy(p, v->name);                             \
+                    p = stpcpy(p, ":");                                 \
+                    p = stpcpy(p, v->name);                             \
+                }                                                       \
+            }
+
+            //   5. a single output, written to disk,
+
+#define WITH_OUTPUT                                                     \
+            if (w) {                                                    \
+                const struct viewport *v = w->focus;                    \
+                const size_t n_0 = n - 1;                               \
+                char *p;                                                \
+                                                                        \
+                MAYBE_GROW_TO(buffer, (n += strlen(v->name) + strlen(s) + 5)); \
+                p = stpcpy(buffer.p + n_0, " -o ");                     \
+                p = stpcpy(p, s);                                       \
+                p = stpcpy(p, ":");                                     \
+                p = stpcpy(p, v->name);                                 \
+            }
+
+            //   6. any arguments specified by the user.
+
+#define AND_ARGS                                                        \
+            if (settings.args) {                                        \
+                const size_t n_0 = n - 1;                               \
+                char *p;                                                \
+                                                                        \
+                MAYBE_GROW_TO(buffer, (n += strlen(settings.args) + 1)); \
+                p = stpcpy(buffer.p + n_0, " ");                        \
+                p = stpcpy(p, settings.args);                           \
+            }                                                           \
+                                                                        \
+            run_inferior(buffer.p);                                     \
+        } while(false)
+
+        // Document: program,manual
+
+        //   {Debugger Command}: run [mode] := Run Gamma to update the
+        //   contents of the viewports.  The program specified by the
+        //   `program` setting is invoked with the command line
+        //   arguments specified in the `args` setting, preceded by
+        //   options to define parameters requested with the c`define`
+        //   command and options to enable outputs whose name matches
+        //   the target of one or more viewports in the current
+        //   window.
+
+        //   Gamma is run in the background inside a shell and any
+        //   output produced by the background process is directed to
         //   the terminal.
 
-        //   A list of established bindings can be displayed with the
-        //   `info bindings` command.
+        //   If v`mode` is set to s`all`, all viewports in the current
+        //   window will be updated.  If set to s`single`, only the
+        //   focused viewport will be updated.  If v`mode` is omitted,
+        //   s`all` is assumed.
 
-        //   `unbind key` := Delete the binding previously established
-        //   for the key.  A list of established bindings can be
-        //   displayed with the `info bindings` command.
+        // Document: program,manual/scheme
+        // Alias: .ext .scm
+        // Document: program,manual/lua
+        // Alias: .ext .lua
+        // Document: program,manual
+
+        //   For example, if the currently selected window is divided
+        //   into two viewports, one left with the initial target s`1`
+        //   and the other given the target s`sprocket` and if the
+        //   `program` and `args` settings contain s`gamma` and
+        //   s`--dump-list=- sprocket.ext` respectively, then s`run
+        //   all`, or s`run` will invoke Gamma as s`gamma -o 1:1 -o
+        //   sprocket:sprocket --dump-list=- sprocket.ext`, directing
+        //   the geometry produced by outputs s`1` and s`sprocket`
+        //   into the corresponding viewports .  Any geometry
+        //   previously displayed in the updated viewports is
+        //   discarded.
+
+        //   On the other hand, if the viewport targeting s`sprocket`
+        //   is focused and s`run single` is used, only the s`-o
+        //   sprocket:sprocket` option will be used and only that
+        //   viewport will be updated.
+
+        //   In either case, if the `draft` and `z` parameters have
+        //   been defined with the commands s`define draft` and
+        //   s`define z=15` respectively, the invocation will also
+        //   contain the o`-Dheight -Dz=15` options.
+
+        // Document: program
+
+        else if (!strcmp(s, "run")) {
+            enum {
+                SINGLE, ALL
+            } mode = ALL;
+
+            // First, we try to scan the mode and assume `ALL` if we
+            // can't.
+
+            if (try_scan(fp, "%63[a-z]", s) == 1) {
+                if (!strcmp(s, "single")) {
+                    mode = SINGLE;
+                } else if (!strcmp(s, "all")) {
+                    mode = ALL;
+                } else {
+                    print_error("error: invalid mode specified\n");
+                    goto error;
+                }
+            }
+
+            PARSING_FINISHED;
+            RUN WITH_ADDRESS WITH_DEFINITIONS WITH_RUN_OUTPUTS AND_ARGS;
+        }
+
+        // Document: program,manual
+
+        //   {Debugger Command}: output filename := Run Gamma as with
+        //   the c`run single` command, but instead of directing the
+        //   output to the focused viewport, write it to the file
+        //   v`filename`, in the current directory.  The file format
+        //   is determined by the suffix of v`filename`, which must
+        //   correspond to a supported output format.
+
+        else if (!strcmp(s, "output")) {
+
+            if (try_scan(fp, "%63s", s) != 1) {
+                s[0] = '\0';
+            }
+
+            PARSING_FINISHED;
+
+            RUN WITH_DEFINITIONS WITH_OUTPUT AND_ARGS;
+        }
+
+#undef RUN
+#undef WITH_ADDRESS
+#undef WITH_DEFINITIONS
+#undef WITH_RUN_OUTPUTS
+#undef WITH_OUTPUT
+#undef END_RUN
+
+        //   {Debugger Command}: kill := Terminate an ongoing run.
+        //   Only one run can be in progress at a time and a
+        //   long-winded ongoing run must first be terminated with
+        //   this command, before a new one can be started.
+
+        else if (!strcmp(s, "kill")) {
+            PARSING_FINISHED;
+
+            if (kill_inferior() == -1) {
+                print_error(
+                    "error: could not kill ongoing run (%s)\n",
+                    strerror(errno));
+
+                goto error;
+            }
+        }
+
+        // Concept: parameters
+
+        //   {Debugger Command}: define name [value] := Set the value
+        //   of a parameter.  These parameters are passed to Gamma
+        //   when it is invoked by the c`run`, or c`output` commands.
+
+        //   When v`value` is omitted, the parameter is passed to
+        //   Gamma as a boolean, using the command line option
+        //   o`-Dname`, otherwise the parameter is defined with
+        //   o`-Dname=value`.  In the latter case, the value should be
+        //   quoted and escaped as necessary.  Ref: Options
+        //   Controlling Language Front Ends, for more details on how
+        //   Gamma handles these definitions.
+
+        //   For example, the command s`define draft` will add the
+        //   option o`-Ddraft` to future invocations of Gamma, which
+        //   will define the boolean variable `draft` with a true
+        //   value.  The command s`define height=10` will similarly
+        //   pass the o`-Dheight=10` option to Gamma, defining
+        //   `height` to have the numeric value 10.  Finally s`define
+        //   message='"Hello world"'` will pass o`-Dmessage='"Hello
+        //   world"'`, which will define the string variable
+        //   `message`, with value s`Hello world`.
+
+        //   {Debugger Command}: undefine name := Clear a definition
+        //   previously made with the c`define` command.  Once
+        //   cleared, the definition is no longer included in future
+        //   invocations of Gamma.
+
+        // Document: program
+
+        else if (!strcmp(s, "define") || !strcmp(s, "undefine")) {
+            const bool p = (s[0] == 'u');
+
+            if (try_scan(fp, "%63s", s) != 1) {
+                print_error("error: no parameter specified\n");
+                goto error;
+            }
+
+            size_t j = definitions.n;
+            for (size_t i = 0; i < definitions.n; i++) {
+                if (!definitions.p[i].name) {
+                    j = i;
+                } else if (!strcmp(definitions.p[i].name, s)) {
+                    j = i;
+                    goto defined;
+                }
+            }
+
+            if (p) {
+                print_error("error: parameter %s has not been defined\n", s);
+                goto error;
+            }
+
+            if (j == definitions.n) {
+                MAYBE_GROW_TO(definitions, j + 1);
+                memset(
+                    definitions.p + j,
+                    0,
+                    (definitions.n - j) * sizeof(definitions.p[0]));
+            }
+
+            definitions.p[j].name = strdup(s);
+
+          defined:
+            if (p) {
+                free(definitions.p[j].name);
+                definitions.p[j].name = nullptr;
+            } else {
+                if (definitions.p[j].value) {
+                    free(definitions.p[j].value);
+                    definitions.p[j].value = nullptr;
+                }
+
+                try_scan(fp, " %m[^\n]", &definitions.p[j].value);
+            }
+        }
+
+        // Document: program,manual
+
+        // ### Binding Commands
+
+        // The action of pressing a key on the keyboard while the
+        // mouse cursor is inside a viewing window, can be bound to a
+        // command.  Once such a binding is established, pressing the
+        // bound key is equivalent to typing the command at the
+        // Debugger's prompt.  This provides a convenient way to issue
+        // commands while inspecting geometry.
+
+        // The list of established bindings is global, that is, common
+        // to all windows and viewports.  Nevertheless, the currently
+        // focused window and viewport can still be significant, since
+        // many commands operate on them specifically.
+
+        //   {Debugger Command}: bind key command := Bind the action
+        //   of pressing a key inside one of the windows to a command.
+        //   The value of v`key` can be any printable character, or
+        //   the name of a function key, potentially prefixed by one
+        //   or more of s`C-`, s`M-`, s`S-`, or s`s-` to specify that
+        //   the Control, Meta (Alt), Shift, or Super modifiers should
+        //   be present.  Use the completion feature when entering
+        //   this command in the terminal for a list of function key
+        //   names.  Ref: Command Completion, for more details.
+
+        //   Any text after v`key` and until the end of the line, is
+        //   taken as the value for v`command`, which may therefore
+        //   contain spaces.  It should be entered exactly as it would
+        //   be entered at the command prompt.  To bind several
+        //   command lines, write them as a single line separated by
+        //   s`;` characters.
+
+        //   For example, the s`bind q quit` command, will bind the
+        //   action of pressing the k`q` key in any window to the
+        //   c`quit` command, so that pressing k`q` will exit the
+        //   Debugger.  Similarly, the s`bind R run all`, or s`bind
+        //   S-r run all` commands will bind the k`Shift-r`
+        //   combination to the c`run all` commmand.
+
+        //   Finally the command s`bind C-M-a translate;rotate;zoom`
+        //   will make pressing k`a` while holding the k`Control` and
+        //   k`Alt` modifiers, run the three commands s`translate`,
+        //   s`rotate` and s`zoom` in succession, with the effect of
+        //   resetting the focused viewport's camera.
+
+        //   A list of established bindings can be displayed with the
+        //   c`info bindings` command.  Ref: Commands that Display
+        //   Information, for more details.
+
+        //   {Debugger Command}: unbind key := Delete any binding
+        //   previously established for v`key` using the c`bind`
+        //   command.  For example, the s`unbind C-M-a` command will
+        //   undo the binding established by the last example given
+        //   above for the c`bind` command.
+
+        // Document: program
 
         else if (!strcmp(s, "bind") || !strcmp(s, "unbind")) {
             // First we make a note of whether we're binding or
@@ -601,476 +1608,35 @@ int read_commands(FILE *fp)
             }
         }
 
-        // ### Window Commands
+        // Document: program,manual
 
-        //   `window name` := Create or select a window with the given
-        //   name.  The new window is initially hidden, until it
-        //   receives geometry for one of its viewports, or unitl it's
-        //   explicitly shown.
+        // ### Loading Viewport Geometry
 
-        else if (!strcmp(s, "window")) {
+        // After running Gamma with the c`run` command, the Debugger
+        // automatically loads the geometry produced by outputs with
+        // matching viewports in the focused window. Ref: Running
+        // Commands, for more details.
 
-            // We read in the name and look through the window list.
+        // Document: manual
 
-            if (try_scan(fp, "%63s", s) != 1) {
-                print_error("error: no window name specified\n");
-                goto error;
-            }
+        // However, it may some times be useful to explicitly load
+        // geometry into a viewport.  One example would be loading
+        // reference geometry from an external file and displaying it
+        // in a dedicated viewport.
 
-            PARSING_FINISHED;
+        // Document: program,manual
 
-            w = find_window(s);
-        }
+        //   {Debugger Command}: load name [< file] := Load geometry
+        //   into all viewports targeting v`name` in the current
+        //   window.  The geometry must be in the OFF format and can
+        //   either follow the command or be loaded from a v`file`.
 
-        //   `hide` := Hide the currently selected window.
+        //   For example, the command s`load reference mesh.off`, will
+        //   read geometry from the file f`mesh.off` in the current
+        //   directory and load it into the viewport with target
+        //   s`reference`.
 
-        else if (!strcmp(s, "hide")) {
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            // If the window is full screen, GLFW will ignore the hide
-            // request.  We need to restore it first.
-
-            if (w->saved_geometry[2] != 0) {
-                resize_window(w, 0, 0);
-            }
-
-            glfwHideWindow(w->window);
-        }
-
-        //   `present` := Present, that is unhide if hidden and focus
-        //   the window.
-
-        else if (!strcmp(s, "present")) {
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            glfwShowWindow(w->window);
-            glfwFocusWindow(w->window);
-        }
-
-        //   `resize width height`, `resize fullscreen` := Resize the
-        //   currently selected window.  If `fullscreen` is specified,
-        //   the window is made full screen, if not already so.  If
-        //   already full screen, its old size and position is
-        //   restored.  Viewport sizes are adjusted accordingly.
-
-        else if (!strcmp(s, "resize")) {
-            int a, b = -1;
-
-            if (try_scan(fp, "%63[a-z]", &s) == 1) {
-                if (!strcmp(s, "fullscreen")) {
-                    a = b = 0;
-                }
-            } else {
-                try_scan(fp, "%d", &a);
-                try_scan(fp, "%d", &b);
-            }
-
-            if (b == -1) {
-                print_error("error: new size not specified\n");
-                goto error;
-            }
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            resize_window(w, a, b);
-        }
-
-        //   `focus index` := Focus the viewport with the given index.
-        //   Further operations of viewport-related commands will
-        //   affect this viewport, until another is focused, either by
-        //   a command or with the mouse.
-
-        else if (!strcmp(s, "focus")) {
-            size_t i;
-
-            if (try_scan(fp, "%zu", &i) != 1) {
-                print_error("error: no viewport index specified\n");
-                goto error;
-            }
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            struct viewport *v = w->viewports;
-            while (v && --i > 0) {
-                v = v->next;
-            }
-
-            if (!v) {
-                print_error("error: no such viewport\n");
-                goto error;
-            }
-
-            w->focus = v;
-            glfwPostEmptyEvent();
-        }
-
-        //   `print file` := Print the contents of the viewports
-        //   in the current window to a file.  The file format is
-        //   chosen based on the file extension, which can be either
-        //   `ps`, `eps`, `pdf`, or `svg`.
-
-        else if (!strcmp(s, "print")) {
-            char *c;
-
-            // We proceed by:
-
-            //   1. scanning the file name^[We go through the stack
-            //   allocation and copying process below to make sure
-            //   that there are no memory leaks, no matter where we
-            //   exit.],
-
-            if (try_scan(fp, "%ms", &c) != 1) {
-                print_error("error: no output file name specified\n");
-                goto error;
-            }
-
-            char t[strlen(c) + 1];
-            strcpy(t, c);
-            free(c);
-
-            //   2. choosing the output format and
-
-            GLint i;
-
-            {
-                const char *c = strrchr(t, '.');
-
-                if (!strcasecmp(c, ".ps")) {
-                    i = GL2PS_PS;
-                } else if (!strcasecmp(c, ".eps")) {
-                    i = GL2PS_EPS;
-                } else if (!strcasecmp(c, ".pdf")) {
-                    i = GL2PS_PDF;
-                } else if (!strcasecmp(c, ".svg")) {
-                    i = GL2PS_SVG;
-                } else {
-                    print_error("error: output file has unknown extension\n");
-                    goto error;
-                }
-            }
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            //   3. writing the document.
-
-            FILE *fp = fopen(t, "wb");
-
-            if (!fp) {
-                print_error(
-                    "error: could not open output file (%s)\n",
-                    strerror(errno));
-                goto error;
-            }
-
-            print_window(w, i, fp);
-            fclose(fp);
-        }
-
-        // ### Viewport Commands
-
-        //   `split [direction] [parts] [splits]` := Split the focused
-        //   viewport horizontally or vertically in equal parts.
-
-        //   The direction may be either `horizontally` or `vertically`.
-        //   The horizontal direction is assumed if none is explictly
-        //   specified.
-
-        //   If the number of parts is not specified the viewport is
-        //   split along its middle into two equal parts.
-
-        //   If a number of splits is specified, no more than the
-        //   specified number of splits will be carried out.  For
-        //   instance if `parts` is 3 and `splits` is 1, the viewport
-        //   will be split in two, with 1/3 of the width (or height)
-        //   allocated to one viewport and 2/3 to the other.
-
-        else if (!strcmp(s, "split")) {
-            enum direction dir = HORIZONTALLY;
-            unsigned int q = 2;
-            size_t n = 0;
-
-            if (try_scan(fp, "%63[a-z]", s) == 1) {
-                if (!strcmp(s, "horizontally")) {
-                    dir = HORIZONTALLY;
-                } else if (!strcmp(s, "vertically")) {
-                    dir = VERTICALLY;
-                } else {
-                    print_error("error: invalid split direction specified\n");
-                    goto error;
-                }
-
-                size_t m;
-                if (try_scan(fp, "%u", &q) == 1
-                    && try_scan(fp, "%zu", &m) == 1
-                    && m < q) {
-                    n = q - m - 1;
-                }
-            }
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            struct viewport *v = w->focus;
-
-            // If enabled, we resize the whole window, so that the
-            // split viewport retains its current size.
-
-            if (settings.resize_on_split) {
-                int a, b;
-
-                glfwGetFramebufferSize(w->window, &a, &b);
-
-                if (dir == HORIZONTALLY) {
-                    resize_window(w, a + (q - 1) * (v->right - v->left), b);
-                } else {
-                    resize_window(w, a, b + (q - 1) * (v->top - v->bottom));
-                }
-            }
-
-            // We then perform the specified number of splits,
-            // creating and initializing new viewports accordingly.
-
-            for (size_t i = q; i > n + 1; i--) {
-                struct viewport *u =
-                    (struct viewport *)malloc(sizeof(struct viewport));
-
-                *u = *v;
-                u->annotation = nullptr;
-                u->object = nullptr;
-                u->vao = 0;
-
-                switch (dir) {
-                case HORIZONTALLY:
-                {
-                    const int m = v->left + (v->right - v->left) / i;
-                    u->left = m;
-                    v->right = m;
-                }
-
-                break;
-
-                case VERTICALLY:
-                {
-                    const int m = v->bottom + (v->top - v->bottom) / i;
-                    v->top = m;
-                    u->bottom = m;
-                }
-
-                break;
-                }
-
-                v->stale.projection = true;
-                u->stale.projection = true;
-
-                u->flags.maximized = false;
-
-                assert(w->viewports);
-
-                // We append new viewports at the end, so as not to
-                // upset the index numbers (and implicit names) of
-                // current viewports.
-
-                size_t j = 1;
-                for (v = w->viewports; v->next; v = v->next) {
-                    j++;
-                }
-
-                u->name = (const char *)malloc(4);
-                snprintf((char *)u->name, 3, "%zu", j + 1);
-                u->stale.annotation = true;
-
-                v->next = u;
-                u->next = nullptr;
-                v = u;
-            }
-
-            glfwPostEmptyEvent();
-        }
-
-        //   `target name` := Set or change the target of the focused
-        //   viewport.  After this all loaded geometry with the same
-        //   name as the the one specified, will be displayed in the
-        //   viewport.
-
-        else if (!strcmp(s, "target")) {
-            if (try_scan(fp, "%63s", s) != 1) {
-                s[0] = '\0';
-            }
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            free((char *)w->focus->name);
-            w->focus->name = strdup(s);
-            w->focus->stale.annotation = true;
-
-            glfwPostEmptyEvent();
-        }
-
-        //   `rotate [alpha] [beta] [gamma]` := Rotate the focused
-        //   viewport by the given euler angles, in degrees.  If no
-        //   angles are given, reset the orientation.  If the first
-        //   angle is given, but the second or third angles are not
-        //   specified, they are assumed to be zero.
-
-        //   The current rotation, in Euler angles, can be shown with
-        //   the `info viewports` command.
-
-        else if (!strcmp(s, "rotate")) {
-            float v[3] = {};
-            size_t i;
-
-            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            if (i == 0) {
-                rotate_viewport(w->focus, NAN, NAN, NAN);
-            } else {
-                rotate_viewport(
-                    w->focus,
-                    v[0] / 180.0f * M_PI,
-                    v[1] / 180.0f * M_PI,
-                    v[2] / 180.0f * M_PI);
-            }
-
-            glfwPostEmptyEvent();
-        }
-
-        //   `translate x [y] [z]` := Translate the focused viewport
-        //   by the given displacements.  If no displacements are
-        //   given, reset the translation.  If the first displacement
-        //   is given, but the second, or third displacements are not
-        //   specified, they are assumed to be zero.
-
-        //   The current translation can be shown with the `info
-        //   viewports` command.
-
-        else if (!strcmp(s, "translate")) {
-            float v[3] = {};
-            size_t i;
-
-            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            if (i == 0) {
-                translate_viewport(w->focus, NAN, NAN, NAN);
-            } else {
-                translate_viewport(w->focus, v[0], v[1], v[2]);
-            }
-
-            glfwPostEmptyEvent();
-        }
-
-        //   `track x [y]` := Track the focused viewport by the given
-        //   displacements perpendicularly and along the camera
-        //   viewing direction.  If no displacements are given, reset
-        //   the viewport's translation.  If less than three
-        //   displacements are specified, the rest are assumed to be
-        //   zero.
-
-        else if (!strcmp(s, "track")) {
-            float v[3] = {};
-            size_t i;
-
-            for (i = 0; i < 3 && try_scan(fp, "%f", &v[i]) == 1; i++);
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            if (i == 0) {
-                translate_viewport(w->focus, NAN, NAN, NAN);
-            } else {
-                track_viewport(w->focus, v[0], v[1], v[2]);
-            }
-
-            glfwPostEmptyEvent();
-        }
-
-        //   `zoom [incr]` := Adjust the focused viewport's zoom by
-        //   the given increment.  If no increment is specified, reset
-        //   the zoom.
-
-        else if (!strcmp(s, "zoom")) {
-            float zeta = NAN;
-
-            try_scan(fp, "%f", &zeta);
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            zoom_viewport(w->focus, zeta);
-
-            glfwPostEmptyEvent();
-        }
-
-        //   `view proj` := Change the projection of the focused
-        //   viewport.  The argument can be either one of
-        //   `orthographic` and `perspective`, or a field of view angle
-        //   in degrees.  In the first case orthographic projection is
-        //   selected.  In the latter two cases, perspecitve
-        //   projection is selected, either retaining the current, or
-        //   updating the field of view angle.
-
-        else if (!strcmp(s, "view")) {
-            float f = 0;
-            enum projection mode;
-            bool p = false;
-
-            if (try_scan(fp, "%f", &f) == 1 && f > 0.0f) {
-                mode = PERSPECTIVE;
-            } else if (try_scan(fp, "%63[a-z]", s) == 1) {
-                if (!strcmp(s, "orthographic")) {
-                    mode = ORTHOGRAPHIC;
-                } else if (!strcmp(s, "perspective")) {
-                    mode = PERSPECTIVE;
-                } else if (!strcmp(s, "toggle")) {
-                    p = true;
-                } else {
-                    print_error("error: invalid projection specified\n");
-                    goto error;
-                }
-            } else {
-                print_error("error: no projection specified\n");
-                goto error;
-            }
-
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            struct viewport *v = w->focus;
-
-            v->stale.projection = true;
-
-            if (p) {
-                v->projection = (
-                    v->projection == ORTHOGRAPHIC ? PERSPECTIVE : ORTHOGRAPHIC);
-            } else {
-                v->projection = mode;
-            }
-
-            if (f > 0.0f) {
-                v->angle = f / 2.0f / 180.0f * M_PI;
-            }
-
-            glfwPostEmptyEvent();
-        }
-
-        // ### Loading Object Geometry
-
-        //   `load [name] [< file]` := Load geometry for an object.
-        //   The geometry can either follow the command or be loaded
-        //   from a local file.
-
-        //   If no name is specified the dafault target is loaded.
+        // Document: program
 
         else if (!strcmp(s, "load")) {
 
@@ -1446,195 +2012,22 @@ int read_commands(FILE *fp)
             }
         }
 
-        // ## The Run Command
+        // Document: program,manual
 
-        // In order to run the inferior, we assemble a command line
-        // from the pieces defined below:
+        // ### Commands that Display Information
 
-        //   1. the executable,
+        // Document: manual
 
-#define RUN                                                             \
-        do {                                                            \
-            static BUFFER_TYPE(char) buffer;                            \
-            size_t n = 1;                                               \
-                                                                        \
-            if (!settings.program) {                                    \
-                settings.program = strdup(DEFAULT_PROGRAM);             \
-            }                                                           \
-                                                                        \
-            {                                                           \
-                MAYBE_GROW_TO(buffer, (n += strlen(settings.program))); \
-                stpcpy(buffer.p, settings.program);                     \
-            }
+        // You can use the c`info` command to get information about
+        // the Debugger's state.  This can be useful on occasion.  For
+        // instance, if you'd like to use the c`rotate`, c`translate`,
+        // or c`zoom` commands in your initialization file to set up
+        // the default view of a viewport, you can avoid having to
+        // determine the view parameters by trial and error, simply by
+        // adjusting the view with your mouse and then running c`info
+        // viewports`, to list and copy the current parameters.
 
-            //   2. the IPC address option,
-
-#define WITH_ADDRESS                                                    \
-            {                                                           \
-                const size_t n_0 = n - 1;                               \
-                                                                        \
-                MAYBE_GROW_TO(                                          \
-                    buffer,                                             \
-                    (n += snprintf(                                     \
-                        nullptr, 0,                                     \
-                        " --ipc-address=gammadb-%d", getpid())));       \
-                sprintf(                                                \
-                    buffer.p + n_0, " --ipc-address=gammadb-%d",        \
-                    getpid());                                          \
-            }
-
-            //   3. parameter definitions,
-
-#define WITH_DEFINITIONS                                                \
-            for (size_t i = 0; i < definitions.n; i++) {                \
-                const struct definition *q = definitions.p + i;         \
-                                                                        \
-                if (!q->name) {                                         \
-                    continue;                                           \
-                }                                                       \
-                                                                        \
-                const size_t n_0 = n - 1;                               \
-                char *p;                                                \
-                                                                        \
-                if (q->value) {                                         \
-                    MAYBE_GROW_TO(                                      \
-                        buffer, (n += (strlen(q->name)                  \
-                                       + strlen(q->value) + 4)));       \
-                                                                        \
-                    p = stpcpy(buffer.p + n_0, " -D");                  \
-                    p = stpcpy(p, q->name);                             \
-                    p = stpcpy(p, "=");                                 \
-                    p = stpcpy(p, q->value);                            \
-                } else {                                                \
-                    MAYBE_GROW_TO(buffer, (n += (strlen(q->name) + 3))); \
-                                                                        \
-                    p = stpcpy(buffer.p + n_0, " -D");                  \
-                    p = stpcpy(p, q->name);                             \
-                }                                                       \
-            }
-
-            //   4. potentially more than one inspection outputs,
-
-#define WITH_RUN_OUTPUTS                                                \
-            if (w) {                                                    \
-                for (struct viewport *v = w->viewports; v; v = v->next) { \
-                    if (mode == SINGLE && v != w->focus) {              \
-                        continue;                                       \
-                    }                                                   \
-                                                                        \
-                    const size_t n_0 = n - 1;                           \
-                    char *p;                                            \
-                                                                        \
-                    MAYBE_GROW_TO(buffer, (n += 2 * strlen(v->name) + 5)); \
-                    p = stpcpy(buffer.p + n_0, " -o ");                 \
-                    p = stpcpy(p, v->name);                             \
-                    p = stpcpy(p, ":");                                 \
-                    p = stpcpy(p, v->name);                             \
-                }                                                       \
-            }
-
-            //   5. a single output, written to disk,
-
-#define WITH_OUTPUT                                                     \
-            if (w) {                                                    \
-                const struct viewport *v = w->focus;                    \
-                const size_t n_0 = n - 1;                               \
-                char *p;                                                \
-                                                                        \
-                MAYBE_GROW_TO(buffer, (n += strlen(v->name) + strlen(s) + 5)); \
-                p = stpcpy(buffer.p + n_0, " -o ");                     \
-                p = stpcpy(p, s);                                       \
-                p = stpcpy(p, ":");                                     \
-                p = stpcpy(p, v->name);                                 \
-            }
-
-            //   6. any arguments specified by the user.
-
-#define AND_ARGS                                                        \
-            if (settings.args) {                                        \
-                const size_t n_0 = n - 1;                               \
-                char *p;                                                \
-                                                                        \
-                MAYBE_GROW_TO(buffer, (n += strlen(settings.args) + 1)); \
-                p = stpcpy(buffer.p + n_0, " ");                        \
-                p = stpcpy(p, settings.args);                           \
-            }                                                           \
-                                                                        \
-            run_inferior(buffer.p);                                     \
-        } while(false)
-
-        //   `run [mode]` := Run the "inferior" process to update the
-        //   contents of the viewports.  The program specified by the
-        //   `program` setting is run in a shell, with the arguments
-        //   specified in the `args` setting, augmented with arguments
-        //   to enable outputs bound to viewports in the current
-        //   window.
-
-        //   The mode can be either `all`, in which case all viewports
-        //   in the current window will be updated, or `single`, where
-        //   only the focused viewport will be updated.
-
-        else if (!strcmp(s, "run")) {
-            enum {
-                SINGLE, ALL
-            } mode = ALL;
-
-            // First, we try to scan the mode and assume `ALL` if we
-            // can't.
-
-            if (try_scan(fp, "%63[a-z]", s) == 1) {
-                if (!strcmp(s, "single")) {
-                    mode = SINGLE;
-                } else if (!strcmp(s, "all")) {
-                    mode = ALL;
-                } else {
-                    print_error("error: invalid mode specified\n");
-                    goto error;
-                }
-            }
-
-            PARSING_FINISHED;
-            RUN WITH_ADDRESS WITH_DEFINITIONS WITH_RUN_OUTPUTS AND_ARGS;
-        }
-
-        //   `output file` := Run the "inferior" process to output the
-        //   geometry of the focused window to the specified file.
-        //   The file format is determined by the file extension,
-        //   which must correspond to a supported output format.
-
-        else if (!strcmp(s, "output")) {
-
-            if (try_scan(fp, "%63s", s) != 1) {
-                s[0] = '\0';
-            }
-
-            PARSING_FINISHED;
-
-            RUN WITH_DEFINITIONS WITH_OUTPUT AND_ARGS;
-        }
-
-#undef RUN
-#undef WITH_ADDRESS
-#undef WITH_DEFINITIONS
-#undef WITH_RUN_OUTPUTS
-#undef WITH_OUTPUT
-#undef END_RUN
-
-        //   `kill` := Terminate an ongoing run.
-
-        else if (!strcmp(s, "kill")) {
-            PARSING_FINISHED;
-
-            if (kill_inferior() == -1) {
-                print_error(
-                    "error: could not kill ongoing run (%s)\n",
-                    strerror(errno));
-
-                goto error;
-            }
-        }
-
-        // ### The Information Command
+        // Document: program
 
         // The information displayed with the `info` command below is
         // often laid out in a tabular format, so we need a way to
@@ -1679,8 +2072,13 @@ int read_commands(FILE *fp)
             }                                                           \
         } while (false)
 
-        //   `info subject` := Display information on a particular
-        //   subject.  The subject can be any of the following:
+        // Document: program,manual
+
+        //   {Debugger Command}: info subject := Display information
+        //   on v`subject`, in a tabular format.  Possible values for
+        //   v`subject` are listed below.
+
+        // Document: program
 
         else if (!strcmp(s, "info")) {
             if (try_scan(fp, "%63s", s) != 1) {
@@ -1688,7 +2086,13 @@ int read_commands(FILE *fp)
                 goto error;
             }
 
-            //   `windows` := Describe existing windows.
+            // Document: program,manual
+
+            //   {Debugger Command}: {info windows} := Describe
+            //   existing windows.  Displayed information includes
+            //   size, visibility and name.
+
+            // Document: program
 
             if (!strcmp(s, "windows")) {
                 PARSING_FINISHED;
@@ -1721,8 +2125,22 @@ int read_commands(FILE *fp)
                 }
             }
 
-            //   `viewports` := Describe viewports in the current
-            //   window.
+            // Document: program,manual
+
+            //   {Debugger Command}: {info viewports} := Describe
+            //   viewports in the current window.  Displayed
+            //   information includes the position of the viewport
+            //   within the window, viewing parameters, its target and
+            //   a set of flags.
+
+            //   Each flag is displayed with a single letter code if
+            //   present:
+            //     `m` := The viewport is maximized.
+            //     `v` := Drawing of vertices is enabled.
+            //     `e` := Drawing of edges is enabled.
+            //     `v` := Drawing of faces is enabled.
+
+            // Document: program
 
             else if (!strcmp(s, "viewports")) {
                 PARSING_FINISHED;
@@ -1873,9 +2291,22 @@ int read_commands(FILE *fp)
                     });
             }
 
-            //   `objects` := Describe loaded objects.  All loaded
-            //   objects are listed, including currently or previously
-            //   displayed in any window.
+            // Document: program,manual
+
+            //   {Debugger Command}: {info objects} := Describe loaded
+            //   def:objects, that is, discrete pieces of geometry
+            //   loaded from an output after the c`run` command or
+            //   using the c`load` command, for display in a viewport.
+            //   All loaded objects are listed, regardless of whether
+            //   they're currently displayed or not, or the window
+            //   they were associated with.
+
+            //   Displayed information includes counts of the
+            //   vertices, edges and triangles making up the geometry
+            //   as well as its spatial extents in the form of an axis
+            //   aligned bounding box.
+
+            // Document: program
 
             else if (!strcmp(s, "objects")) {
                 PARSING_FINISHED;
@@ -1906,7 +2337,14 @@ int read_commands(FILE *fp)
                     });
             }
 
-            //   `bindings` := Describe existing bindings.
+            // Document: program,manual
+
+            //   {Debugger Command}: {info bindings} := Describe
+            //   currently established bindings.  For each binding,
+            //   the key and command are listed in a form suitable for
+            //   use with the c`bind` command.
+
+            // Document: program
 
             else if (!strcmp(s, "bindings")) {
                 PARSING_FINISHED;
@@ -1984,7 +2422,14 @@ int read_commands(FILE *fp)
                 }
             }
 
-            //   `definitions` := List defined parameters.
+            // Document: program,manual
+
+            //   {Debugger Command}: {info definitions} := List
+            //   defined parameters.  These can be set and cleared
+            //   with the c`define` and c`undefine` commands
+            //   respectively and are used in the form of o`-D`
+            //   options when Gamma is invoked by the c`run`, or
+            //   c`output` commmands.
 
             else if (!strcmp(s, "definitions")) {
                 PARSING_FINISHED;
@@ -2029,63 +2474,30 @@ int read_commands(FILE *fp)
 #undef COLUMN
 #undef PRINT_TABLE
 
-        // ### Toggling Commands
+        // ### Commands for Settings
 
-        // `toggle flag`
+        // Many aspects of the Debugger's behavior can be changed by
+        // means of def:settings.  Some of them are boolean flags that
+        // can be enabled by setting them to s`yes`, or s`on` or
+        // disabled by setting them to s`no`, or s`off`.  Others take
+        // numeric values, either a single decimal number, or a vector
+        // of such numbers, separated by spaces.
 
-        // Toggle a flag on the currently focused viewport.  The
-        // available flags are:
+        // Document: manual
 
-        else if (!strcmp(s, "toggle")) {
-            if (try_scan(fp, "%63s", s) != 1) {
-                print_error("error: no flag specified\n");
-                goto error;
-            }
+        // They can be changed with the c`set` command and their
+        // current value can be displayed with the c`show` command.
+        // For example, the command s`set quiet on` will enable the
+        // `quiet` flag and the Debugger will no longer print anything
+        // to the standarad ouput, until it is disabled again with
+        // s`set quiet off`.  The command s`set mouse-sensitivity
+        // 0.001` can be used to slow down the rotation or translation
+        // of the viewports by the mouse, allowing more precise
+        // setting of the view.  Finally, s`set default-vertex-color 1
+        // 0.37 0` will make newly loaded geometry be displayed in an
+        // orange color.
 
-            PARSING_FINISHED;
-            NEEDS_WINDOW;
-
-            struct viewport *v = w->focus;
-
-#define TOGGLE(FLAG) v->flags.FLAG = !w->focus->flags.FLAG
-
-            //   `maximized` := Allow the viewport to termporarily
-            //   occupy the entire window.
-
-            if (!strcmp(s, "maximized")) {
-                TOGGLE(maximized);
-                v->stale.projection = true;
-            }
-
-            //   `vertices` := Draw points to show geometry vertices.
-
-            else if (!strcmp(s, "vertices")) {
-                TOGGLE(vertices);
-            }
-
-            //   `edges` := Draw lines to show geometry edges.
-
-            else if (!strcmp(s, "edges")) {
-                TOGGLE(edges);
-            }
-
-            //   `faces` := Draw the geometry faces.
-
-            else if (!strcmp(s, "faces")) {
-                TOGGLE(faces);
-            }
-
-#undef TOGGLE
-
-            else {
-                print_error("error: no such flag\n");
-                goto error;
-            }
-
-            glfwPostEmptyEvent();
-        }
-
-        // ### Setting Commands
+        // Document: program
 
         // We handle changing and showing settings with the following
         // macros.
@@ -2132,19 +2544,15 @@ int read_commands(FILE *fp)
         // Here we set up to `N` values of the type specified by the
         // `scanf` specifer `SPEC`.
 
-#define SET_VALUES(FP, SETTING, SPEC, N)                        \
-        do {                                                    \
-            size_t i_, n_ = N;                                  \
-            double d_[N];                                       \
-                                                                \
-            for (i_ = 0;                                        \
-                 i_ < n_ && try_scan(fp, SPEC, &d_[i_]) == 1;   \
-                 i_++);                                         \
-                                                                \
-            PARSING_FINISHED;                                   \
-            while (i_-- > 0) {                                  \
-                (SETTING)[i_] = d_[i_];                         \
-            }                                                   \
+#define SET_VALUES(FP, SETTING, SPEC, N)                                \
+        do {                                                            \
+            size_t i_, n_ = N;                                          \
+                                                                        \
+            for (i_ = 0;                                                \
+                 i_ < n_ && try_scan(fp, SPEC, &((SETTING)[i_])) == 1;  \
+                 i_++);                                                 \
+                                                                        \
+            PARSING_FINISHED;                                           \
         } while(false);
 
         // The show macros, are analogous to the set macros above.
@@ -2181,9 +2589,10 @@ int read_commands(FILE *fp)
             print_output(SPEC "\n", (SETTING)[n_ - 1]); \
         } while(false);
 
-        // `set setting value`
+        // Document: program,manual
 
-        // Change the value of a setting.  The available settings are:
+        //   {Debugger Command}: set setting value := Change the value
+        //   of v`setting`, which can be one of the following:
 
         else if (!strcmp(s, "set")) {
             if (try_scan(fp, "%63s", s) != 1) {
@@ -2191,108 +2600,203 @@ int read_commands(FILE *fp)
                 goto error;
             }
 
-            //   `program` := The executable that should be run in
-            //   order to refresh the displayed geometry.
+            //   {Debugger Setting}: program := The executable invoked
+            //   by the c`run` and c`output` commands to refresh the
+            //   displayed geometry.  The default value, s`gamma` need
+            //   only be changed to direct the Debugger to use a
+            //   specific version of Gamma, or if Gamma has been
+            //   installed in a non-standard location.
 
             if (!strcmp(s, "program")) {
                 SET_LINE(fp, settings.program);
             }
 
-            //   `args` := The command line arguments to pass to the
-            //   program.
+            //   {Debugger Setting}: args := The command line
+            //   arguments to pass to the executable specified in
+            //   `program` when invoking Gamma.  These should include
+            //   the input source files at a minimum and may include
+            //   additional options, except for options to enable
+            //   outputs such as o`-o`, o`--ouput` and options to
+            //   define parameter, such as o`-D` and o`--define`.
+            //   These options are inserted by the Debugger; see the
+            //   descritpion of the c`run` command in ref: Running
+            //   Commands, for more details.
+
+            //   This setting has no default value.
 
             else if (!strcmp(s, "args")) {
                 SET_LINE(fp, settings.args);
             }
 
-            //   `quiet` := Do not print any messages to the standard output.
+            //   {Debugger Setting}: quiet := Do not print any
+            //   messages to the standard output.
 
             else if (!strcmp(s, "quiet")) {
                 SET_BOOLEAN(fp, settings.quiet);
             }
 
-            //   `present-on-reload` := Present the window to the user
-            //   when the contents of one or more of its viewports are
-            //   reloaded.
+            //   {Debugger Setting}: save-history := When enabled, the
+            //   history of typed command is written to a file named
+            //   f`.gammadb_history` in the current directory on exit.
+            //   The Debugger looks for this file on startup and, if
+            //   found, reads and recovers the command history
+            //   contained in it.
+
+            //   This is disabled by default.
+
+            else if (!strcmp(s, "save-history")) {
+                SET_BOOLEAN(fp, settings.save_history);
+            }
+
+            //   {Debugger Setting}: history-size := The number of
+            //   previous commands that are retained in the command
+            //   history and can be recalled.
+
+            //   The default value is s`100`.
+
+            else if (!strcmp(s, "history-size")) {
+                SET_VALUES(fp, &settings.history_size, "%zu", 1);
+            }
+
+            //   {Debugger Setting}: present-on-reload := Present the
+            //   window to the user when the contents of one or more
+            //   of its viewports are reloaded.  If the window is
+            //   hidden, it is made visible before directing the
+            //   window manager to focus it.
+
+            //   This is enabled by default.
 
             else if (!strcmp(s, "present-on-reload")) {
                 SET_BOOLEAN(fp, settings.present_on_reload);
             }
 
-            //   `recenter-on-reload` := Recenter the view when the
-            //   contents of a viewport are reloaded.
+            //   {Debugger Setting}: recenter-on-reload := Recenter
+            //   the view when the contents of a viewport are
+            //   reloaded.  When enabled, the viewport is
+            //   automatically translated to the center of the new
+            //   geometry's bounding box, provided its view has not
+            //   previously been adjusted by the user.
+
+            //   This is enabled by default.
 
             else if (!strcmp(s, "recenter-on-reload")) {
                 SET_BOOLEAN(fp, settings.recenter_on_reload);
             }
 
-            //   `resize-on-split` := Resize the window accordingly
-            //   when splitting viewports.
+            //   {Debugger Setting}: resize-on-split := Resize the
+            //   window accordingly when splitting viewports.  When
+            //   enabled, the window is automatically resized when one
+            //   of its viewports is split, so that the split viewport
+            //   retains its original size.
+
+            //   For instance a 500 by 500 pixel window, with a single
+            //   viewport that is split horizontally in two, will
+            //   first be resized to 1000 by 500 pixels, which will
+            //   make both viewports created by the split be 500 by
+            //   500 pixels.
+
+            //   This is disabled by default.
 
             else if (!strcmp(s, "resize-on-split")) {
                 SET_BOOLEAN(fp, settings.resize_on_split);
             }
 
-            //   `print-frames` := Resize the window accordingly
-            //   when splitting viewports.
+            //   {Debugger Setting}: print-frames := Draw rectangles
+            //   to show the Debugger's frames when printing the
+            //   contents of a window to a file using the c`print`
+            //   command.
+
+            //   This is disabled by default.
 
             else if (!strcmp(s, "print-frames")) {
                 SET_BOOLEAN(fp, settings.print_frames);
             }
 
-            //   `default-view` := The default view angle of newly
-            //   created viewports.  Set this to zero to select
-            //   orthographic projection.
+            //   {Debugger Setting}: default-view := The default view
+            //   angle of newly created viewports in degrees, as a
+            //   single number.  When set to zero, orthographic
+            //   projection is selected.
+
+            //   The default value is s`50`.
 
             else if (!strcmp(s, "default-view")) {
                 SET_VALUES(fp, &settings.default_view, "%lf", 1);
             }
 
-            //   `default-zoom` := The default zoom of newly created
-            //   viewports.
+            //   {Debugger Setting}: default-rotation := The default
+            //   rotation of newly created viewports, given as three
+            //   numbers corresponding to the Euler angles of the
+            //   rotation.
 
-            else if (!strcmp(s, "default-zoom")) {
-                SET_VALUES(fp, &settings.default_zoom, "%lf", 1);
-            }
-
-            //   `default-rotation` := The default rotation of newly
-            //   created viewports.
+            //   The default value is s`0 0 0`, corresponding to no
+            //   rotation.
 
             else if (!strcmp(s, "default-rotation")) {
                 SET_VALUES(fp, settings.default_rotation, "%lf", 3);
             }
 
-            //   `default-translation` := The default translation of
-            //   newly created viewports.
+            //   {Debugger Setting}: default-translation := The
+            //   default translation of newly created viewports, given
+            //   as three numbers specifying displacements along the
+            //   global coordinate axes.
+
+            //   The default value is s`0 0 0`, corresponding to no
+            //   translation.
 
             else if (!strcmp(s, "default-translation")) {
                 SET_VALUES(fp, settings.default_translation, "%lf", 3);
             }
 
-            //   `default-vertex-color` := The color assigned to vertices
-            //   that do not have a color associated with them.  It is
-            //   given as four RGBA floating point values.
+            //   {Debugger Setting}: default-zoom := The default zoom
+            //   of newly created viewports.  This is a single number
+            //   with a unit value corresponding roughly to a zoom
+            //   that will make the viewed geometry fill the viewport.
+
+            //   The default value is s`0.7`.
+
+            else if (!strcmp(s, "default-zoom")) {
+                SET_VALUES(fp, &settings.default_zoom, "%lf", 1);
+            }
+
+            //   {Debugger Setting}: default-vertex-color := The color
+            //   assigned to vertices that do not have a color
+            //   associated with them, given as four RGBA floating
+            //   point numbers in the range $[0, 1]$.
+
+            //   The default value is s`0.78 0.78 0.78 1`,
+            //   corresponding to a light gray color.
 
             else if (!strcmp(s, "default-vertex-color")) {
                 SET_VALUES(fp, settings.default_vertex_color, "%lf", 4);
             }
 
-            //   `vertex-point-size` := The size of the points showing
-            //   the locations of the vertices.
+            //   {Debugger Setting}: vertex-point-size := The size of
+            //   the points showing the locations of the vertices,
+            //   specified as a single number in unspecified units.
+
+            //   The default value is s`3`.
 
             else if (!strcmp(s, "vertex-point-size")) {
                 SET_VALUES(fp, &settings.vertex_point_size, "%lf", 1);
             }
 
-            //   `edge-line-width` := The width of the lines used to
-            //   draw geometry edges.
+            //   {Debugger Setting}: edge-line-width := The width of
+            //   the lines used to draw geometry edges, specified as a
+            //   single number in unspecified units.
+
+            //   The default value is s`2`.
 
             else if (!strcmp(s, "edge-line-width")) {
                 SET_VALUES(fp, &settings.edge_line_width, "%lf", 1);
             }
 
-            //   `mouse-sensitivity` := A number that controls how fast
-            //   the viewport is rotated, zoomed, etc. with the mouse.
+            //   {Debugger Setting}: mouse-sensitivity := A single
+            //   number that controls how fast the viewport is
+            //   rotated, translated, or zoomed with the mouse.
+            //   Higher values allow for faster manipulation of the
+            //   view; lower values afford more control.
+
+            //   The default value is s`0.01`.
 
             else if (!strcmp(s, "mouse-sensitivity")) {
                 SET_VALUES(fp, &settings.mouse_sensitivity, "%lf", 1);
@@ -2306,10 +2810,11 @@ int read_commands(FILE *fp)
             glfwPostEmptyEvent();
         }
 
-        // `show setting`
+        //   {Debugger Command}: show setting := Show the value of
+        //   v`setting`.  See the `set` command for a list of possible
+        //   settings.
 
-        // Show the value of a setting.  See the `set` command for
-        // possible settings to show.
+        // Document: program
 
         else if (!strcmp(s, "show")) {
             if (try_scan(fp, "%63s", s) != 1) {
@@ -2323,6 +2828,10 @@ int read_commands(FILE *fp)
                 SHOW_STRING(settings.args);
             } else if (!strcmp(s, "quiet")) {
                 SHOW_BOOLEAN(settings.quiet);
+            } else if (!strcmp(s, "save-history")) {
+                SHOW_BOOLEAN(settings.save_history);
+            } else if (!strcmp(s, "history-size")) {
+                SHOW_VALUES(&settings.history_size, "%zu", 1);
             } else if (!strcmp(s, "present-on-reload")) {
                 SHOW_BOOLEAN(settings.present_on_reload);
             } else if (!strcmp(s, "recenter-on-reload")) {
@@ -2356,63 +2865,6 @@ int read_commands(FILE *fp)
 #undef SET_VALUES
 #undef SHOW_STRING
 #undef SHOW_VALUES
-        }
-
-        // `define name [value]`
-
-        // Change the value of a parameter.  When no value is
-        // specified, the parameter is passed to the inferior as a
-        // boolean, via the command line option o`-Dname`.  Otherwise
-        // the parameter is defined with the option o`-Dname=value`.
-
-        // In the latter case the value should be quoted and escaped
-        // as necessary.
-
-        else if (!strcmp(s, "define") || !strcmp(s, "undefine")) {
-            const bool p = (s[0] == 'u');
-
-            if (try_scan(fp, "%63s", s) != 1) {
-                print_error("error: no parameter specified\n");
-                goto error;
-            }
-
-            size_t j = definitions.n;
-            for (size_t i = 0; i < definitions.n; i++) {
-                if (!definitions.p[i].name) {
-                    j = i;
-                } else if (!strcmp(definitions.p[i].name, s)) {
-                    j = i;
-                    goto defined;
-                }
-            }
-
-            if (p) {
-                print_error("error: parameter %s has not been defined\n", s);
-                goto error;
-            }
-
-            if (j == definitions.n) {
-                MAYBE_GROW_TO(definitions, j + 1);
-                memset(
-                    definitions.p + j,
-                    0,
-                    (definitions.n - j) * sizeof(definitions.p[0]));
-            }
-
-            definitions.p[j].name = strdup(s);
-
-          defined:
-            if (p) {
-                free(definitions.p[j].name);
-                definitions.p[j].name = nullptr;
-            } else {
-                if (definitions.p[j].value) {
-                    free(definitions.p[j].value);
-                    definitions.p[j].value = nullptr;
-                }
-
-                try_scan(fp, " %m[^\n]", &definitions.p[j].value);
-            }
         }
 
         else {

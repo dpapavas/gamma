@@ -152,6 +152,8 @@ simple geometric objects and are therefore rarely the intended output
 of the program. Instead, they serve as basic building blocks which are
 combined and further processed by functions that operate on them.
 
+Concept: operations
+
 Here sphere and cube primitives are produced using the `sphere` and
 `cuboid` functions imported from the `polyhedra` library and then
 intersected using the `intersection` function imported from the
@@ -194,7 +196,7 @@ Besides keeping things organized, it will avoid flooding your home
 directory (or the directory from which you would run Gamma) with a
 multitude of files that Gamma often creates during compilation.
 
-Concept: debugger,init files
+Concept: debugger,initialization file
 Document: manual/scheme
 Alias: .ext .scm
 Document: manual/lua
@@ -509,6 +511,8 @@ Document: manual/all
 
 ## A Threaded Fastener
 
+Concept: extrusion
+
 The previous example involved a trivial extrusion of a complex
 polygon, assembled from boolean operations on simple shapes.  This
 example showcases the flexibility of the extrusion operation by doing
@@ -573,6 +577,8 @@ matter of taking a difference with the hexagonal head instead of a
 union.
 
 ## Faired Surfaces
+
+Concept: surface fairing
 
 The previous examples dealt with solids produced by the composition of
 simple shapes, either linear or made up of simple circular curves.  A

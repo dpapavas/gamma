@@ -46,6 +46,8 @@ struct settings {
 
     bool quiet, batch;
     bool present_on_reload, recenter_on_reload, resize_on_split, print_frames;
+    bool save_history;
+    size_t history_size;
 
     double default_vertex_color[4], vertex_point_size, edge_line_width;
     double default_view, default_zoom;

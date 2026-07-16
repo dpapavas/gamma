@@ -1203,7 +1203,7 @@ bool refresh_windows(void)
 
 // Since this mostly concerns the GL context, we also take care of
 // loading viewport geometry here.  For the nitty-gritty of how this
-// geometry is structured, ref: Loading Object Geometry.
+// geometry is structured, ref: Loading Viewport Geometry.
 
 // Here we only concern ourselves with bind this geometry to viewports
 // and loading it in their VBOs.
