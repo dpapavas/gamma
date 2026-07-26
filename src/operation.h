@@ -76,9 +76,9 @@
 
 // In this way, operations resulting from the evaluation of front end
 // code are organized into a graph, like the one drawn in
-// ref:graph-example, edges pointing from predecessors to successors.
-// This can then be postprocessed and evaluated.  Ref: Operation
-// Evaluation.
+// ref:graph-example, with edges pointing from predecessors to
+// successors.  This can then be postprocessed and evaluated.  Ref:
+// Operation Evaluation.
 
 // Figure:graph-example
 // ```graph

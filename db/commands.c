@@ -630,23 +630,24 @@ int read_commands(FILE *fp)
 
         // ### Viewport Commands
 
-        // Each window can be further partitioned into *viewports*:
-        // separate rectangular regions of the window, each having a
-        // numerical *index* and *target*.  The index of a viewport is
-        // automatically assigned and cannot be changed.  The target
-        // can be any sequence of alphanumeric characters and when the
-        // viewport is created is the same as the index.  Both are
-        // shown in the lower left corner of each viewport, in the
-        // form @samp{v`index`: v`target`}.
+        // Each window can be partitioned into *viewports*: separate
+        // rectangular regions of the window, each having a numerical
+        // *index* and *target*.  The index of a viewport is
+        // automatically assigned when it is created and cannot be
+        // changed.  The target can be any sequence of alphanumeric
+        // characters and when the viewport is created is the same as
+        // the index.  Both are shown in the lower left corner of the
+        // viewport, in the form @samp{v`index`: v`target`}.
 
         // Document: manual
 
-        // When the Debugger runs Gamma to process your program, it
-        // will automatically enable all outputs with names
-        // corresponding to targets of one or more viewports of the
-        // current window and load the geometry associated with each
-        // ouput into the viewport that targets it.  Ref: Running
-        // Commands, for more details.
+        // When the Debugger invokes Gamma in the course of a c`run`,
+        // or c`output` command, it will automatically precede the
+        // arguments specified in the c`args` setting with options to
+        // enable outputs with names corresponding to targets of
+        // viewports in the current window.  Geometry produced for an
+        // output it will automatically be loaded and displayed in the
+        // target viewport.  Ref:{Running Commands} for more details.
 
         // One of the vieworts in each window is said to be *focused*
         // at any given time and only it is affected by commands that
@@ -692,8 +693,7 @@ int read_commands(FILE *fp)
         //   Split the focused viewport horizontally or vertically at
         //   equally spaced intervals.  Possible values for
         //   v`direction` are s`horizontally` or s`vertically`.  The
-        //   horizontal direction is assumed if none is explictly
-        //   specified.
+        //   horizontal direction is assumed if none is given.
 
         //   If v`parts` is not specified the viewport is split along
         //   its middle, otherwise it is split so as to produce
@@ -1032,8 +1032,8 @@ int read_commands(FILE *fp)
 
 #define TOGGLE(FLAG) v->flags.FLAG = !w->focus->flags.FLAG
 
-            //     `maximized` := Make the viewport occupy the entire
-            //     window.
+            //     `maximized` := Make the viewport temporarily occupy
+            //     the entire window.
 
             if (!strcmp(s, "maximized")) {
                 TOGGLE(maximized);
@@ -1074,14 +1074,14 @@ int read_commands(FILE *fp)
 
         // Document: manual
 
-        // Like all debuggers, the Debugger will arrange to run your
-        // program for you, once you tell it how to do so.  You can
-        // either do this by means of the o`--args` option (ref:
-        // Debugger Command Line Options) or equivalently by setting
-        // `args` (ref: Commands for Settings).  The latter is usually
-        // more convenient, as you can do it in your local
-        // initialization file and simply start the Debugger without
-        // any arguments.  Ref: A Few Examples, for an example.
+        // The Debugger will arrange to invoke Gamma for you, once you
+        // tell it how to do so.  You can do this either by means of
+        // the o`--args` option (ref: Debugger Command Line Options)
+        // or equivalently by setting `args` (ref: Commands for
+        // Settings).  The latter is usually more convenient, as you
+        // can do it in an initialization file and simply start the
+        // Debugger without any arguments.  Ref:{A Few Examples} for
+        // an example.
 
         // Regardless of how it's set, the `args` setting should
         // contain all command line arguments you'd like to pass to
@@ -1093,10 +1093,9 @@ int read_commands(FILE *fp)
         // the source files containing the program whose outputs are
         // to be inspected.
 
-        // Once `args` is set, you can use the c`run` command at the
-        // terminal, or more conveniently, bind it to a key (ref:
-        // Binding Commands), to re-evaluate the program and update
-        // the viewports.
+        // Once `args` is set, you can type the c`run` command at the
+        // terminal, or bind it to a key (ref: Binding Commands), to
+        // re-evaluate the program and update the viewports.
 
         // Document: program
 
@@ -1246,17 +1245,17 @@ int read_commands(FILE *fp)
         //   and the other given the target s`sprocket` and if the
         //   `program` and `args` settings contain s`gamma` and
         //   s`--dump-list=- sprocket.ext` respectively, then s`run
-        //   all`, or s`run` will invoke Gamma as s`gamma -o 1:1 -o
-        //   sprocket:sprocket --dump-list=- sprocket.ext`, directing
-        //   the geometry produced by outputs s`1` and s`sprocket`
-        //   into the corresponding viewports .  Any geometry
-        //   previously displayed in the updated viewports is
+        //   all` (or just s`run`) will invoke Gamma as s`gamma -o 1:1
+        //   -o sprocket:sprocket --dump-list=- sprocket.ext`,
+        //   directing the geometry produced by outputs s`1` and
+        //   s`sprocket` into the corresponding viewports .  Any
+        //   geometry previously displayed in the updated viewports is
         //   discarded.
 
         //   On the other hand, if the viewport targeting s`sprocket`
         //   is focused and s`run single` is used, only the s`-o
-        //   sprocket:sprocket` option will be used and only that
-        //   viewport will be updated.
+        //   sprocket:sprocket` option will be included in the
+        //   invocation and only that viewport will be updated.
 
         //   In either case, if the `draft` and `z` parameters have
         //   been defined with the commands s`define draft` and
@@ -1318,7 +1317,7 @@ int read_commands(FILE *fp)
         //   {Debugger Command}: kill := Terminate an ongoing run.
         //   Only one run can be in progress at a time and a
         //   long-winded ongoing run must first be terminated with
-        //   this command, before a new one can be started.
+        //   this command, before another can be started.
 
         else if (!strcmp(s, "kill")) {
             PARSING_FINISHED;
@@ -1427,21 +1426,24 @@ int read_commands(FILE *fp)
         // many commands operate on them specifically.
 
         //   {Debugger Command}: bind key command := Bind the action
-        //   of pressing a key inside one of the windows to a command.
+        //   of pressing a key inside any of the viewing windows to a
+        //   command.  If a binding was already established for v`key`
+        //   it is replaced.
+
         //   The value of v`key` can be any printable character, or
         //   the name of a function key, potentially prefixed by one
         //   or more of s`C-`, s`M-`, s`S-`, or s`s-` to specify that
         //   the Control, Meta (Alt), Shift, or Super modifiers should
         //   be present.  Use the completion feature when entering
         //   this command in the terminal for a list of function key
-        //   names.  Ref: Command Completion, for more details.
+        //   names.  Ref:{Command Completion} for details.
 
         //   Any text after v`key` and until the end of the line, is
-        //   taken as the value for v`command`, which may therefore
-        //   contain spaces.  It should be entered exactly as it would
-        //   be entered at the command prompt.  To bind several
-        //   command lines, write them as a single line separated by
-        //   s`;` characters.
+        //   taken as the value for v`command`, which may contain
+        //   spaces.  It should be entered exactly as it would be
+        //   entered at the command prompt.  To bind several command
+        //   lines, write them in a single line separated by s`;`
+        //   characters.
 
         //   For example, the s`bind q quit` command, will bind the
         //   action of pressing the k`q` key in any window to the
@@ -1457,8 +1459,8 @@ int read_commands(FILE *fp)
         //   resetting the focused viewport's camera.
 
         //   A list of established bindings can be displayed with the
-        //   c`info bindings` command.  Ref: Commands that Display
-        //   Information, for more details.
+        //   c`info bindings` command.  Ref:{Commands that Display
+        //   Information} for details.
 
         //   {Debugger Command}: unbind key := Delete any binding
         //   previously established for v`key` using the c`bind`
@@ -1619,10 +1621,9 @@ int read_commands(FILE *fp)
 
         // Document: manual
 
-        // However, it may some times be useful to explicitly load
-        // geometry into a viewport.  One example would be loading
-        // reference geometry from an external file and displaying it
-        // in a dedicated viewport.
+        // However, it may sometimes be useful to explicitly load
+        // geometry into a viewport, for example to load reference
+        // geometry from an external file.
 
         // Document: program,manual
 
@@ -2022,10 +2023,10 @@ int read_commands(FILE *fp)
         // the Debugger's state.  This can be useful on occasion.  For
         // instance, if you'd like to use the c`rotate`, c`translate`,
         // or c`zoom` commands in your initialization file to set up
-        // the default view of a viewport, you can avoid having to
-        // determine the view parameters by trial and error, simply by
-        // adjusting the view with your mouse and then running c`info
-        // viewports`, to list and copy the current parameters.
+        // the default view of a viewport, you can determine the view
+        // parameters by adjusting the view with your mouse and then
+        // running c`info viewports`.  This avoids the need for trial
+        // and error.
 
         // Document: program
 
@@ -2130,11 +2131,10 @@ int read_commands(FILE *fp)
             //   {Debugger Command}: {info viewports} := Describe
             //   viewports in the current window.  Displayed
             //   information includes the position of the viewport
-            //   within the window, viewing parameters, its target and
-            //   a set of flags.
+            //   within the window, the viewing parameters, the target
+            //   and a set of flags.
 
-            //   Each flag is displayed with a single letter code if
-            //   present:
+            //   Each set flag is displayed with a single letter code:
             //     `m` := The viewport is maximized.
             //     `v` := Drawing of vertices is enabled.
             //     `e` := Drawing of edges is enabled.
@@ -2295,11 +2295,11 @@ int read_commands(FILE *fp)
 
             //   {Debugger Command}: {info objects} := Describe loaded
             //   def:objects, that is, discrete pieces of geometry
-            //   loaded from an output after the c`run` command or
-            //   using the c`load` command, for display in a viewport.
-            //   All loaded objects are listed, regardless of whether
-            //   they're currently displayed or not, or the window
-            //   they were associated with.
+            //   loaded from an output for display in a viewport,
+            //   after the c`run` or c`load` commands.  All loaded
+            //   objects are listed, regardless of whether they're
+            //   currently displayed or not, or the window they were
+            //   associated with.
 
             //   Displayed information includes counts of the
             //   vertices, edges and triangles making up the geometry
@@ -2427,8 +2427,8 @@ int read_commands(FILE *fp)
             //   {Debugger Command}: {info definitions} := List
             //   defined parameters.  These can be set and cleared
             //   with the c`define` and c`undefine` commands
-            //   respectively and are used in the form of o`-D`
-            //   options when Gamma is invoked by the c`run`, or
+            //   respectively and are used (in the form of o`-D`
+            //   options) when Gamma is invoked by the c`run`, or
             //   c`output` commmands.
 
             else if (!strcmp(s, "definitions")) {
@@ -2481,7 +2481,7 @@ int read_commands(FILE *fp)
         // can be enabled by setting them to s`yes`, or s`on` or
         // disabled by setting them to s`no`, or s`off`.  Others take
         // numeric values, either a single decimal number, or a vector
-        // of such numbers, separated by spaces.
+        // of such numbers separated by spaces.
 
         // Document: manual
 
@@ -2592,7 +2592,8 @@ int read_commands(FILE *fp)
         // Document: program,manual
 
         //   {Debugger Command}: set setting value := Change the value
-        //   of v`setting`, which can be one of the following:
+        //   of v`setting`, which can be one of the settings listed
+        //   below.
 
         else if (!strcmp(s, "set")) {
             if (try_scan(fp, "%63s", s) != 1) {
@@ -2617,10 +2618,10 @@ int read_commands(FILE *fp)
             //   the input source files at a minimum and may include
             //   additional options, except for options to enable
             //   outputs such as o`-o`, o`--ouput` and options to
-            //   define parameter, such as o`-D` and o`--define`.
+            //   define parameters, such as o`-D` and o`--define`.
             //   These options are inserted by the Debugger; see the
-            //   descritpion of the c`run` command in ref: Running
-            //   Commands, for more details.
+            //   descritpion of the c`run` command in ref:{Running
+            //   Commands} for more details.
 
             //   This setting has no default value.
 
@@ -2636,11 +2637,11 @@ int read_commands(FILE *fp)
             }
 
             //   {Debugger Setting}: save-history := When enabled, the
-            //   history of typed command is written to a file named
+            //   history of typed commands is written to a file named
             //   f`.gammadb_history` in the current directory on exit.
             //   The Debugger looks for this file on startup and, if
             //   found, reads and recovers the command history
-            //   contained in it.
+            //   from it.
 
             //   This is disabled by default.
 
@@ -2660,7 +2661,7 @@ int read_commands(FILE *fp)
 
             //   {Debugger Setting}: present-on-reload := Present the
             //   window to the user when the contents of one or more
-            //   of its viewports are reloaded.  If the window is
+            //   of its viewports are updated.  If the window is
             //   hidden, it is made visible before directing the
             //   window manager to focus it.
 
@@ -2672,7 +2673,7 @@ int read_commands(FILE *fp)
 
             //   {Debugger Setting}: recenter-on-reload := Recenter
             //   the view when the contents of a viewport are
-            //   reloaded.  When enabled, the viewport is
+            //   updated.  When enabled, the viewport is
             //   automatically translated to the center of the new
             //   geometry's bounding box, provided its view has not
             //   previously been adjusted by the user.
@@ -2684,14 +2685,14 @@ int read_commands(FILE *fp)
             }
 
             //   {Debugger Setting}: resize-on-split := Resize the
-            //   window accordingly when splitting viewports.  When
-            //   enabled, the window is automatically resized when one
-            //   of its viewports is split, so that the split viewport
+            //   window when splitting viewports.  When enabled, the
+            //   window is automatically resized when one of its
+            //   viewports is split, so that the split viewport
             //   retains its original size.
 
             //   For instance a 500 by 500 pixel window, with a single
             //   viewport that is split horizontally in two, will
-            //   first be resized to 1000 by 500 pixels, which will
+            //   first be resized to 1000 by 500 pixels.  This will
             //   make both viewports created by the split be 500 by
             //   500 pixels.
 
@@ -2713,9 +2714,8 @@ int read_commands(FILE *fp)
             }
 
             //   {Debugger Setting}: default-view := The default view
-            //   angle of newly created viewports in degrees, as a
-            //   single number.  When set to zero, orthographic
-            //   projection is selected.
+            //   angle of newly created viewports in degrees.  When
+            //   set to zero, orthographic projection is selected.
 
             //   The default value is s`50`.
 
@@ -2748,9 +2748,9 @@ int read_commands(FILE *fp)
             }
 
             //   {Debugger Setting}: default-zoom := The default zoom
-            //   of newly created viewports.  This is a single number
-            //   with a unit value corresponding roughly to a zoom
-            //   that will make the viewed geometry fill the viewport.
+            //   of newly created viewports.  A unit value roughly
+            //   corresponds to a zoom that will make the viewed
+            //   geometry fill the viewport.
 
             //   The default value is s`0.7`.
 
@@ -2760,8 +2760,8 @@ int read_commands(FILE *fp)
 
             //   {Debugger Setting}: default-vertex-color := The color
             //   assigned to vertices that do not have a color
-            //   associated with them, given as four RGBA floating
-            //   point numbers in the range $[0, 1]$.
+            //   associated with them, given as four RGBA decimal
+            //   numbers in the range $[0, 1]$.
 
             //   The default value is s`0.78 0.78 0.78 1`,
             //   corresponding to a light gray color.
@@ -2811,8 +2811,8 @@ int read_commands(FILE *fp)
         }
 
         //   {Debugger Command}: show setting := Show the value of
-        //   v`setting`.  See the `set` command for a list of possible
-        //   settings.
+        //   v`setting`.  See the description of the `set` command for
+        //   a list of possible settings.
 
         // Document: program
 

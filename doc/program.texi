@@ -43,6 +43,9 @@
 }
 @end latex
 
+@alias dsindex = c
+@alias dcindex = c
+
 @exampleindent 2
 
 @contents

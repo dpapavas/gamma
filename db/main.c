@@ -82,7 +82,7 @@ static int evaluate(const char *s)
     return n;
 }
 
-// ### Completion
+// ### Command Completion
 
 // The functions below implement completion via GNU Readline.  Below,
 // we provide completion candidates given a set of keywords that are
@@ -917,8 +917,8 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
             //   executed sequentially.  The commands themselves and
             //   are not printed as they are executed, but any command
             //   output *is* printed as if the command had been typed
-            //   at the prompt, unless the o`-q` option or `quiet`
-            //   setting are enabled.
+            //   at the prompt (unless the o`-q` option or `quiet`
+            //   setting are enabled).
 
             //   An error in any command terminates execution of the
             //   command file and the Debugger exits with an error
@@ -980,15 +980,15 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
         case ARGS:
             //   --args argument... := Specify command line arguments
             //   to be passed when invoking Gamma with the c`run` or
-            //   related commands.  Ref: Running Commands.
+            //   c`output` commands.  Ref:{Running Commands} for
+            //   details.
 
             //   This option stops option processing.
 
             //   Alternatively command line options can also be set by
             //   means of the `args` setting.  Ref: Commands for
-            //   Settings.  This is often more convenient,
-            //   particularly when done inside a local initialization
-            //   file.
+            //   Settings.  This is often more practical, particularly
+            //   when done inside an initialization file.
 
         {
             size_t n = 0;
@@ -1014,11 +1014,11 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
 
             //   Normally, no windows are created during startup, to
             //   allow the user to create and configure windows as
-            //   required by the program inside the local
-            //   initialization file.  In more impromptu use of the
-            //   Debugger however, it may be convenient to be able to
-            //   use it with an existing program, without having to
-            //   write an initialization file.
+            //   required by the program in an initialization file.
+            //   In more impromptu use of the Debugger however, it may
+            //   be convenient to be able to use it with an existing
+            //   program without having to write an initialization
+            //   file.
 
             // Document: manual/scheme
             // Alias: .ext .scm
@@ -1027,7 +1027,7 @@ along with this program. If not, see http://www.gnu.org/licenses/.\n");
             // Document: manual
 
             //   For example, the Debugger can be directed to run the
-            //   program shown in ref: Faired Surfaces, by invoking it
+            //   program shown in ref:{Faired Surfaces} by invoking it
             //   with s`gammadb --target fitting --args fitting.ext -c
             //   run`.
 

@@ -41,7 +41,7 @@
 // arguments and, in turn, *successor* links to themselves in those).
 // They also hold shared pointers to their arguments, since they
 // depend on them for their result.  Ultimately, these pointers along
-// with pointers kept to sunk operations (ref: Sunk Operations),
+// with pointers kept to sunk operations (ref: Sunk Operations)
 // should be the only references preventing destruction.
 
 // Each class also implements the `reset` member function.  Ref:

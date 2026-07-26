@@ -12,24 +12,23 @@ interpret its diagnostic output.
 ## Invoking Gamma from the Command Line
 
 You can invoke Gamma by typing s`gamma` on the command line, followed
-by options and input files.  Typically, you will need to pass at least
-one or more options to specify what results to output and how to
-output them, followed by at least one file containing a program in one
-of the supported languages. Gamma will then proceed to read and
-execute each program, evaluate the operations necessary to produce the
-requested outputs and write them out as requested.
+by options and input files.  Typically, you will need to pass one or
+more options to specify what results to output and how to output them,
+followed by at least one file containing a program in one of the
+supported languages. Gamma will then proceed to read and execute each
+program, evaluate the operations necessary to produce the requested
+outputs and write them out as requested.
 
 Options and input files can be mixed arbitrarily and an option only
 has effect on the execution and evaluation of program files specified
-after it in the command line.
+after it in the command line.  Consider for example the following
+invocation:
 
 Document: manual/scheme
 Alias: .ext .scm
 Document: manual/lua
 Alias: .ext .lua
 Document: manual
-
-Consider for example the following invocation:
 
 ```
 gamma -o first.stl utility.ext -o second.stl -Wmesh main.ext
@@ -46,7 +45,7 @@ f`main.ext`.
 Unalias: .ext
 
 You can further control many aspects of Gamma's behavior by using the
-command-line options described in ref: Gamma Command Line Options, and
+command-line options described in ref:{Gamma Command Line Options} and
 Gamma itself can remind you of the available options. Type s`gamma
 --help` to display all available options along with a brief
 description of their use.
@@ -56,7 +55,7 @@ description of their use.
 Any argument in Gamma's invocation that does not look like an option,
 that is, it does not start with s`-`, or s`--`, is interpreted as a
 file containing source code in one of the supported languages.  One of
-the input files can also be f`-`, in which case the program will be
+the input files can also be s`-`, in which case the program will be
 read from the standard input.
 
 If the o`-x` option is not given, or if it is given the value `auto`,
@@ -120,20 +119,22 @@ functions exported to the global environment.
 
 You can of course use other libraries with your program.  Lua's
 standard libraries are avaialable and need only be imported using
-`require`, as is done in any Lua program.
+`require`, as with any Lua program.
 
 Gamma also exposes much of its functionality in the form of a set of
 libraries, each containing functions related to a particular
 functional area.  For instance the `gamma.polygons` and
 `gamma.polyhedra` libraries provide operations for creating many
-polygonal and polyhedral primitives, in the form of functions like
+polygonal and polyhedral primitives, through functions such as
 `rectangle` or `sphere`.  You can use them in the same way as you
 would any Lua library.  For example:
 
 ```Lua
 polygons = require "gamma.polygons"
+polyhedra = require "gamma.polyhedra"
 
-C = polygons.circle(10)
+c = polygons.rectangle(10, 10)
+s = polyhedra.sphere(2)
 ```
 
 Finally, you can also install your own libraries, by placing a file
@@ -155,9 +156,9 @@ option processing stops at this point and any arguments following it
 are passed directly to each executed program.
 
 Document: manual/scheme
-In Scheme, these arguments can be accessed by the program using the
-`(command-line)` procedure, which returns them as a list where the
-first element is the program name and the supplied arguments follow.
+In Scheme, these arguments can be accessed by the program with the
+`command-line` procedure.  It returns them as a list where the first
+element is the program name and the supplied arguments follow.
 
 Document: manual/lua
 In Lua, following the convention of Lua's standalone interpreter,
@@ -196,8 +197,8 @@ to achieve the same effect, taking care to quote the expression
 appropriately.  A string parameter would be passed with something like
 s`-Dlabel='"Hello world"'`.
 
-You can access the variable as if you had defined it yourself inside
-the program, but since its existence will depend on whether the `-D`
+In the program, you can access the variable as if you had defined it
+yourself, but since its existence will depend on whether the `-D`
 option has been passed, it will usually be convenient to define it
 explictly, giving it a default value.
 
@@ -208,7 +209,7 @@ effect if the variable has not already been defined with the `-D`
 option.
 
 For example, to define a flag named `draft?` with an initial value of
-`#false` and a parameter named `height`, with an initial value of 5,
+`false` and a parameter named `height`, with an initial value of 5,
 you would use the following code.
 
 ```scheme
@@ -226,12 +227,8 @@ height = height or 5
 ```
 Document: manual
 
-You could then override the default values on the command line with an
-invocation like the following.
-
-```
-gamma -Ddraft -Dheight=10 ...
-```
+You could then override the default values when invoking Gamma, with
+options such as s`-Ddraft -Dheight=10`.
 
 ### How Programs are Executed
 
@@ -239,9 +236,9 @@ When you invoke Gamma, it goes through a series of stages in order to
 produce its output.  It begins by parsing the arguments you specify in
 the invocation, in the order in which they appear.  If the argument is
 an input file, it is executed at that point and its execution is only
-affected by the options and input files that preceded them in the
+affected by the options and input files that preceded it in the
 command line.  You can execute programs written in different languages
-in the same invocations and all programs for a given language are
+in a single invocation and all programs for a given language are
 executed in the same environment, so that global variables and other
 side-effects introduced in one program are also visible in programs
 following it.
@@ -278,24 +275,22 @@ library.  There can be as many outputs as you need and each has a
 distinct name.  When a program executes, one or more outputs may have
 been enabled using the `-o`, or `--output` options and only the
 results of these operations will be evaluated and written out.  This
-allows you to write programs which produce several outputs, selecting
-which of them will be built when the program is executed.
+allows you to write programs with several outputs, selecting which of
+them will be built when the program is executed.
 
 The evaluation process begins once all programs are executed and all
 invocation arguments have been processed. Gamma will first cull the
 generated operations, retaining only operations corresponding to
 enabled outputs along with all operations that are needed to calculate
-them.  All other operations are discarded.
-
-The culled operations may then be modified^[Such modifications are
-called def:rewrites, since they constitute rewrites of the underlying
-operation dependency graph.] in an attempt to improve the efficiency
-of the calculation, without altering its result.  Finally, they're
-evaluated to generate geometry.  This evaluation takes place in an
-unspecified order^[Of course an operation that is passed as an operand
-to another operation is evaluated before it.] and operations
-may also be evaluated in parallel if multithreaded evaluation is
-enabled.
+them.  All other operations are discarded.  The culled operations may
+then be modified^[Such modifications are called def:rewrites, since
+they constitute rewrites of the underlying operation dependency
+graph.] in an attempt to improve the efficiency of the calculation,
+without altering its result.  Finally, they're evaluated to generate
+geometry.  This evaluation takes place in an unspecified order^[Of
+course an operation that is passed as an operand to another operation
+is evaluated before it.] and operations may also be evaluated in
+parallel if multithreaded evaluation is enabled.
 
 If there are no errors, Gamma exits once all operations have been
 evaluated, at which point all requested outputs will have been written
@@ -344,9 +339,9 @@ output(1, hollow(5))
 Document: manual
 
 If called upon to execute it, Gamma will exit after printing the
-following diagnostic inforamtion^[Long lines have been broken and
-indented to fit the page width.  They would normally appear as a
-single line in the output.].
+following diagnostic information, where long lines have been broken
+and indented to fit the page width.  They would normally appear as a
+single line in the output.
 
 Document: manual/scheme
 ```
@@ -388,9 +383,9 @@ the real cause lies in the call to `hollow` made at line 10, shown in
 the third frame in the stack trace.
 
 This call is made with only one argument, when `hollow` takes two.
-While not an error in itself, Lua's semantics dictate that the second
-argument is simply left with the value `nil`, so that the error is
-only caught and reported when the argument is used to calculate the
+This is not an error in itself; Lua's semantics dictate that the
+second argument is simply left with the value `nil`, so that the error
+is only caught and reported when the argument is used to calculate the
 radius of the inner sphere.
 
 Document: manual
@@ -398,12 +393,13 @@ Document: manual
 Errors may be reported even with correct programs when Gamma tries to
 evaluate the operations contained in them.  They're usually still
 rooted in programmer error, but diagnostic information may be less
-precise, making their nature harder to understand.  Furthermore
+precise, making their nature harder to understand.  Furthermore,
 whether they occur at all and how they're reported may depend on how
-the calculation is made, perhaps only manifesting when a parameter
-takes certain values, and sometimes they may go undetected altogether.
-In the latter case, they will still result in errors in the calculated
-geometry.
+the calculation is made.  For example, they may only manifest when a
+parameter takes certain values and sometimes they may go undetected
+altogether.  In the latter case, they will still result in errors in
+the calculated geometry.  Warning options, such as o`-Wmesh` can help
+identify these; ref: Options Controlling Diagnostic Messages.
 
 Still, enough information is usually provided to give you an idea of
 what the issue is and how it can be fixed.  As an example, consider
@@ -471,7 +467,7 @@ was created is also reported, so if the program contained more than
 one `extrusion` operations, you would still know which of them caused
 the problem.
 
-The problem itself, is regrettably reported as a cryptic message
+The problem itself is regrettably reported as a cryptic message
 originating in a check made by CGAL, the library that forms Gamma's
 computational geometry core.  This is not likely to make much sense to
 anyone who isn't familiar with the internals of CGAL, but it may at
@@ -485,15 +481,15 @@ You can use GNU Make to take care of invoking Gamma for you.  Although
 its main function --- deciding which pieces of a large program need to
 be rebuilt --- is not needed^[This is because Gamma caches the results
 of calculations, so that rebuilding a previously built output of a
-program, typically consists in loading the cached result and writing
-it out, which doesn't take much time. Moreover, because Gamma doens't
+program typically consists in loading the cached result and writing it
+out, which doesn't take much time. Moreover, because Gamma doesn't
 have anything analogous to separate compilation and linking stages,
-this function of Make is not appropriate.  If a program is split into
-multiple files, all files containing source relevant to the
+this function of Make is not even appropriate.  If a program is split
+into multiple files, all files containing source relevant to the
 computation of an output must be processed each time the output is
 built, regardless of whether they have been changed since the last
-build, or not.], it can still help make development and use of a
-program more convenient.
+build, or not.], it can still make development and use of a program
+more convenient.
 
 Here's a simple makefile, that could be used with the sprocket program
 shown in ref:A Few Examples.
@@ -517,7 +513,7 @@ clean:
 
 You could use this to build the sprocket geometry and write it to a
 file in either STL or OFF format simply by s`make sprocket.stl` or
-s`make sprocket.off` repsectively.  You can also clean your working
+s`make sprocket.off` respectively.  You can also clean your working
 directory of generated output files and stored cache files with the
 traditional s`make clean` rule.
 
@@ -562,10 +558,10 @@ clean:
 
 With this makefile, you can build an arbitrary sprocket with an
 invocation like s`make sprocket.stl draft=true diameter=6.35
-pitch=12.7 teeth=40 width=7.37`.  This can be more convenient,
-especially if your program is going to be used by others, who are not
-familiar with the specifics of how your parameters are named, or what
-Gamma options can be used to set them.
+pitch=12.7 teeth=40 width=7.37`.  This can be preferable to a direct
+invocation of Gamma, especially if your program is going to be used by
+others, who will not be familiar with the specifics of how your
+parameters are named, or what Gamma options can be used to set them.
 
 Finally, here is a simple makefile that can be used with any program
 contained in a single source file which defines an output of the same
@@ -584,6 +580,6 @@ clean:
 
 This can be convenient for use during development, but you should
 probably write something more specific if you're going to distribute
-your program for use by others.
+your program.
 
 Unalias: .ext

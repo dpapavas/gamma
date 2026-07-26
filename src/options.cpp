@@ -748,9 +748,9 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             //   for longer chains.
 
             //   Additionally, a difference chain of the form $a - b -
-            //   c - \ldots$ is rewritten to $a - (b + c + \ldots)$
-            //   where the union terms can be further folded in
-            //   subsequent passes.
+            //   c - \ldots$ is rewritten to $a - (b + c + \ldots)$,
+            //   where the union terms will be folded in subsequent
+            //   passes.
 
             //   --no-eliminate-dead-operations := Evaluate all
             //   operations, regardless of whether they're part of an
@@ -813,7 +813,7 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             //   --off :=
             //   --output-off :=
             //   --wrl :=
-            //   --output-wrl := Write all defined ouputs to disk in
+            //   --output-wrl := Write all defined outputs to disk in
             //   the STL, OFF, or WRL format.  Each file is written in
             //   the current working directory, with a name made up of
             //   the ouput's name and the selected format's extension.
@@ -838,6 +838,12 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             //   disk, but is instead written to an IPC channel, used
             //   for communication with the Debugger.
 
+            //   For example, the option s`-o part.stl`, will write
+            //   the geometry resulting from the output named `part`
+            //   to the file f`part.stl`, in the STL format.  On the
+            //   other hand, with s`-o test.stl:part` the same output
+            //   would be written to the file f`test.stl` instead.
+
             PUSH_SIMPLE_OPTION(outputs);
 
         case NO_OUTPUT:
@@ -854,7 +860,7 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             STRING_OPTION(ipc_address);
             //   --ipc-address=v`address` := Set the IPC channel
             //   address used to communicate with the Debugger.  This
-            //   is option is set to the approriate address by the
+            //   is option is set to the appropriate address by the
             //   Debugger when it invokes Gamma.  It is generally not
             //   needed when Gamma is used on its own.
 
@@ -870,8 +876,8 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             //   diagnostic messages. Possible values for v`when` are
             //   s`never`, s`always`, or s`auto`.  The default setting
             //   is s`auto` and color is used only if the output
-            //   stream is a terminal and has not been redirected to a
-            //   file, for instance.
+            //   stream is a terminal (and has not been redirected to a
+            //   file for instance).
 
             //   The o`--no-diagnostics-color` option inhibits
             //   coloring altogether and is equivalent to
@@ -940,7 +946,7 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             // arise.
 
             // For each of these options, there's also a matching
-            // option with a s`no-` prefix and having the opposite
+            // option with a s`no-` prefix, having the opposite
             // effect.
 
         case 'W':
@@ -956,8 +962,8 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             //   -Werror := Turn all warnings into errors.
 
             WARN_OPTION(duplicate);
-            //   -Wduplicate := Issue a warning when the prgoram
-            //   creates on operation identical to one or more it has
+            //   -Wduplicate := Issue a warning when the program
+            //   creates an operation identical to one or more it has
             //   previously created.  This is common and not
             //   problematic in itself, as such operations are
             //   evaluated only once.  Enabling this warning can aid
@@ -1053,7 +1059,7 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             WARN_OPTION_S(mesh_degenerate, "mesh-degenerate");
             //   -Wmesh-degenerate := Warn if the result of an
             //   operation contains degenerate edges, or faces.  An
-            //   edges is considered degenerate when its endpoints
+            //   edge is considered degenerate when its endpoints
             //   coincide, while a face is degenerate if its vertices
             //   are collinear.
 
@@ -1069,7 +1075,7 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
 
             WARN_OPTION_S(mesh_oriented, "mesh-oriented");
             //   -Wmesh-oriented := Warn if some or all faces of the
-            //   mesh resulting from an opeation do not have normals
+            //   mesh resulting from an operation do not have normals
             //   pointing outwards with respect to the domain bounded
             //   by the mesh.
 
@@ -1092,7 +1098,7 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             //   information is written to the standard output instead.
 
             //   One line is written for each operation directly after
-            //   it has been evaluated.  An example list is show below,
+            //   it has been evaluated.  An example list is shown below,
             //   where lines have been broken to fit the page.  They
             //   would have appeared as single line in the output.
 
@@ -1133,11 +1139,11 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
             //   followed by one line for each evaluation phase of
             //   each operation.
 
-            //   An operation begins by being ready for evaluation,
-            //   either because it had no prerequisite operations, or
-            //   because all prerequisite operations have been
-            //   evaluated.  Its evaluation then starts and finally
-            //   concludes, either successfully, or in failure.
+            //   An operation becomes ready for evaluation either
+            //   because it had no prerequisite operations, or because
+            //   all prerequisite operations have been evaluated.  Its
+            //   evaluation then starts and finally concludes, either
+            //   successfully, or in failure.
 
             //   An example log is show below.
 
@@ -1195,9 +1201,10 @@ along with this program. If not, see http://www.gnu.org/licenses/.)")
 
             //   --no-dump-abridged-tags := When an operation is used
             //   as an argument in a succeeding operation, it is
-            //   represented by its evaluation number in dumped output
-            //   above.  This option disables this convention, so that
-            //   operations have their arguments written out in full.
+            //   represented by its evaluation number in dumped
+            //   output.  This option disables this convention, so
+            //   that operations have their arguments written out in
+            //   full.
 
             //   --no-dump-annotations := Do not include operation
             //   annotations in dumped output.

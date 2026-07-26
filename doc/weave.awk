@@ -15,26 +15,47 @@ function print_program()
 
 function substitute_directive(from, to, pre, post)
 {
-  a = "[" pre "][[:space:]]*" from ":"
+  # The directive prefix, of the form `dir:`.
 
-  # If post is empty, we expect a directive of the form `foo:{hello
-  # world}`
+  a = "[[:space:]]*" from ":[[:space:]]*"
 
-  if (post) {
-    a = a "[[:space:]]*"
-    c = "\\1}\\2"
-  } else {
-    a = a "{"
-    c = "\\1\\2"
+  # If `pre` is not empty, the directive needs to be preceded by it.
+  # These are one or more literal characters, not a regular expression
+  # fragment.
+
+  if (pre) {
+    a = "[" pre "]" a
   }
+
+  # The transformed directive, with potential preceding characters.
+  # Of the form `@dir{`.
 
   b = pre to "{"
 
-  $0 = gensub(a "([^" post "]+)([" post "])", b c, "g")
+  # Try to substitute directives with excplicitly braced targets
+  # first, that is of the form `dir:{target}`.  Disregard `post` in
+  # such cases.
 
-  if (sub(a, b)) {
-    in_directive = 1
-    in_directive_post = post
+  $0 = gensub(a "\\{([^}]+)\\}", b "\\1}", "g")
+
+  # These may span more than one lines.  Substitute the opening if
+  # only that matches.  The closing brace will allready be in the
+  # text.
+
+  sub(a "\\{", b)
+
+  # If `post` is not empty, try to match directives with no explicit
+  # braces, i.e. of the form `dir: target,`.  These may span more than
+  # one lines too and we need to match `post` later and insert the
+  # closing brace.
+
+  if (post) {
+    $0 = gensub(a "([^" post "]+)([" post "])", b "\\1}\\2", "g")
+
+    if (sub(a, b)) {
+      in_directive = 1
+      in_directive_post = post
+    }
   }
 }
 
@@ -100,7 +121,7 @@ function close_list()
     text = text "\n@end table\n"
     in_table = 0
   } else if (in_definition) {
-    text = text "@end defblock\n"
+    text = text "\n@end defblock\n"
     in_definition = 0
   } else if (in_enumerate) {
     text = text "\n@end enumerate\n"
@@ -589,7 +610,7 @@ $0 ~ "^[[:space:]]*" prefix {
     substitute_directive("ref", "@pxref", "(", ")")
     substitute_directive("ref", " @pxref", ";", ",.")
     substitute_directive("ref", " @pxref", ",", ",.")
-    substitute_directive("ref", " @ref", "", ",.,")
+    substitute_directive("ref", " @ref", "", ",.")
     substitute_directive("fig", " @ref", "", " ,.")
 
     if (sub(/^[[:space:]]*Anchor:[[:space:]]*/, "@anchor{")) {
