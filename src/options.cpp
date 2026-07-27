@@ -1,4 +1,4 @@
-// Copyright 2022 Dimitris Papavasiliou
+// Copyright 2022, 2026 Dimitris Papavasiliou
 
 // This file is part of Gamma.
 
@@ -567,7 +567,7 @@ Debugging options:
 
             std::cout
                 << ("Gamma " GAMMA_VERSION R"(
-Copyright (C) 2022 Dimitris Papavasiliou.
+Copyright (C) 2022, 2026 Dimitris Papavasiliou.
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

@@ -1,4 +1,4 @@
-// Copyright 2025 Dimitris Papavasiliou
+// Copyright 2022, 2026 Dimitris Papavasiliou
 
 // This file is part of Gamma.
 
