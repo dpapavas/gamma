@@ -1,0 +1,188 @@
+-*- mode: weave; -*-
+
+Document: manual
+
+Here is the procedure for installing Gamma and the Debugger from the
+source distribution on GNU/Linux.
+
+You will need [CMake](https://cmake.org/) to configure and build the
+source code. Use your system's package manager to install it, then
+unpack Gamma's distribution archive and prepare the build directory.
+
+```bash
+$ tar -zxf gamma-GAMMA_VERSION.tar.gz
+$ mkdir gamma-GAMMA_VERSION/build
+$ cd gamma-GAMMA_VERSION/build
+```
+
+## Preparing to Build Gamma
+
+Gamma requires a version of the [GCC compiler](https://gcc.gnu.org/)
+that supports the C++17 language standard. In practice, this means
+that any relatively modern version should do.  You will additionally
+need the following libraries, which you can install through your
+system's package manager:
+
+  * [GMP](https://gmplib.org/)
+  * [MPFR](https://www.mpfr.org/)
+  * [Boost](https://www.boost.org/)
+  * [zlib](https://zlib.net/)
+  * [Eigen](https://eigen.tuxfamily.org/)
+
+You also need [CGAL](https://github.com/CGAL/cgal) version 6.1.2.  The
+easiest way to get it, is to download the source distribution archive
+from the
+[Releases](https://github.com/CGAL/cgal/releases#release-v6.1.2) page
+of the CGAL project.  Unpack it inside the build directory.
+
+```bash
+$ wget https://github.com/CGAL/cgal/releases/download/v6.1.2/\
+CGAL-6.1.2.tar.xz
+$ tar -Jxf CGAL-6.1.2.tar.xz
+```
+
+Depending on the language front ends you want to enable, you will also
+need [GNU Guile](https://www.gnu.org/software/guile/guile.html) and
+[Lua](https://www.lua.org).  These are optional and if one is not
+available, the respective language front end will be disabled.
+
+CMake tries to find Guile using the c`pkg-config` tool.  Your
+GNU/Linux distribution should include a f`.pc` file in Guile's
+development package, and CMake should find it once you install it.
+Alternatively, Guile can be compiled from its source distribution,
+which includes and installs a f`.pc` file.
+
+For example:
+
+```bash
+$ wget https://ftp.gnu.org/gnu/guile/guile-3.0.11.tar.gz
+$ tar -zxf guile-3.0.11.tar.gz
+$ cd guile-3.0.11
+$ ./configure
+$ make -j8
+$ sudo make install
+$ cd ..
+```
+
+If you install Lua from your system's package manager, CMake will find
+it, but may try to link against a version of the Lua library compiled
+for use by C programs.  If your distribution includes a C++ version of
+the library, you can tell CMake where to find it by setting the
+`LUA_LIBRARY` variable.  For example, Debian includes such a version
+of the library and CMake can be directed to use it by adding an option
+such as `-DLUA_LIBRARY=/usr/lib/x86_64-linux-gnu/liblua5.4-c++.so` to
+the CMake invocation shown in ref: Building the Programs.
+
+Alternatively, you can build Lua from its source distribution as follows:
+
+```bash
+$ wget https://www.lua.org/ftp/lua-5.4.8.tar.gz
+$ tar -zxf lua-5.4.8.tar.gz
+$ cd lua-5.4.8/src/
+$ make CC=g++ liblua.a
+$ cd ../..
+```
+
+In this case, you will have to set the `Lua_ROOT` variable when
+invocing CMake, as is shown in ref: Building the Programs.
+
+## Preparing to Build Gamma Debugger
+
+The Debugger requires a version of [GCC](https://gcc.gnu.org/) with
+support for the C23 language standard.  In practice this means version
+13 and later.  You will also need the following libraries, which you
+can install through your system's package manager:
+
+  * OpenGL, typically provided by the [Mesa 3D Graphics
+    Library](https://mesa3d.org/)
+  * [GFLW](https://www.glfw.org/) version 3
+  * [Freetype](https://freetype.org/)
+  * [Fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/)
+
+If you want to be able to create high quality figures with the `print`
+command, you will additionally need the
+[GL2PS](https://www.geuz.org/gl2ps/) library.  If it is not found, the
+command will not be available.  You will also not be able to build the
+documentation, as its figures are built using the `print` command.
+
+## Building the Programs
+
+You can now build and install both Gamma and the Debugger with:
+
+```bash
+$ cmake -DCMAKE_BUILD_TYPE=Release -DCGAL_ROOT=./CGAL-6.1.2 \
+    -DLua_ROOT=./lua-5.4.8/src ..
+$ make -j4
+$ sudo make install
+```
+
+You can substitute a higher or lower number in s`-j4` above, according
+to the number of CPU cores and memory available on your machine.  To
+build either Gamma or the Debugger on their own, use s`make gamma`, or
+s`make gammadb` respectively.  Type s`make help` for a list of
+available targets.
+
+You can then install Gamma without the Debugger with s`sudo cmake
+--install . --component gamma`.  Substitute s`gammadb` for s`gamma` if
+you want to install the just the Debugger.  CMake will install in
+f`/usr/local` by default; consult its documentation if you'd like to
+change this, or other aspects of the build.
+
+## Building the Documentation
+
+There are mutliple editions of the reference manual, one for each
+supported language and each is available in HTML and PDF form.
+Furthermore, there is also a manual for Gamma's source code itself, in
+the manner of literate programming.
+
+The documentation is in part extracted from comments in the source
+code.  The rest exists as a set of dedicated documentation input
+files.  It is written using a markup language and you will need [GNU
+Awk](https://www.gnu.org/software/gawk/) to assemble and prepare it
+for typesetting and [GNU
+Texinfo](https://www.gnu.org/software/texinfo/) to process it into
+either HTML or PDF form.
+
+Depending on the documentation you want to build, you may also need
+one or more of the following:
+
+  * One or more of the [Graphviz](https://graphviz.org/) graph
+    visualization programs.  These are mostly used in the source code
+    manual.
+
+  * A @LaTeX{} distribution if you want to build documentation in PDF
+    form.  You will need the `xcolor` and `listings` @LaTeX{} packages.
+    You may also need `tkz-euclide`, depending on the manual you want
+    to build.
+
+When building HTML documentation:
+
+  * [GNU Source-highlight](https://www.gnu.org/software/src-highlite/)
+    is used to highlight code listings.
+
+  * [GNU Ghostscript](https://www.gnu.org/software/ghostscript/)
+    converts the PDF figures produced by the c`print` command to
+    raster images.
+
+CMake will only check for the Texinfo and Awk programs and disable the
+documentation targets if it doesn't find them.  Otherwise, the
+following make targets should be available to build documentation.
+
+  weave-lua-html := Build the Lua edition of the reference manual in
+  HTML form.
+
+  weave-lua-pdf := Build the Lua edition of the reference manual in
+  PDF form.
+
+  weave-scheme-html := Build the Scheme edition of the reference
+  manual in HTML form.
+
+  weave-scheme-pdf := Build the Scheme edition of the reference manual
+  in PDF form.
+
+  weave-program-pdf := Build the source code manual.  This is only
+  available in PDF form.
+
+Built documentation is placed inside the f`doc/` subdirectory of your
+build directory, either as f`.pdf` files, or as subdirectories
+containing f`.html` files.

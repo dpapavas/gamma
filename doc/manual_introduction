@@ -4,26 +4,11 @@ Document: manual
 
 # Introduction
 
-Gamma is geometric modeling software posing as a compiler collection.
-It can translate programs written in one of its supported languages
-into geometry that is numerically robust and free of defects.  Gamma
-supports a wide range of techniques, including CSG modeling,
-generalized 2D to 3D extrusion, subdivision methods, surface fairing
-and deformation.
+Include: manual_overview.texi
 
-Gamma would typically be used by the programmer who has grown weary of
-hacking only software and wants to try their hand at something more
-tangible.  Nevertheless, it may also appeal to the designer as an
-attractive option for models that are best described in mathematical
-terms, or need to be parametric.
-
-Gamma can be invoked on the command line like a compiler, or through
-its companion, Gamma Debugger, for an interactive graphical interface.
 This manual provides comprehensive documentation on how to install,
-run and use both Gamma and Gamma Debugger.
-
-There are separate editions of this manual for each language supported
-by Gamma.
+run and use both Gamma and Gamma Debugger.  There are separate
+editions for each supported language.
 Document: manual/scheme
 This edition is for the Scheme language.
 Document: manual/lua
@@ -430,7 +415,7 @@ is shown in dotted lines in ref:sprocket-diagram.
 
 From it the roller seats are cut out by taking the difference with
 circles placed using the same function.  This produces the central
-part of the sprocket, shown in the bottom left frame of fig: sprocket.
+part of the sprocket, shown in the bottom left frame of ref: sprocket.
 
 The circles forming the flanks are tangent to the roller seating
 curves, so the placement function can be used once more to transform
@@ -439,7 +424,7 @@ tangent with the bottom of the corresponing roller seat curve and then
 rotated by half the roller-seating angle.].  The sprocket teeth can
 then be formed by taking appropriate intersections of these circles
 and the sprocket's rim circle.  They are shown in the top left frame
-of fig: sprocket.
+of ref: sprocket.
 
 Figure: sprocket-diagram
 ```print sprocket_diagram.scm

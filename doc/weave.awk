@@ -1,3 +1,7 @@
+BEGIN {
+  aliases["GAMMA_VERSION"]=gamma_version
+}
+
 BEGINFILE {
 }
 
@@ -110,6 +114,14 @@ function flush_text()
 
     sub(/\n+$/, "\n", text)
 
+    # Hyperlinks must be matched as a complete `[text](target)` block,
+    # as square brackets might appear in other contexts.  Since the
+    # first part might span more than one lines, We match them before
+    # flushing whole paragraphs.  In retrospect, we should have done
+    # the same in other similar cases, too.
+
+    text = gensub(/[[:space:]]+\[([^]]+?)\]\(([^)]+)\)/, " @uref{\\2,\\1}", "g", text)
+
     print text
     text = ""
   }
@@ -211,6 +223,11 @@ $0 ~ "^[[:space:]]*" prefix {
 
   if (prefix) {
     sub("^[[:space:]]*" prefix "[[:space:]]?", "")
+  }
+
+  if (sub(/^Include:/, "@include")) {
+    text = text $0
+    next
   }
 
   # Either single words can be aliased, or phrases enclosed in braces.
@@ -608,10 +625,9 @@ $0 ~ "^[[:space:]]*" prefix {
     # End of sentence or parenthesized cross-references
 
     substitute_directive("ref", "@pxref", "(", ")")
-    substitute_directive("ref", " @pxref", ";", ",.")
-    substitute_directive("ref", " @pxref", ",", ",.")
-    substitute_directive("ref", " @ref", "", ",.")
-    substitute_directive("fig", " @ref", "", " ,.")
+    substitute_directive("ref", " @pxref", ";", "),.")
+    substitute_directive("ref", " @pxref", ",", "),.")
+    substitute_directive("ref", " @ref", "", "),.")
 
     if (sub(/^[[:space:]]*Anchor:[[:space:]]*/, "@anchor{")) {
       sub(/$/, "}")

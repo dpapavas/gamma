@@ -29,7 +29,10 @@
 
 #include "common.h"
 
+
+#ifdef HAVE_GL2PS
 #include <gl2ps.h>
+#endif
 
 // Document: program
 
@@ -585,6 +588,7 @@ int read_commands(FILE *fp)
 
         // Document: program
 
+#ifdef HAVE_GL2PS
         else if (!strcmp(s, "print")) {
             char *c;
 
@@ -642,6 +646,7 @@ int read_commands(FILE *fp)
             print_window(w, i, fp);
             fclose(fp);
         }
+#endif
 
         // Document: program,manual
 

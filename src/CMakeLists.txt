@@ -47,17 +47,14 @@ target_compile_options(objects PRIVATE
     $<$<OR:$<CONFIG:Release>,$<CONFIG:Optimize>>:-Wno-maybe-uninitialized -Wno-array-bounds>
 )
 
-target_include_directories(
-  objects PUBLIC ${ZLIB_INCLUDE_DIR})
+target_include_directories(objects PUBLIC ${ZLIB_INCLUDE_DIR})
 target_link_options(objects PUBLIC -pthread)
 
 if (WIN32)
 target_link_options(objects PUBLIC -static)
 endif ()
 
-target_link_libraries(objects PUBLIC
-  CGAL::CGAL CGAL::Eigen3_support CGAL::TBB_support
-  ${ZLIB_LIBRARIES})
+target_link_libraries(objects PUBLIC CGAL::CGAL CGAL::Eigen3_support CGAL::TBB_support ZLIB::ZLIB)
 
 # Scheme backend
 
@@ -109,11 +106,12 @@ target_compile_definitions(gamma PUBLIC "INSTALL_DATADIR=\"${CMAKE_INSTALL_FULL_
 target_compile_definitions(gamma PUBLIC "INSTALL_PREFIX=\"${CMAKE_INSTALL_PREFIX}\"")
 target_link_libraries(gamma objects)
 
-install(TARGETS gamma)
+install(TARGETS gamma COMPONENT gamma)
 
 if (GUILE_FOUND)
   install(
     DIRECTORY ../scheme/
+    COMPONENT gamma
     DESTINATION "${CMAKE_INSTALL_DATADIR}/gamma/scheme"
     FILES_MATCHING PATTERN "*.sld")
 endif ()
@@ -121,6 +119,7 @@ endif ()
 if (Lua_FOUND)
   install(
     DIRECTORY ../lua
+    COMPONENT gamma
     DESTINATION "${CMAKE_INSTALL_DATADIR}/gamma"
     FILES_MATCHING PATTERN "*.lua")
 endif ()

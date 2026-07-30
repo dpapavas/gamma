@@ -1,0 +1,55 @@
+\input texinfo.tex
+
+This is version @value{gamma_version} of Gamma and version
+@value{gammadb_version} of Gamma Debugger.
+
+@noindent
+Copyright @copyright{} 2022, 2026 Dimitris Papavasiliou
+
+@unnumberedsec Overview
+
+@include manual_overview.texi
+
+Gamma is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+Gamma is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+for more details.
+
+You should have received a copy of the GNU General Public License
+along with Gamma. If not, see <https://www.gnu.org/licenses/>.
+
+@unnumberedsec Installation
+
+Please see the file named @file{INSTALL} for detailed instructions on
+building and installing Gamma from its source distribution.
+
+@unnumberedsec Distribution Contents
+
+This distribution includes the following, among others:
+
+@table @file
+
+@item src/
+C++ source files for Gamma
+
+@item db/
+C source files for Gamma Debugger
+
+@item doc/
+Input files and support programs for building documentation.  Apart
+from files in this directory, documentation is also extracted from
+comments in source code.
+
+@item scheme/
+@itemx lua/
+Front end language library code.  This is the outer layer of the
+libraries exported by Gamma to the front end languages.  The core of
+the libraries is implemented in C++.
+
+@end table
+@bye

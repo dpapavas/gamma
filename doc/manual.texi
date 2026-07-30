@@ -53,6 +53,10 @@
         language={[gnu]make}
 }
 
+\lstdefinestyle{bash} {
+        language={bash}
+}
+
 \indexsetup{level=,toclevel=,noclearpage}
 @end latex
 
@@ -60,17 +64,19 @@
 @defcodeindex ds
 
 @copying
-Copyright @copyright{} 2026 Dimitris Papavasiliou.
+@noindent This manual is for version @value{gamma_version} of Gamma
+and version @value{gammadb_version} of the Debgugger.
 
-This manual is for version @value{gamma_version} of Gamma and version
-@value{gammadb_version} of its Debgugger.  It is covered by the
-@acronym{GNU} Free Documentation License.  @xref{@acronym{GNU} Free
+@noindent Copyright @copyright{} 2026 Dimitris Papavasiliou.
+
+@quotation
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with no
+Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts. A
+copy of the license is included in @ref{@acronym{GNU} Free
 Documentation License}.
-
-Gamma is freely redistributable software. You may redistribute it
-and/or modify it under the terms of the @acronym{GNU} General Public
-License as published by the Free Software Foundation.
-@xref{@acronym{GNU} General Public License}.
+@end quotation
 @end copying
 
 @documentinfo
@@ -88,15 +94,16 @@ License as published by the Free Software Foundation.
 @top Gamma
 
 This manual is for version @value{gamma_version} of Gamma and version
-@value{gammadb_version} of its Debgugger, updated @value{updated}.
+@value{gammadb_version} of the Debgugger, updated @value{updated}.
 
 @include doc_manual_introduction.texi
 @include doc_manual_getting_started.texi
 @include doc_manual_using_the_debugger.texi
 
-@node @acronym{GNU} General Public License
-@appendix @acronym{GNU} General Public License
-@include gpl-3.0.texi
+@node Installing Gamma and Gamma Debugger
+@appendix Installing Gamma and Gamma Debugger
+
+@include doc_manual_installing_gamma.texi
 
 @node @acronym{GNU} Free Documentation License
 @appendix @acronym{GNU} Free Documentation License

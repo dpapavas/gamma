@@ -26,7 +26,9 @@
 #include "common.h"
 #include SHADER_STRINGS
 
+#ifdef HAVE_GL2PS
 #include <gl2ps.h>
+#endif
 
 // Document: program
 
@@ -1469,6 +1471,7 @@ void refresh_object(
 // several formats.  It is mostly useful to prepare figuresf for
 // documentation.
 
+#ifdef HAVE_GL2PS
 void print_window(struct window *w, GLint format, FILE *fp)
 {
     // We use the window name as document title and set the document
@@ -1707,3 +1710,4 @@ void print_window(struct window *w, GLint format, FILE *fp)
         assert(i == GL2PS_SUCCESS || i == GL2PS_NO_FEEDBACK);
     }
 }
+#endif

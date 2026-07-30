@@ -1,0 +1,13 @@
+Gamma is a solid modeling compiler.  It can translate programs written
+in Scheme or Lua into geometry that is numerically robust and free of
+defects.  Gamma supports a wide range of techniques, including CSG
+modeling, generalized 2D to 3D extrusion, subdivision methods, surface
+fairing and deformation.
+
+Gamma is intended for programmers who wish to apply their skills to
+the design of physical objects, but it may also appeal to designers
+used to interactive tools.  It is particularly suitable for parametric
+models, or those best described in mathematical terms.
+
+Gamma can be invoked on the command line like a compiler, or through
+its companion, Gamma Debugger, for an interactive graphical interface.

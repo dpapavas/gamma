@@ -2,7 +2,7 @@ find_package(OpenGL REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 find_package(Freetype REQUIRED)
 find_package(Fontconfig REQUIRED)
-find_package(GL2PS)
+find_package(GL2PS QUIET)
 
 find_path(Readline_INCLUDE_DIR readline/readline.h)
 find_library(Readline_LIBRARIES readline)
@@ -24,9 +24,17 @@ target_compile_definitions(
   "GAMMADB_VERSION=\"${GAMMADB_VERSION}\""
   "DEFAULT_PROGRAM=\"$<IF:$<CONFIG:Release>,$<TARGET_FILE_NAME:gamma>,$<TARGET_FILE:gamma>>\"")
 target_compile_definitions(gammadb PRIVATE "SHADER_STRINGS=\"${SHADER_STRINGS}\"")
-target_link_libraries(gammadb OpenGL::GL Freetype::Freetype Fontconfig::Fontconfig glfw m readline ${GL2PS_LIBRARY})
-target_include_directories(gammadb PRIVATE . ${GL2PS_INCLUDE_DIR})
+target_link_libraries(gammadb OpenGL::GL Freetype::Freetype Fontconfig::Fontconfig glfw m readline)
+  target_include_directories(gammadb PRIVATE .)
 
-install(TARGETS gammadb)
+if(GL2PS_FOUND)
+  target_link_libraries(gammadb ${GL2PS_LIBRARY})
+  target_include_directories(gammadb PRIVATE ${GL2PS_INCLUDE_DIR})
+  target_compile_definitions(gammadb PRIVATE "HAVE_GL2PS=1")
+endif()
 
-add_subdirectory(test)
+install(TARGETS gammadb COMPONENT gammadb)
+
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_BUILD_TYPE STREQUAL "Optimize")
+  add_subdirectory(test)
+endif()

@@ -220,8 +220,11 @@ static char **completion_function(const char *text, int start, int end)
             (char *[]) {
                 "quit", "exit", "window", "hide", "present", "resize", "focus",
                 "split", "target", "rotate", "translate", "track", "zoom", "view",
-                "load", "run", "info", "set", "show", "bind", "unbind", "print",
-                "define", "undefine", "kill", "output", "toggle", nullptr});
+                "load", "run", "info", "set", "show", "bind", "unbind", "toggle",
+#ifdef HAVE_GL2PS
+                "print",
+#endif
+                "define", "undefine", "kill", "output", nullptr});
     });
 
     //   2. completing keyword arguments for certain commands, or

@@ -81,3 +81,13 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 add_subdirectory(src)
 add_subdirectory(db)
 add_subdirectory(doc)
+
+add_custom_target(
+  dist
+  DEPENDS weave-README weave-INSTALL
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  COMMAND git ls-tree --full-tree -r --name-only HEAD
+      | tar -zcf ${CMAKE_CURRENT_BINARY_DIR}/gamma-${GAMMA_VERSION}.tar.gz
+      --exclude='.*' --transform 's/^/gamma-${GAMMA_VERSION}\\//' --files-from=-
+      -C ${CMAKE_CURRENT_BINARY_DIR}/doc README INSTALL
+)

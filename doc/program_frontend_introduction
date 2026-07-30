@@ -9,7 +9,6 @@ instance), we would rather be able to specify arbitrary calculations
 as easily as possible (not to mention without having to recompile the
 program).  This is where front ends come in.
 
-
 A front end is called upon to execute a program, which is typically
 read from a file.  These programs are written in high level languages,
 which are augmented with libraries of functions implementing the
